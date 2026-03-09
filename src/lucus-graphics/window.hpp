@@ -6,10 +6,12 @@ class GLFWwindow;
 
 namespace lucus
 {
+    class application_info;
+
     class window
     {
     public:
-        window();
+        window(const application_info* app_info);
         ~window();
         
         bool shouldClose();
@@ -22,9 +24,6 @@ namespace lucus
         void destroy();
 
     private:
-        const uint32_t WIDTH = 800;
-        const uint32_t HEIGHT = 600;
-
         GLFWwindow* _window;
     };
 } // namespace lucus

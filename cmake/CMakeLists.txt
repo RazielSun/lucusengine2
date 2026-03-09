@@ -15,7 +15,7 @@ file ( GLOB APP_SRC "${LUCUS_ENGINE_APP_SRC}/*.cpp" "${LUCUS_ENGINE_APP_SRC}/*.h
 add_executable ( app ${APP_SRC} )
 
 target_include_directories ( app PRIVATE
-    "${LUCUS_ENGINE_SRC}/lucus-core/"
+    "${LUCUS_ENGINE_SRC}/lucus-sim/"
 )
 
 target_link_libraries ( app PRIVATE liblucus )

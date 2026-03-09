@@ -1,10 +1,10 @@
-#include "renderer.hpp"
+#include "vulkan_renderer.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include "window.hpp"
-#include "tools.h"
+#include "filesystem.hpp"
 
 namespace tools
 {
@@ -170,9 +170,21 @@ namespace tools
     }
 } // namespace
 
+namespace lucus
+{
+    std::shared_ptr<renderer> create_renderer(std::shared_ptr<window> window)
+    {
+        auto renderer = std::make_shared<vulkan_renderer>();
+        if (!renderer->init(window)) {
+            return nullptr;
+        }
+        return renderer;
+    }
+}
+
 using namespace lucus;
 
-bool renderer::init(std::shared_ptr<window> window)
+bool vulkan_renderer::init(std::shared_ptr<window> window)
 {
     if (!createInstance()) return false;
     if (!createSurface(window)) return false;
@@ -189,14 +201,14 @@ bool renderer::init(std::shared_ptr<window> window)
     return true;
 }
 
-void renderer::mainLoop()
+void vulkan_renderer::tick()
 {
     drawFrame();
 
     vkDeviceWaitIdle(_device);
 }
 
-void renderer::cleanup()
+void vulkan_renderer::cleanup()
 {
     vkDestroySemaphore(_device, _imageAvailableSemaphore, nullptr);
     vkDestroySemaphore(_device, _renderFinishedSemaphore, nullptr);
@@ -217,7 +229,7 @@ void renderer::cleanup()
     vkDestroyInstance(_instance, nullptr);
 }
 
-bool renderer::createInstance()
+bool vulkan_renderer::createInstance()
 {
     using namespace tools;
 
@@ -255,23 +267,8 @@ bool renderer::createInstance()
     return true;
 }
 
-bool renderer::createSurface(std::shared_ptr<window> window)
+bool vulkan_renderer::createSurface(std::shared_ptr<window> window)
 {
-    // VkXlibSurfaceCreateInfoKHR createInfo{};
-    // createInfo.sType  = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-    // createInfo.dpy    = glfwGetX11Display();
-    // createInfo.window = glfwGetX11Window(window);
-
-    // // VkXcbSurfaceCreateInfoKHR createInfo{};
-    // // createInfo.sType      = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
-    // // createInfo.connection = glfwGetXcbConnection();
-    // // createInfo.window     = glfwGetXcbWindow(window);
-
-    // VkResult result = vkCreateXlibSurfaceKHR(instance, &createInfo, nullptr, &surface);
-    // printf("vkCreateXlibSurfaceKHR returned %d\n", (int)result);
-    // if (result != VK_SUCCESS)
-    //     throw std::runtime_error("failed to create Xlib surface");
-
     VkResult result = glfwCreateWindowSurface(_instance, window->getGLFWwindow(), nullptr, &_surface);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create window surface!");
@@ -280,7 +277,7 @@ bool renderer::createSurface(std::shared_ptr<window> window)
     return true;
 }
 
-void renderer::pickPhysicalDevice()
+void vulkan_renderer::pickPhysicalDevice()
 {
     using namespace tools;
 
@@ -312,7 +309,7 @@ void renderer::pickPhysicalDevice()
     std::printf("Selected GPU: %s\n", props.deviceName);
 }
 
-void renderer::createLogicalDevice()
+void vulkan_renderer::createLogicalDevice()
 {
     using namespace tools;
 
@@ -367,7 +364,7 @@ void renderer::createLogicalDevice()
     std::printf("VkDevice created successfully\n");
 }
 
-void renderer::createSwapChain(std::shared_ptr<window> window)
+void vulkan_renderer::createSwapChain(std::shared_ptr<window> window)
 {
     using namespace tools;
 
@@ -428,7 +425,7 @@ void renderer::createSwapChain(std::shared_ptr<window> window)
     std::printf("VkSwapchainKHR created successfully\n");
 }
 
-void renderer::createImageViews()
+void vulkan_renderer::createImageViews()
 {
     _swapChainImageViews.resize(_swapChainImages.size());
     for (size_t i = 0; i < _swapChainImages.size(); i++) {
@@ -453,7 +450,7 @@ void renderer::createImageViews()
     std::printf("Created %zu image views\n", _swapChainImageViews.size());
 }
 
-void renderer::createRenderPass()
+void vulkan_renderer::createRenderPass()
 {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = _swapChainImageFormat;
@@ -499,12 +496,12 @@ void renderer::createRenderPass()
     std::printf("Render pass created successfully\n");
 }
 
-void renderer::createGraphicsPipeline()
+void vulkan_renderer::createGraphicsPipeline()
 {
     using namespace tools;
 
-    auto vertShaderCode = readFile("bin/shaders/vert.spv");
-    auto fragShaderCode = readFile("bin/shaders/frag.spv");
+    auto vertShaderCode = filesystem::instance().read_file("shaders/vert.spv");
+    auto fragShaderCode = filesystem::instance().read_file("shaders/frag.spv");
     VkShaderModule vertShaderModule = createShaderModule(_device, vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(_device, fragShaderCode);
 
@@ -657,7 +654,7 @@ void renderer::createGraphicsPipeline()
     std::printf("Graphics pipeline created successfully\n");
 }
 
-void renderer::createFramebuffers()
+void vulkan_renderer::createFramebuffers()
 {
     _swapChainFramebuffers.resize(_swapChainImageViews.size());
 
@@ -683,7 +680,7 @@ void renderer::createFramebuffers()
     std::printf("Created %zu frame buffers\n", _swapChainFramebuffers.size());
 }
 
-void renderer::createCommandPool()
+void vulkan_renderer::createCommandPool()
 {
     using namespace tools;
 
@@ -701,7 +698,7 @@ void renderer::createCommandPool()
     std::printf("Command pool created successfully\n");
 }
 
-void renderer::createCommandBuffer()
+void vulkan_renderer::createCommandBuffer()
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -716,7 +713,7 @@ void renderer::createCommandBuffer()
     std::printf("Command buffer created successfully\n");
 }
 
-void renderer::createSyncObjects()
+void vulkan_renderer::createSyncObjects()
 {
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -744,7 +741,7 @@ void renderer::createSyncObjects()
 }
 
 
-void renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
+void vulkan_renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -793,7 +790,7 @@ void renderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
     }
 }
 
-void renderer::drawFrame()
+void vulkan_renderer::drawFrame()
 {
     vkWaitForFences(_device, 1, &_inFlightFence, VK_TRUE, UINT64_MAX);
 

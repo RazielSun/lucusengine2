@@ -7,6 +7,7 @@ add_library(lucus::vulkan ALIAS Vulkan::Vulkan)
 
 set ( MODULE_NAME "lucus-graphics" )
 set ( CMAKE_CURRENT_SOURCE_DIR "${LUCUS_ENGINE_SRC}/${MODULE_NAME}" )
+get_target_property (MODULE_EXTRA_INCLUDES lucus-core INCLUDE_DIRECTORIES)
 set ( MODULE_EXTRA_LIBS "lucus::glfw" "lucus::vulkan" )
 
 
@@ -15,7 +16,7 @@ set ( MODULE_INCLUDES
 )
 
 # Use all cpp files in directory as source code
-file ( GLOB MODULE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" )
+file ( GLOB_RECURSE MODULE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" )
 
 include_directories ( ${MODULE_INCLUDES} )
 

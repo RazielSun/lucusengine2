@@ -6,13 +6,13 @@
 
 int main(int argc, char* argv[])
 {
-  lucus::engine engine;
+  lucus::engine e;
 
   try {
-      engine.run();
-  } catch (const std::exception& e) {
-      std::cerr << e.what() << std::endl;
-      return EXIT_FAILURE;
+        e.run(argc, argv);
+  } catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        return EXIT_FAILURE;
   }
 
   return EXIT_SUCCESS;

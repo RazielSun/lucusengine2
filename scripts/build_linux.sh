@@ -41,7 +41,13 @@ cmake --build "$ROOT/$BUILD_DIR" -- -j"$(nproc)"
 echo
 echo "Build done."
 
+echo
 "$ROOT/scripts/compile_vulkan.sh"
 
+echo
+echo "Create Content symlink..."
+ln -sfn "$ROOT/content" "$ROOT/bin/content"
+
+echo
 echo "Running app..."
 ./bin/app
