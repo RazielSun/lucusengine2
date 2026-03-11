@@ -5,16 +5,16 @@ set -euo pipefail
 IFS=$'\n\t'
 
 echo
-. "$(dirname "$0")/.build.sh"
+. "$(dirname "$0")/.build.sh" -j$(sysctl -n hw.ncpu)
 echo "Build done."
 
 # echo
 # . "$(dirname "$0")/compile_vulkan.sh"
 
-# echo
-# echo "Create Content symlink..."
-# ln -sfn "$ROOT/content" "$ROOT/bin/content"
+echo
+echo "Create Content symlink..."
+ln -sfn "$ROOT/content" "$ROOT/bin/content"
 
-# echo
-# echo "Running app..."
-# ./bin/app
+echo
+echo "Running app..."
+./bin/app

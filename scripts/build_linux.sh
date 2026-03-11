@@ -5,7 +5,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 echo
-. "$(dirname "$0")/.build.sh"
+. "$(dirname "$0")/.build.sh" -j"$(nproc)"
 echo "Build done."
 
 echo

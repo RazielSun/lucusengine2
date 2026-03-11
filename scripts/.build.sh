@@ -15,7 +15,7 @@ CXX="${CXX:-clang++}"
 CC="${CC:-clang}"
 
 # extra cmake args passed from CLI
-EXTRA_ARGS=("$@")
+# EXTRA_ARGS=("$@")
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CMAKE_DIR="$ROOT/cmake"
@@ -33,7 +33,7 @@ cmake -S "$CMAKE_DIR" -B "$ROOT/$BUILD_DIR" -G "$GENERATOR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DCMAKE_C_COMPILER="$CC" \
   -DCMAKE_CXX_COMPILER="$CXX" \
-  -DCMAKE_INSTALL_PREFIX="$ROOT/$INSTALL_DIR" \
-  "${EXTRA_ARGS[@]}"
+  -DCMAKE_INSTALL_PREFIX="$ROOT/$INSTALL_DIR"
+  # "${EXTRA_ARGS[@]}"
 
-cmake --build "$ROOT/$BUILD_DIR" -- -j"$(nproc)"
+cmake --build "$ROOT/$BUILD_DIR" -- "$@"
