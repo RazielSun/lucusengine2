@@ -2,15 +2,10 @@
 
 #include "vk_pch.hpp"
 
+#include "device.hpp"
+
 namespace lucus
 {
-    // interface
-    class idevice
-    {
-        public:
-            virtual ~idevice() = default;
-    };
-
     class vk_device : public idevice
     {
         public:

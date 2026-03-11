@@ -1,15 +1,24 @@
 cmake_minimum_required(VERSION 3.28)
 project ( lucus-graphics )
 
-# TODO: fix me
-find_package(Vulkan REQUIRED)
-add_library(lucus::vulkan ALIAS Vulkan::Vulkan)
+if(APPLE)
+    enable_language(OBJC OBJCXX)
+endif()
 
 set ( MODULE_NAME "lucus-graphics" )
 set ( CMAKE_CURRENT_SOURCE_DIR "${LUCUS_ENGINE_SRC}/${MODULE_NAME}" )
 get_target_property (MODULE_EXTRA_INCLUDES lucus-core INCLUDE_DIRECTORIES)
-set ( MODULE_EXTRA_LIBS "lucus::glfw" "lucus::vulkan" )
+set ( MODULE_EXTRA_LIBS "lucus::glfw"  )
 
+if(APPLE)
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    list(APPEND MODULE_EXTRA_LIBS ${COCOA_FRAMEWORK} ${QUARTZCORE_FRAMEWORK} ${METAL_FRAMEWORK})
+elseif(UNIX)
+    find_package(Vulkan REQUIRED)
+    list(APPEND MODULE_EXTRA_LIBS Vulkan::Vulkan)
+endif()
 
 set ( MODULE_INCLUDES 
     "${LUCUS_ENGINE_SRC}/lucus-pch/"
@@ -17,7 +26,30 @@ set ( MODULE_INCLUDES
 )
 
 # Use all cpp files in directory as source code
-file ( GLOB_RECURSE MODULE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" )
+file ( GLOB MODULE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" )
+
+# platform specific
+if (WIN32)
+    file(GLOB PLATFORM_SRC
+        "${CMAKE_CURRENT_SOURCE_DIR}/dx12/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/dx12/*.hpp"
+    )
+
+elseif(APPLE)
+    file(GLOB PLATFORM_SRC
+        "${CMAKE_CURRENT_SOURCE_DIR}/metal/*.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/metal/*.hpp"
+    )
+
+elseif(UNIX)
+    file(GLOB PLATFORM_SRC
+        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vulkan/*.hpp"
+    )
+endif()
+
+# merge
+list(APPEND MODULE_SRC ${PLATFORM_SRC})
 
 include_directories ( ${MODULE_INCLUDES} )
 

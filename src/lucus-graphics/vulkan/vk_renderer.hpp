@@ -8,8 +8,6 @@
 
 namespace lucus
 {
-    constexpr uint32_t maxConcurrentFrames{ 2 };
-
     class vk_renderer : public renderer
     {
         public:

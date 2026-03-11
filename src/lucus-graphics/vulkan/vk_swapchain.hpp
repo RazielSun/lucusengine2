@@ -2,19 +2,10 @@
 
 #include "vk_pch.hpp"
 
+#include "swapchain.hpp"
+
 namespace lucus
 {
-    class window;
-
-    class iswapchain
-    {
-        public:
-            virtual ~iswapchain() = default;
-
-            virtual void createSurface(std::shared_ptr<window> window) = 0;
-            virtual void create(std::shared_ptr<window> window) = 0;
-    };
-
     class vk_swapchain : public iswapchain
     {
         public:

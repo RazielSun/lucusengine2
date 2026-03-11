@@ -9,6 +9,8 @@ namespace lucus
 
     std::shared_ptr<renderer> create_renderer();
 
+    constexpr uint32_t maxConcurrentFrames{ 2 };
+
     class renderer
     {
     public:
