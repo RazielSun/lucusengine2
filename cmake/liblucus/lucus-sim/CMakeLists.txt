@@ -8,6 +8,7 @@ get_target_property (MODULE_EXTRA_INCLUDES lucus-graphics INCLUDE_DIRECTORIES)
 
 
 set ( MODULE_INCLUDES 
+    "${LUCUS_ENGINE_SRC}/lucus-pch/"
     "${LUCUS_ENGINE_SRC}/${MODULE_NAME}/"
 )
 
@@ -28,9 +29,9 @@ target_include_directories (${MODULE_NAME} PUBLIC
     "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include>"
 )
 
-# target_precompile_headers ( liblucus
+# target_precompile_headers ( ${MODULE_NAME}
 #     PRIVATE
-#     "$<$<COMPILE_LANGUAGE:CXX>:${LUCUS_ENGINE_SRC}/pch.hpp>"
+#     "$<$<COMPILE_LANGUAGE:CXX>:${LUCUS_ENGINE_SRC}/lucus-pch/pch.hpp>"
 # )
 
 target_link_libraries ( ${MODULE_NAME} PUBLIC
