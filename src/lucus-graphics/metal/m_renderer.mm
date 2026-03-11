@@ -43,8 +43,8 @@ void m_renderer::cleanup()
 
 void m_renderer::initDevices()
 {
-    application_info& app_info = application_info::instance();
-    engine_info& engine_info = engine_info::instance();
+    // application_info& app_info = application_info::instance();
+    // engine_info& engine_info = engine_info::instance();
 
     _device = std::make_unique<m_device>();
     _device->createLogicalDevice();
@@ -52,7 +52,7 @@ void m_renderer::initDevices()
 
 void m_renderer::createMetalLayerAndView(std::shared_ptr<window> window)
 {
-    NSWindow* ns_window = glfwGetCocoaWindow(window->getGLFWWindow());
+    NSWindow* ns_window = glfwGetCocoaWindow(window->getGLFWwindow());
     if (!ns_window)
     {
         throw std::runtime_error("Failed to get Cocoa window from GLFW");
@@ -70,7 +70,7 @@ void m_renderer::createMetalLayerAndView(std::shared_ptr<window> window)
     _metalLayer.framebufferOnly = YES;
     _metalLayer.contentsScale = [ns_window backingScaleFactor];
 
-    _metalLayer.drawableSize = CGSizeMake((CGFloat)window->getFramebufferWidth(), (CGFloat)window->getFramebufferHeight());
+    _metalLayer.drawableSize = CGSizeMake((CGFloat)window->framebuffer_width(), (CGFloat)window->framebuffer_height());
 
     [content_view setWantsLayer:YES];
     [content_view setLayer:_metalLayer];

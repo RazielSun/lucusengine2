@@ -12,8 +12,8 @@ namespace lucus
             m_device();
             virtual ~m_device() override;
 
-            MTLDevice getDevice() const { return _device; }
-            MTLCommandQueue getCommandPool() const { return _commandPool; }
+            id<MTLDevice> getDevice() const { return _device; }
+            id<MTLCommandQueue> getCommandPool() const { return _commandPool; }
 
             void createLogicalDevice();
 
