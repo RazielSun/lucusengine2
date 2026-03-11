@@ -1,4 +1,4 @@
-#include "application.hpp"
+#include "application_info.hpp"
 
 #include "script_manager.hpp"
 

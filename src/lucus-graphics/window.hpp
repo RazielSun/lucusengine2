@@ -6,13 +6,17 @@ class GLFWwindow;
 
 namespace lucus
 {
-    class application_info;
-
     class window
     {
     public:
-        window(const application_info* app_info);
+        window();
         ~window();
+
+        int width() const;
+        int height() const;
+
+        int framebuffer_width() const;
+        int framebuffer_height() const;
         
         bool shouldClose();
         void tick();
@@ -25,5 +29,11 @@ namespace lucus
 
     private:
         GLFWwindow* _window;
+
+        int _width;
+        int _height;
+
+        int _framebufferWidth;
+        int _framebufferHeight;
     };
 } // namespace lucus

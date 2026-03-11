@@ -1,30 +1,54 @@
 #include "window.hpp"
 
-#include "application.hpp"
+#include "application_info.hpp"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 using namespace lucus;
 
-window::window(const application_info* app_info)
+window::window()
 {
-    if (app_info == nullptr) {
-        throw std::runtime_error("app_info cannot be null");
-    }
+    application_info& app_info = application_info::instance();
 
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    _window = glfwCreateWindow(app_info->width(), app_info->height(), app_info->app_name().c_str(), nullptr, nullptr);
+    _width = app_info.width();
+    _height = app_info.height();
+    _window = glfwCreateWindow(_width, _height, app_info.app_name().c_str(), nullptr, nullptr);
+
+    glfwGetFramebufferSize(_window, &_framebufferWidth, &_framebufferHeight);
+
+    std::printf("Created window with size %dx%d (framebuffer size %dx%d)\n", _width, _height, _framebufferWidth, _framebufferHeight);
 }
 
 window::~window()
 {
     glfwDestroyWindow(_window);
     glfwTerminate();
+}
+
+int window::width() const
+{
+    return _width;
+}
+
+int window::height() const
+{
+    return _height;
+}
+
+int window::framebuffer_width() const
+{
+    return _framebufferWidth;
+}
+
+int window::framebuffer_height() const
+{
+    return _framebufferHeight;
 }
 
 bool window::shouldClose()
