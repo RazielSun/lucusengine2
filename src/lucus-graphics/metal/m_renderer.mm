@@ -88,7 +88,7 @@ void m_renderer::createMetalLayerAndView(std::shared_ptr<window> window)
 
 void m_renderer::createPipeline()
 {
-    id<MTLLibrary> library = loadLibrary("shaders/triangle.metallib");
+    id<MTLLibrary> library = loadLibrary("shaders/triangle.metal.metallib");
     _pipeline = createPipeline(library, _metalLayer.pixelFormat);
 }
 
@@ -98,7 +98,8 @@ id<MTLLibrary> m_renderer::loadLibrary(const std::string& filename)
 
     NSError* error = nil;
     NSString* nsPath = [NSString stringWithUTF8String:path.c_str()];
-    id<MTLLibrary> lib = [deviceMTL newLibraryWithFile:nsPath error:&error];
+    NSURL* url = [NSURL fileURLWithPath:nsPath];
+    id<MTLLibrary> lib = [deviceMTL newLibraryWithURL:url error:&error];
     if (!lib)
     {
         std::string msg = "Failed to load metallib: ";
@@ -158,7 +159,7 @@ void m_renderer::buildCommandBuffer()
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 
-    id<MTLRenderCommandEncoder> enc = [cmd renderCommandEncoderWithDescriptor:pass];
+    id<MTLRenderCommandEncoder> enc = [_currentBuffer renderCommandEncoderWithDescriptor:pass];
 
     [enc setRenderPipelineState:_pipeline];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle
