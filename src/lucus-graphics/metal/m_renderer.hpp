@@ -25,9 +25,25 @@ namespace lucus
 
             void createMetalLayerAndView(std::shared_ptr<window> window);
 
+            void createPipeline();
+
+            id<MTLLibrary> loadLibrary(const std::string& filename);
+            id<MTLRenderPipelineState> createPipeline(id<MTLLibrary> library, MTLPixelFormat colorFormat);
+
+            void prepareFrame();
+            void buildCommandBuffer();
+            void submitFrame();
+
         private:
             std::unique_ptr<m_device> _device;
 
+            id<MTLDevice> deviceMTL;
+
             CAMetalLayer* _metalLayer = nil;
+
+            id<MTLRenderPipelineState> _pipeline = nil;
+
+            id<CAMetalDrawable> _currentDrawable = nil;
+            id<MTLCommandBuffer> _currentBuffer = nil;
     };
 }

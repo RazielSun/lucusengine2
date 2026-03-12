@@ -33,6 +33,11 @@ std::vector<char> filesystem::read_file(const std::string& filename)
     return buffer;
 }
 
+std::string filesystem::get_path(const std::string& filename)
+{
+    return _workingDirectory + filename;
+}
+
 std::string filesystem::get_script(const std::string& filename)
 {
     return _workingDirectory + "content/scripts/" + filename;

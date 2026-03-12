@@ -303,8 +303,8 @@ void vk_renderer::createRenderPass()
 
 void vk_renderer::createGraphicsPipeline()
 {
-    VkShaderModule vertShaderModule = loadShader("shaders/vert.spv");
-    VkShaderModule fragShaderModule = loadShader("shaders/frag.spv");
+    VkShaderModule vertShaderModule = loadShader("shaders/triangle.vert.spv");
+    VkShaderModule fragShaderModule = loadShader("shaders/triangle.frag.spv");
 
     // Pipeline
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{

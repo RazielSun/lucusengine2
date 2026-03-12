@@ -8,8 +8,8 @@ echo
 . "$(dirname "$0")/.build.sh" -j$(sysctl -n hw.ncpu)
 echo "Build done."
 
-# echo
-# . "$(dirname "$0")/compile_vulkan.sh"
+echo
+. "$(dirname "$0")/compile_metal.sh"
 
 echo
 echo "Create Content symlink..."

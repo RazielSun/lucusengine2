@@ -6,6 +6,21 @@ IFS=$'\n\t'
 
 echo "Compiling shaders..."
 
-mkdir -p bin/shaders/vulkan
-glslc shaders/vulkan/shader.vert -o bin/shaders/vert.spv
-glslc shaders/vulkan/shader.frag -o bin/shaders/frag.spv
+SRC_DIR="shaders/vulkan"
+OUT_DIR="bin/shaders"
+
+mkdir -p "$OUT_DIR"
+
+find "$SRC_DIR" -type f \( -name "*.vert" -o -name "*.frag" -o -name "*.comp" \) | while read -r file; do
+
+    rel="${file#$SRC_DIR/}"
+    out="$OUT_DIR/$rel.spv"
+
+    mkdir -p "$(dirname "$out")"
+
+    if [ ! -f "$out" ] || [ "$file" -nt "$out" ]; then
+        echo "Compiling $file"
+        glslc "$file" -o "$out"
+    fi
+
+done
