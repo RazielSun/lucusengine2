@@ -312,10 +312,14 @@ void dx_renderer::createGraphicsPipeline()
     Com<ID3DBlob> ps;
     Com<ID3DBlob> error;
 
+    auto shader_code = filesystem::instance().read_file("shaders/triangle.hlsl");
+
     std::string str_shader_path = filesystem::instance().get_path("shaders/triangle.hlsl");
     std::wstring shader_path = utf8_to_wstring(str_shader_path);
 
-    ThrowIfFailed(D3DCompileFromFile(
+    ThrowIfFailed(D3DCompile(
+            shader_code.data(),
+            shader_code.size(),
             shader_path.c_str(),
             nullptr,
             D3D_COMPILE_STANDARD_FILE_INCLUDE,
@@ -324,12 +328,14 @@ void dx_renderer::createGraphicsPipeline()
             compile_flags,
             0,
             &vs,
-            &error
+            &errors
         ),
         "Failed Compile VS Shader"
     );
 
-    ThrowIfFailed(D3DCompileFromFile(
+    ThrowIfFailed(D3DCompile(
+            shader_code.data(),
+            shader_code.size(),
             shader_path.c_str(),
             nullptr,
             D3D_COMPILE_STANDARD_FILE_INCLUDE,
@@ -397,27 +403,13 @@ void dx_renderer::createGraphicsPipeline()
 
 void dx_renderer::prepareFrame()
 {
-    //
+    ThrowIfFailed(mCommandAllocators[_currentFrame]->Reset(), "Failed Reset Command Allocator");
+    ThrowIfFailed(mCommandBuffer->Reset(mCommandAllocators[_currentFrame].Get(), mPipelineState.Get()), "Failed Reset Command Buffer");
+
 }
 
 void dx_renderer::buildCommandBuffer()
 {
-    // ThrowIfFailed(
-    //     mCommandQueue->Signal(mFence.Get(), mFenceValues[_currentFrame]),
-    //     "wait_for_gpu signal failed"
-    // );
-
-    // ThrowIfFailed(
-    //     mFence->SetEventOnCompletion(mFenceValues[_currentFrame], (HANDLE)mFenceEvent),
-    //     "wait_for_gpu SetEventOnCompletion failed"
-    // );
-
-    // WaitForSingleObject((HANDLE)mFenceEvent, INFINITE);
-    // ++mFenceValues[_currentFrame];
-
-    ThrowIfFailed(mCommandAllocators[_currentFrame]->Reset(), "Failed Reset Command Allocator");
-    ThrowIfFailed(mCommandBuffer->Reset(mCommandAllocators[_currentFrame].Get(), mPipelineState.Get()), "Failed Reset Command Buffer");
-
     if (!mRenderTargets[_currentFrame])
         throw std::runtime_error("Current render target is null");
 
@@ -460,12 +452,12 @@ void dx_renderer::buildCommandBuffer()
     barrier_end.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
     mCommandBuffer->ResourceBarrier(1, &barrier_end);
-
-    ThrowIfFailed(mCommandBuffer->Close(), "Failed Close Command Buffer");
 }
 
 void dx_renderer::submitFrame()
 {
+    ThrowIfFailed(mCommandBuffer->Close(), "Failed Close Command Buffer");
+
     ID3D12CommandList* command_lists[] = { mCommandBuffer.Get() };
     mCommandQueue->ExecuteCommandLists(1, command_lists);
 
@@ -486,23 +478,18 @@ void dx_renderer::submitFrame()
     mFenceValues[_currentFrame] = current_fence + 1;
 }
 
-// void dx12_renderer::wait_for_gpu()
-// {
-//     throw_if_failed(
-//         m_command_queue->Signal(m_fence.Get(), m_fence_values[m_frame_index]),
-//         "wait_for_gpu signal failed"
-//     );
+void dx_renderer::waitForGPU()
+{
+    ThrowIfFailed(
+        mCommandQueue->Signal(mFence.Get(), mFenceValues[_currentFrame]),
+        "wait_for_gpu signal failed"
+    );
 
-//     throw_if_failed(
-//         m_fence->SetEventOnCompletion(m_fence_values[m_frame_index], (HANDLE)m_fence_event),
-//         "wait_for_gpu SetEventOnCompletion failed"
-//     );
+    ThrowIfFailed(
+        mFence->SetEventOnCompletion(mFenceValues[_currentFrame], (HANDLE)mFenceEvent),
+        "wait_for_gpu SetEventOnCompletion failed"
+    );
 
-//     WaitForSingleObject((HANDLE)m_fence_event, INFINITE);
-//     ++m_fence_values[m_frame_index];
-// }
-
-// void dx12_renderer::wait_idle()
-// {
-//     wait_for_gpu();
-// }
+    WaitForSingleObject((HANDLE)mFenceEvent, INFINITE);
+    ++mFenceValues[_currentFrame];
+}

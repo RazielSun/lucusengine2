@@ -19,3 +19,9 @@ brew install ninja
 - Cmake
 - Ninja
 - Vulkan
+
+## Instalation
+
+- git clone
+- cd lucusengine2
+- git submodule update --init

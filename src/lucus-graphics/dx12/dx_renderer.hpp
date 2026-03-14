@@ -40,6 +40,8 @@ namespace lucus
             void buildCommandBuffer();
             void submitFrame();
 
+            void waitForGPU();
+
         private:
             Com<IDXGIFactory4> mDXGIFactory;
 
