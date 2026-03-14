@@ -163,8 +163,9 @@ void m_renderer::buildCommandBuffer()
 
     _currentBuffer = [_device->getCommandPool() commandBuffer];
 
+    dispatch_semaphore_t semaphore = _frameSemaphore;
     [_currentBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
-        dispatch_semaphore_signal(_frameSemaphore);
+        dispatch_semaphore_signal(semaphore);
     }];
 
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
