@@ -67,15 +67,15 @@ namespace lucus
             std::unique_ptr<vk_swapchain> _swapchain;
 
             // Command buffers used for rendering
-	        std::array<VkCommandBuffer, maxConcurrentFrames> _drawCmdBuffers;
+	        std::array<VkCommandBuffer, g_maxConcurrentFrames> _drawCmdBuffers;
 
             // Synchronization related objects and variables
             // These are used to have multiple frame buffers "in flight" to get some CPU/GPU parallelism
             uint32_t _currentImageIndex{ 0 };
             uint32_t _currentBuffer{ 0 };
-            std::array<VkSemaphore, maxConcurrentFrames> _presentCompleteSemaphores{};
+            std::array<VkSemaphore, g_maxConcurrentFrames> _presentCompleteSemaphores{};
             std::vector<VkSemaphore> _renderCompleteSemaphores{};
-            std::array<VkFence, maxConcurrentFrames> _waitFences;
+            std::array<VkFence, g_maxConcurrentFrames> _waitFences;
 
             VkRenderPass _renderPass;
 

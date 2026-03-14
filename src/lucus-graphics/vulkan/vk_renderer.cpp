@@ -604,5 +604,5 @@ void vk_renderer::submitFrame(bool skipQueueSubmit)
     // TODO: resize
 
     // Select the next frame to render to, based on the max. no. of concurrent frames
-	_currentBuffer = (_currentBuffer + 1) % maxConcurrentFrames;
+	_currentBuffer = (_currentBuffer + 1) % g_maxConcurrentFrames;
 }

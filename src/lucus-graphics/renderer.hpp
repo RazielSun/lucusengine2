@@ -2,14 +2,14 @@
 
 #include "pch.hpp"
 
+#include "render_config.hpp"
+
 namespace lucus
 {
     class window;
     class renderer;
 
     std::shared_ptr<renderer> create_renderer();
-
-    constexpr uint32_t maxConcurrentFrames{ 2 };
 
     class renderer
     {
