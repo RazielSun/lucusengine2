@@ -30,6 +30,7 @@ bool m_renderer::init()
 bool m_renderer::prepare(std::shared_ptr<window> window)
 {
     createMetalLayerAndView(window);
+    createSynchObjects();
     createPipeline();
     return true;
 }
@@ -78,12 +79,18 @@ void m_renderer::createMetalLayerAndView(std::shared_ptr<window> window)
     _metalLayer.device = deviceMTL;
     _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     _metalLayer.framebufferOnly = YES;
+    _metalLayer.maximumDrawableCount = g_maxConcurrentFrames;
     _metalLayer.contentsScale = [ns_window backingScaleFactor];
 
     _metalLayer.drawableSize = CGSizeMake((CGFloat)window->framebuffer_width(), (CGFloat)window->framebuffer_height());
 
     [content_view setWantsLayer:YES];
     [content_view setLayer:_metalLayer];
+}
+
+void m_renderer::createSynchObjects()
+{
+    _frameSemaphore = dispatch_semaphore_create(g_maxConcurrentFrames);
 }
 
 void m_renderer::createPipeline()
@@ -141,6 +148,8 @@ id<MTLRenderPipelineState> m_renderer::createPipeline(id<MTLLibrary> library, MT
 
 void m_renderer::prepareFrame()
 {
+    dispatch_semaphore_wait(_frameSemaphore, DISPATCH_TIME_FOREVER);
+
     _currentDrawable = [_metalLayer nextDrawable];
 }
 
@@ -148,10 +157,15 @@ void m_renderer::buildCommandBuffer()
 {
     if (!_currentDrawable)
     {
+        dispatch_semaphore_signal(_frameSemaphore);
         return;
     }
 
     _currentBuffer = [_device->getCommandPool() commandBuffer];
+
+    [_currentBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
+        dispatch_semaphore_signal(_frameSemaphore);
+    }];
 
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.colorAttachments[0].texture = _currentDrawable.texture;

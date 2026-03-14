@@ -25,6 +25,7 @@ namespace lucus
 
             void createMetalLayerAndView(std::shared_ptr<window> window);
 
+            void createSynchObjects();
             void createPipeline();
 
             id<MTLLibrary> loadLibrary(const std::string& filename);
@@ -45,5 +46,7 @@ namespace lucus
 
             id<CAMetalDrawable> _currentDrawable = nil;
             id<MTLCommandBuffer> _currentBuffer = nil;
+
+            dispatch_semaphore_t _frameSemaphore;
     };
 }
