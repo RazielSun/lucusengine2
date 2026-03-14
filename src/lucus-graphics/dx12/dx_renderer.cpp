@@ -310,12 +310,10 @@ void dx_renderer::createGraphicsPipeline()
 
     Com<ID3DBlob> vs;
     Com<ID3DBlob> ps;
-    Com<ID3DBlob> error;
+    Com<ID3DBlob> errors;
 
     auto shader_code = filesystem::instance().read_file("shaders/triangle.hlsl");
-
-    std::string str_shader_path = filesystem::instance().get_path("shaders/triangle.hlsl");
-    std::wstring shader_path = utf8_to_wstring(str_shader_path);
+    std::string shader_path = filesystem::instance().get_path("shaders/triangle.hlsl");
 
     ThrowIfFailed(D3DCompile(
             shader_code.data(),
@@ -344,7 +342,7 @@ void dx_renderer::createGraphicsPipeline()
             compile_flags,
             0,
             &ps,
-            &error
+            &errors
         ),
         "Failed Compile PS Shader"
     );
