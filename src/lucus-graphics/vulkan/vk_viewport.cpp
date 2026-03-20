@@ -1,4 +1,4 @@
-#include "vk_swapchain.hpp"
+#include "vk_viewport.hpp"
 
 #include "window.hpp"
 
@@ -6,39 +6,43 @@
 
 using namespace lucus;
 
-vk_swapchain::~vk_swapchain()
+void vk_viewport::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window)
 {
-    for (auto imageView : imageViews) {
-        vkDestroyImageView(_device, imageView, nullptr);
-    }
-    if (swapChain != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(_device, swapChain, nullptr);
-    }
-    if (_surface != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(_instance, _surface, nullptr);
-    }
-}
+    assert(gpu);
+    assert(device);
+    assert(instance);
+    assert(window);
 
-void vk_swapchain::setContext(VkInstance instance, VkPhysicalDevice gpu, VkDevice device)
-{
-    _instance = instance;
-    _gpu = gpu;
-    _device = device;
-}
-
-void vk_swapchain::createSurface(std::shared_ptr<window> window)
-{
-    VkResult result = glfwCreateWindowSurface(_instance, window->getGLFWwindow(), nullptr, &_surface);
+    VkResult result = glfwCreateWindowSurface(instance, window->getGLFWwindow(), nullptr, &surface);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create window surface!");
     }
 
+    initSurface(gpu, window);
+    createSwapchain(gpu, device, window);
+}
+
+void vk_viewport::cleanup(VkInstance instance, VkDevice device)
+{
+    for (auto imageView : imageViews) {
+        vkDestroyImageView(device, imageView, nullptr);
+    }
+    if (swapChain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(device, swapChain, nullptr);
+    }
+    if (surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(instance, surface, nullptr);
+    }
+}
+
+void vk_viewport::initSurface(VkPhysicalDevice gpu, window* window)
+{
     // Get available queue family properties
 	uint32_t queueCount;
-	vkGetPhysicalDeviceQueueFamilyProperties(_gpu, &queueCount, nullptr);
+	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueCount, nullptr);
 	assert(queueCount >= 1);
 	std::vector<VkQueueFamilyProperties> queueProps(queueCount);
-	vkGetPhysicalDeviceQueueFamilyProperties(_gpu, &queueCount, queueProps.data());
+	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueCount, queueProps.data());
 
     // Iterate over each queue to learn whether it supports presenting:
 	// Find a queue with present support
@@ -46,7 +50,7 @@ void vk_swapchain::createSurface(std::shared_ptr<window> window)
 	std::vector<VkBool32> supportsPresent(queueCount);
 	for (uint32_t i = 0; i < queueCount; i++) 
 	{
-		vkGetPhysicalDeviceSurfaceSupportKHR(_gpu, i, _surface, &supportsPresent[i]);
+		vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supportsPresent[i]);
 	}
 
     // Search for a graphics and a present queue in the array of queue
@@ -84,16 +88,16 @@ void vk_swapchain::createSurface(std::shared_ptr<window> window)
     if (graphicsQueueNodeIndex != presentQueueNodeIndex) {
 		throw std::runtime_error("Separate graphics and presenting queues are not supported yet!");
 	}
-	queueNodeIndex = graphicsQueueNodeIndex;
+	// queueNodeIndex = graphicsQueueNodeIndex;
 
     // Get list of supported surface formats
 	uint32_t formatCount;
-	if (vkGetPhysicalDeviceSurfaceFormatsKHR(_gpu, _surface, &formatCount, NULL) != VK_SUCCESS) {
+	if (vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, NULL) != VK_SUCCESS) {
         throw std::runtime_error("Failed to retrieve surface formats!");
     }
 	assert(formatCount > 0);
 	std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-	if (vkGetPhysicalDeviceSurfaceFormatsKHR(_gpu, _surface, &formatCount, surfaceFormats.data()) != VK_SUCCESS) {
+	if (vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, surfaceFormats.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to retrieve surface formats!");
     }
 
@@ -118,18 +122,14 @@ void vk_swapchain::createSurface(std::shared_ptr<window> window)
     std::printf("VkSurfaceKHR created successfully\n");
 }
 
-void vk_swapchain::create(std::shared_ptr<window> window)
+void vk_viewport::createSwapchain(VkPhysicalDevice gpu, VkDevice device, window* window)
 {
-    assert(_gpu);
-	assert(_device);
-	assert(_instance);
-
 	// Store the current swap chain handle so we can use it later on to ease up recreation
 	VkSwapchainKHR oldSwapchain = swapChain;
 
 	// Get physical device surface properties and formats
 	VkSurfaceCapabilitiesKHR capabilities;
-	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_gpu, _surface, &capabilities) != VK_SUCCESS) {
+	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to get surface capabilities!");
 	}
 
@@ -148,15 +148,26 @@ void vk_swapchain::create(std::shared_ptr<window> window)
 		height = capabilities.currentExtent.height;
 	}
 
+    // Setup the viewport and scissor rect to cover the whole framebuffer by default
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    scissor.offset = {0, 0};
+    scissor.extent = extent;
+
     // Select a present mode for the swapchain
 	uint32_t presentModeCount;
-	if (vkGetPhysicalDeviceSurfacePresentModesKHR(_gpu, _surface, &presentModeCount, nullptr) != VK_SUCCESS) {
+	if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("Failed to get surface present modes!");
     }
 	assert(presentModeCount > 0);
 
 	std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-	if (vkGetPhysicalDeviceSurfacePresentModesKHR(_gpu, _surface, &presentModeCount, presentModes.data()) != VK_SUCCESS) {
+	if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, presentModes.data()) != VK_SUCCESS) {
         throw std::runtime_error("Failed to get surface present modes!");
     }
 
@@ -170,10 +181,14 @@ void vk_swapchain::create(std::shared_ptr<window> window)
         }
     }
 
-    uint32_t desiredNumberOfSwapchainImages = capabilities.minImageCount + 1;
-    if (capabilities.maxImageCount > 0 && desiredNumberOfSwapchainImages > capabilities.maxImageCount) {
-        desiredNumberOfSwapchainImages = capabilities.maxImageCount;
-    }
+	// The FIFO present mode is the only mode that is guaranteed to be available
+	// and supports triple buffering, so we prefer to use triple buffering if it's available
+    uint32_t desiredNumberOfSwapchainImages = g_swapchainImageCount;
+	if (desiredNumberOfSwapchainImages < capabilities.minImageCount) {
+		desiredNumberOfSwapchainImages = capabilities.minImageCount;
+	} else if (capabilities.maxImageCount > 0 && desiredNumberOfSwapchainImages > capabilities.maxImageCount) {
+		desiredNumberOfSwapchainImages = capabilities.maxImageCount;
+	}
 
     // Find the transformation of the surface
 	VkSurfaceTransformFlagsKHR preTransform;
@@ -203,7 +218,7 @@ void vk_swapchain::create(std::shared_ptr<window> window)
 
     VkSwapchainCreateInfoKHR createSwapchainInfo{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = _surface,
+        .surface = surface,
         .minImageCount = desiredNumberOfSwapchainImages,
         .imageFormat = colorFormat,
         .imageColorSpace = colorSpace,
@@ -233,13 +248,13 @@ void vk_swapchain::create(std::shared_ptr<window> window)
         // createSwapchainInfo.pQueueFamilyIndices = nullptr; // Optional
     // }
 
-    if (vkCreateSwapchainKHR(_device, &createSwapchainInfo, nullptr, &swapChain) != VK_SUCCESS) {
+    if (vkCreateSwapchainKHR(device, &createSwapchainInfo, nullptr, &swapChain) != VK_SUCCESS) {
         throw std::runtime_error("failed to create swap chain!");
     }
 
-    vkGetSwapchainImagesKHR(_device, swapChain, &imageCount, nullptr);
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     images.resize(imageCount);
-    vkGetSwapchainImagesKHR(_device, swapChain, &imageCount, images.data());
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, images.data());
 
     std::printf("VkSwapchainKHR created successfully (%dx%d)\n", extent.width, extent.height);
 
@@ -259,16 +274,9 @@ void vk_swapchain::create(std::shared_ptr<window> window)
         createInfo.subresourceRange.levelCount = 1;
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
-        if (vkCreateImageView(_device, &createInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
+        if (vkCreateImageView(device, &createInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create image views!");
         }
     }
     std::printf("Created %zu image views\n", imageViews.size());
-}
-
-VkResult vk_swapchain::acquireNextImage(VkSemaphore presentCompleteSemaphore, uint32_t& imageIndex)
-{
-	// By setting timeout to UINT64_MAX we will always wait until the next image has been acquired or an actual error is thrown
-	// With that we don't have to handle VK_NOT_READY
-	return vkAcquireNextImageKHR(_device, swapChain, UINT64_MAX, presentCompleteSemaphore, (VkFence)nullptr, &imageIndex);
 }

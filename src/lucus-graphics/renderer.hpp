@@ -2,23 +2,33 @@
 
 #include "pch.hpp"
 
-#include "render_config.hpp"
+#include "singleton.hpp"
+
+#include "render_types.hpp"
+#include "render_object.hpp"
 
 namespace lucus
 {
-    class window;
-    class renderer;
+    class dynamic_rhi;
 
-    std::shared_ptr<renderer> create_renderer();
-
-    class renderer
+    class renderer : public singleton<renderer>
     {
     public:
-        virtual ~renderer() = default;
+        void init(window_handle handle);
+        
+        void tick(float dt);
+        void cleanup();
 
-        virtual bool init() = 0;
-        virtual bool prepare(std::shared_ptr<window> window) = 0;
-        virtual void tick() = 0;
-        virtual void cleanup() = 0;
+        render_object* emplaceRenderObject();
+    
+    protected:
+        void processObjects(command_buffer& cmd);
+
+    private:
+        std::shared_ptr<dynamic_rhi> _dynamicRHI;
+
+        std::vector<intrusive_ptr<render_object>> _renderObjects;
+        
+        viewport_handle _mainViewport;
     };
 }

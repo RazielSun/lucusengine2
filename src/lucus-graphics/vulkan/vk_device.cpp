@@ -37,10 +37,6 @@ vk_device::vk_device(VkPhysicalDevice gpu)
 
 vk_device::~vk_device()
 {
-    if (_commandPool != VK_NULL_HANDLE)
-    {
-        vkDestroyCommandPool(_device, _commandPool, nullptr);
-    }
     if (_device)
     {
         vkDestroyDevice(_device, nullptr);
@@ -130,9 +126,9 @@ void vk_device::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, st
     std::printf("VkDevice created successfully\n");
 
     // Create a default command pool for graphics command buffers
-	_commandPool = createCommandPool(queueFamilyIndices.graphics);
+	// _commandPool = createCommandPool(queueFamilyIndices.graphics);
 
-    std::printf("VkCommandPool created successfully\n");
+    // std::printf("VkCommandPool created successfully\n");
 }
 
 VkCommandPool vk_device::createCommandPool(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags createFlags)

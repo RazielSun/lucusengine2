@@ -13,13 +13,12 @@ void filesystem::set_working_directory(const std::string& path)
     std::printf("set_working_directory: %s\n", _workingDirectory.c_str());
 }
 
-std::vector<char> filesystem::read_file(const std::string& filename)
+std::vector<char> filesystem::read_file(const std::string& filename) const
 {
-    std::string filepath = _workingDirectory + filename;
-
-    std::ifstream file(filepath, std::ios::ate | std::ios::binary);
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
+        std::printf("filesystem::read_file %s\n", filename.c_str());
         throw std::runtime_error("failed to open file!");
     }
 
@@ -33,12 +32,19 @@ std::vector<char> filesystem::read_file(const std::string& filename)
     return buffer;
 }
 
-std::string filesystem::get_path(const std::string& filename)
+std::vector<char> filesystem::read_shader(const std::string& filename) const
+{
+    std::string filepath = _workingDirectory + "shaders/" + filename;
+    return read_file(filepath);
+}
+
+std::string filesystem::get_path(const std::string& filename) const
 {
     return _workingDirectory + filename;
 }
 
-std::string filesystem::get_script(const std::string& filename)
+std::string filesystem::get_script(const std::string& filename) const
 {
     return _workingDirectory + "content/scripts/" + filename;
 }
+

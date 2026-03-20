@@ -16,7 +16,8 @@ namespace lucus
 
         asIScriptEngine* get_engine() const { return _engine.get(); }
 
-        bool run_script(const std::string& filename);
+        bool build_module(const std::string& filename, const std::string& moduleName);
+        bool run_func(const std::string& moduleName, const std::string& functionName);
 
     protected:
         void message_callback(const asSMessageInfo &msg);

@@ -35,11 +35,11 @@ void script_manager::message_callback(const asSMessageInfo &msg)
         msg.message);
 }
 
-bool script_manager::run_script(const std::string& filename)
+bool script_manager::build_module(const std::string& filename, const std::string& moduleName)
 {
     CScriptBuilder builder;
 
-    int r = builder.StartNewModule(_engine.get(), "Module");
+    int r = builder.StartNewModule(_engine.get(), moduleName.c_str());
     if (r < 0)
         return false;
 
@@ -52,11 +52,17 @@ bool script_manager::run_script(const std::string& filename)
     if (r < 0)
         return false;
 
-    asIScriptModule* mod = _engine->GetModule("Module");
+    return true;
+}
+
+bool script_manager::run_func(const std::string& moduleName, const std::string& functionName)
+{
+    asIScriptModule* mod = _engine->GetModule(moduleName.c_str(), asGM_ONLY_IF_EXISTS);
     if (!mod)
         return false;
 
-    asIScriptFunction* func = mod->GetFunctionByDecl("void main()");
+    // TODO: many arguments?
+    asIScriptFunction* func = mod->GetFunctionByDecl(functionName.c_str());
     if (!func)
         return false;
 
@@ -65,7 +71,7 @@ bool script_manager::run_script(const std::string& filename)
         return false;
 
     ctx->Prepare(func);
-    r = ctx->Execute();
+    int r = ctx->Execute();
 
     if (r != asEXECUTION_FINISHED)
     {

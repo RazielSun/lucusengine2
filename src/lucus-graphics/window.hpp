@@ -9,14 +9,16 @@ namespace lucus
     class window
     {
     public:
-        window();
+        window(int width, int height, const std::string& title);
         ~window();
 
-        int width() const;
-        int height() const;
+        int width() const { return _width; }
+        int height() const { return _height; }
 
-        int framebuffer_width() const;
-        int framebuffer_height() const;
+        const std::string& title() const { return _title; }
+
+        int framebuffer_width() const { return _framebufferWidth; }
+        int framebuffer_height() const { return _framebufferHeight; }
         
         bool shouldClose();
         void tick();
@@ -29,6 +31,8 @@ namespace lucus
 
     private:
         GLFWwindow* _window;
+
+        std::string _title;
 
         int _width;
         int _height;

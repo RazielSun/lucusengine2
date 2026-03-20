@@ -1,12 +1,13 @@
 #include "engine.hpp"
 
-#include "application_info.hpp"
-#include "engine_info.hpp"
+#include "bind_core.hpp"
+#include "bind_graphics.hpp"
+
 #include "commandline_args.hpp"
 #include "filesystem.hpp"
 #include "script_manager.hpp"
+#include "window_manager.hpp"
 
-#include "window.hpp"
 #include "renderer.hpp"
 
 using namespace lucus;
@@ -17,29 +18,29 @@ void engine::run(int argc, char** argv)
 
     script_manager::instance().init();
 
-    engine_info& engine_info = engine_info::instance();
-    bind_engine_info();
-    bind_engine_info_object(engine_info, "engine_info");
+    bind_core_module();
+    bind_graphics_module();
 
-    application_info& app_info = application_info::instance();
-    bind_application_info();
-    bind_application_info_object(app_info, "app_info");
-
-    if (!script_manager::instance().run_script("main.as")) {
-        throw std::runtime_error("Failed to run main.as script");
+    if (!script_manager::instance().build_module("main.as", "Entry")) {
+        throw std::runtime_error("Failed to build main.as script");
     }
 
-    _window = std::make_shared<window>();
-    _renderer = create_renderer();
+    if (!script_manager::instance().run_func("Entry", "void main()")) {
+        throw std::runtime_error("Failed to run main() from Entry module");
+    }
 
-    _renderer->prepare(_window);
-    while (_window->shouldClose() == false)
+    auto handle = window_manager::instance().getMainWindow();
+    if (!handle.is_valid()) {
+        throw std::runtime_error("Failed to get main window handle");
+    }
+
+    auto mainWindow = window_manager::instance().getWindow(handle);
+    while (mainWindow && !mainWindow->shouldClose())
     {
-        _window->tick();
-        _renderer->tick();
+        mainWindow->tick();
+
+        renderer::instance().tick(0.f);
     }
     
-    _renderer->cleanup();
-    _renderer.reset();
-    _window.reset();
+    renderer::instance().cleanup();
 }

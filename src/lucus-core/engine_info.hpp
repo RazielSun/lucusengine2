@@ -15,7 +15,4 @@ namespace lucus
         private:
             std::string m_name = "Lucus Engine";
     };
-
-    void bind_engine_info();
-    void bind_engine_info_object(engine_info& info, const std::string& name);
 }

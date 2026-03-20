@@ -2,18 +2,19 @@
 
 #include "vk_pch.hpp"
 
-#include "device.hpp"
-
 namespace lucus
 {
-    class vk_device : public idevice
+    class vk_device
     {
         public:
             vk_device(VkPhysicalDevice gpu);
-            virtual ~vk_device() override;
+            ~vk_device();
 
             VkDevice getDevice() const { return _device; }
-            VkCommandPool getCommandPool() const { return _commandPool; }
+            VkPhysicalDevice getGPU() const { return _gpu; }
+            // VkCommandPool getCommandPool() const { return _commandPool; }
+
+            uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
 
             struct
             {
@@ -27,7 +28,6 @@ namespace lucus
         protected:
             VkCommandPool createCommandPool(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags createFlags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
-            uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
             bool extensionSupported(std::string extension) const;
 
         private:
@@ -42,7 +42,7 @@ namespace lucus
             // Logical Device
             VkDevice _device;
             
-            // A Command Pool is a data structure that allows you to create command buffers.
-            VkCommandPool _commandPool{ VK_NULL_HANDLE };
+            // // A Command Pool is a data structure that allows you to create command buffers.
+            // VkCommandPool _commandPool{ VK_NULL_HANDLE };
     };
 }
