@@ -30,7 +30,7 @@ dx_dynamic_rhi::~dx_dynamic_rhi()
     _commandbuffer_pool.cleanup();
 
     for (auto& viewport : _viewports) {
-        viewport.cleanup(_instance, _deviceHandle);
+        viewport.cleanup();
     }
     _viewports.clear();
 
