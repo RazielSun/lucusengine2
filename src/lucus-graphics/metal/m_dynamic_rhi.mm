@@ -22,8 +22,6 @@ m_dynamic_rhi::m_dynamic_rhi()
 
 m_dynamic_rhi::~m_dynamic_rhi()
 {
-    _pipeline = nil;
-    _metalLayer = nil;
     _deviceHandle = nil;
     _device.reset();
 }
@@ -51,7 +49,7 @@ viewport_handle m_dynamic_rhi::createViewport(const window_handle& handle)
     return out_handle;
 }
 
-void m_dynamic_rhi::beginFrame(const viewport_handle& viewport)
+void m_dynamic_rhi::beginFrame(const viewport_handle& handle)
 {
     dispatch_semaphore_wait(_frameSemaphore, DISPATCH_TIME_FOREVER);
 
@@ -143,7 +141,7 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
     // }
 
     // TODO: !    
-    it->second.init(shaderName, _viewports[0].GetPixelFormat());
+    it->second.init(shaderName, _viewports[0].getPixelFormat());
 
     return material_handle(shaderHash);
 }

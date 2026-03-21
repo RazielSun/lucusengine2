@@ -7,7 +7,7 @@ namespace lucus
     class m_pipeline_state
     {
         public:
-            m_pipeline_state(MTLDevice device);
+            m_pipeline_state(id<MTLDevice> device);
             ~m_pipeline_state();
 
             void init(const std::string& shaderName, MTLPixelFormat colorFormat);

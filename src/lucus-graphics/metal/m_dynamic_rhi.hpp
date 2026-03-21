@@ -5,12 +5,11 @@
 #include "dynamic_rhi.hpp"
 #include "render_types.hpp"
 #include "m_device.hpp"
+#include "m_viewport.hpp"
+#include "m_pipeline_state.hpp"
 
 namespace lucus
 {
-    struct m_viewport;
-    struct m_pipeline_state;
-    
     class m_dynamic_rhi : public dynamic_rhi
     {
         public:
@@ -21,7 +20,7 @@ namespace lucus
 
             virtual viewport_handle createViewport(const window_handle& handle) override;
 
-            virtual void beginFrame(const viewport_handle& viewport) override;
+            virtual void beginFrame(const viewport_handle& handle) override;
             virtual void endFrame() override;
 
             virtual void submit(const command_buffer& cmd) override;

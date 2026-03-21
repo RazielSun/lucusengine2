@@ -4,7 +4,7 @@
 
 using namespace lucus;
 
-m_pipeline_state::m_pipeline_state(MTLDevice device) : _device(device)
+m_pipeline_state::m_pipeline_state(id<MTLDevice> device) : _device(device)
 {
     //
 }
@@ -32,7 +32,7 @@ void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorF
 
     NSError* error = nil;
     id<MTLRenderPipelineState> pso =
-        [deviceMTL newRenderPipelineStateWithDescriptor:desc error:&error];
+        [_device newRenderPipelineStateWithDescriptor:desc error:&error];
 
     if (!pso) {
         std::string msg = "Failed to create pipeline state: ";
@@ -51,7 +51,7 @@ void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorF
 //     _pipeline = createPipeline(library, _metalLayer.pixelFormat);
 // }
 
-id<MTLLibrary> m_pipeline_state::loadLibrary(const std::string& filename)
+id<MTLLibrary> m_pipeline_state::loadLibrary(const std::string& filename) const
 {
     // auto shaderCode = filesystem::instance().read_shader(filepath);
 
