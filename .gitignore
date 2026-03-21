@@ -1,13 +1,8 @@
 # Prerequisites
 *.d
 
-# FBX SDK
-3rdparty/fbx-sdk-osx/*
-3rdparty/fbx-sdk-uwp/*
-
-# Assets Folder
-xcode/LucusGame/Resources/Assets/*
-vs2017/LucusGame/LucusGame/Assets/*
+#
+scripts/tools/slang/*
 
 # Compiled Object files
 *.slo

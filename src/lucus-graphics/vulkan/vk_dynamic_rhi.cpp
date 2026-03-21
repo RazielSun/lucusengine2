@@ -76,7 +76,7 @@ void vk_dynamic_rhi::createInstance()
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 		.pApplicationName = engine_info.name().c_str(),// app_info.app_name().c_str(),
 		.pEngineName = engine_info.name().c_str(),
-		.apiVersion = VK_API_VERSION_1_0
+		.apiVersion = VK_API_VERSION_1_1
 	};
 
     VkInstanceCreateInfo instanceCreateInfo{
