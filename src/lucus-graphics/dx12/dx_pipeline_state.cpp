@@ -12,7 +12,9 @@ dx_pipeline_state::dx_pipeline_state(Com<ID3D12Device> device, Com<ID3D12RootSig
 
 dx_pipeline_state::~dx_pipeline_state()
 {
-    //
+    _pipelineState.Reset();
+    _rootSignature.Reset();
+    _device.Reset();
 }
 
 void dx_pipeline_state::init(const std::string& shaderName)

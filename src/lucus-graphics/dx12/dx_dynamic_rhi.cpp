@@ -23,13 +23,21 @@ dx_dynamic_rhi::dx_dynamic_rhi()
 dx_dynamic_rhi::~dx_dynamic_rhi()
 {
     // TODO: destroy other
-    // destroySyncObjects();
-    // destroyCommandBuffers();
-    // _swapchain.reset();
-    // mCommandQueue.Reset();
-    // deviceDX.Reset();
-    // _device.reset();
-    // mDXGIFactory.Reset();
+    _fence.Reset();
+
+    _pipelineStates.clear();
+
+    _commandbuffer_pool.cleanup();
+
+    for (auto& viewport : _viewports) {
+        viewport.cleanup(_instance, _deviceHandle);
+    }
+    _viewports.clear();
+
+    _commandQueue.Reset();
+    _deviceHandle.Reset();
+    _device.reset();
+    _DXGIFactory.Reset();
 }
 
 void dx_dynamic_rhi::init()
