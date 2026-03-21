@@ -42,7 +42,7 @@ void dx_viewport::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> device, Com
         "Failed Create SwapChain for Hwnd"
     );
 
-    ThrowIfFailed(swapchain1.As(&mSwapChain), "Failed move SwapChain");
+    ThrowIfFailed(swapchain1.As(&swapChain), "Failed move SwapChain");
 
     std::printf("IDXGISwapChain1 created successfully (%dx%d)\n", width, height);
 
@@ -70,7 +70,7 @@ void dx_viewport::cleanup()
 {
     mDXGIFactory.Reset();
     mCommandQueue.Reset();
-    mSwapChain.Reset();
+    swapChain.Reset();
 }
 
 void dx_viewport::createRTVHeaps()
@@ -93,7 +93,7 @@ void dx_viewport::createRenderTargets()
 
     for (int i = 0; i < mRenderTargets.size(); ++i)
     {
-        ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(&mRenderTargets[i])), "Failed Create Buffer for Render Targets");
+        ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&mRenderTargets[i])), "Failed Create Buffer for Render Targets");
 
         mDevice->CreateRenderTargetView(mRenderTargets[i].Get(), nullptr, handle);
         handle.ptr += mRTVDescriptorSize;

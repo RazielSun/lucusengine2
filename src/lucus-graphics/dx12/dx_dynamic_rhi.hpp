@@ -20,7 +20,7 @@ namespace lucus
 
             virtual viewport_handle createViewport(const window_handle& handle) override;
 
-            virtual void beginFrame(const viewport_handle& viewport) override;
+            virtual void beginFrame(const viewport_handle& handle) override;
             virtual void endFrame() override;
 
             virtual void submit(const command_buffer& cmd) override;
@@ -51,7 +51,7 @@ namespace lucus
 
             viewport_handle _currentViewport;
             uint32_t _currentFrame{ 0 };
-            
+
             Com<ID3D12Fence> _fence;
             std::array<uint64_t, g_framesInFlight> _fenceValues{};
             void* _fenceEvent = nullptr;
@@ -59,8 +59,6 @@ namespace lucus
             Com<ID3D12RootSignature> _rootSignature;
 
             std::vector<dx_viewport> _viewports;
-
-            viewport_handle _currentViewport;
 
             //
             std::unordered_map<uint32_t, dx_pipeline_state> _pipelineStates;

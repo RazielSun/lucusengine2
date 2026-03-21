@@ -13,5 +13,8 @@ void dx_commandbuffer_pool::init(Com<ID3D12Device> device)
 
 void dx_commandbuffer_pool::cleanup()
 {
-
+    for (auto& commandAllocator : mCommandAllocators)
+    {
+        commandAllocator.Reset();
+    }
 }

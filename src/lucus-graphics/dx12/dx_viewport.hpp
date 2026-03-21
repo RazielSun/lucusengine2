@@ -17,10 +17,10 @@ namespace lucus
         D3D12_RECT mScissorRect = {};
 
         Com<IDXGIFactory4> mDXGIFactory;
-        Com<ID3D12Device> mDevice
+        Com<ID3D12Device> mDevice;
         Com<ID3D12CommandQueue> mCommandQueue;
 
-        Com<IDXGISwapChain3> mSwapChain;
+        Com<IDXGISwapChain3> swapChain;
 
         Com<ID3D12DescriptorHeap> mRTVHeap;
         uint32_t mRTVDescriptorSize = 0;

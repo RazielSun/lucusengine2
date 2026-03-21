@@ -59,7 +59,7 @@ viewport_handle dx_dynamic_rhi::createViewport(const window_handle& handle)
     return out_handle;
 }
 
-void dx_dynamic_rhi::beginFrame(const viewport_handle& viewport)
+void dx_dynamic_rhi::beginFrame(const viewport_handle& handle)
 {
     if (!handle.is_valid()) {
         return;
@@ -68,8 +68,10 @@ void dx_dynamic_rhi::beginFrame(const viewport_handle& viewport)
     _currentViewport = handle;
     // dx_viewport& viewport = _viewports[_currentViewport.get()];
 
-    ThrowIfFailed(_commandbuffer_pool.commandAllocators[_currentFrame]->Reset(), "Failed Reset Command Allocator");
-    ThrowIfFailed(_commandBuffer->Reset(_commandbuffer_pool.commandAllocators[_currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
+    uint32_t bufferIndex = _currentFrame % g_framesInFlight;
+
+    ThrowIfFailed(_commandbuffer_pool.commandAllocators[bufferIndex]->Reset(), "Failed Reset Command Allocator");
+    ThrowIfFailed(_commandBuffer->Reset(_commandbuffer_pool.commandAllocators[bufferIndex].Get(), nullptr), "Failed Reset Command Buffer");
 }
 
 void dx_dynamic_rhi::endFrame()
@@ -80,19 +82,20 @@ void dx_dynamic_rhi::endFrame()
 
     dx_viewport& viewport = _viewports[_currentViewport.get()];
 
-    const uint64_t current_fence = _fenceValues[_currentFrame];
+    uint32_t fenceIndex = _currentFrame % g_framesInFlight;
+    const uint64_t current_fence = _fenceValues[fenceIndex];
 
     ThrowIfFailed(_commandQueue->Signal(_fence.Get(), current_fence), "Failed Queue Signal");
 
-    _currentFrame = viewport.mSwapChain->GetCurrentBackBufferIndex();
+    _currentFrame = viewport.swapChain->GetCurrentBackBufferIndex();
 
-    if (_fence->GetCompletedValue() < _fenceValues[_currentFrame])
+    if (_fence->GetCompletedValue() < _fenceValues[fenceIndex])
     {
-        ThrowIfFailed(_fence->SetEventOnCompletion(_fenceValues[_currentFrame], (HANDLE)_fenceEvent), "Failed Set Event OnCompletion");
+        ThrowIfFailed(_fence->SetEventOnCompletion(_fenceValues[fenceIndex], (HANDLE)_fenceEvent), "Failed Set Event OnCompletion");
         WaitForSingleObject((HANDLE)_fenceEvent, INFINITE);
     }
 
-    _fenceValues[_currentFrame] = current_fence + 1;
+    _fenceValues[fenceIndex] = current_fence + 1;
 }
 
 void dx_dynamic_rhi::submit(const command_buffer& cmd)
@@ -140,7 +143,7 @@ void dx_dynamic_rhi::submit(const command_buffer& cmd)
         {
             auto psoIt = _pipelineStates.find(material_id.get());
             if (psoIt != _pipelineStates.end()) {
-                _commandBuffer->SetPipelineState(psoIt->second.getPipeline());
+                _commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
             } else {
                 std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
             }
@@ -167,7 +170,7 @@ void dx_dynamic_rhi::submit(const command_buffer& cmd)
     ID3D12CommandList* command_lists[] = { _commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
-    ThrowIfFailed(viewport.mSwapChain->Present(1, 0), "Failed SwapChain Preset");
+    ThrowIfFailed(viewport.swapChain->Present(1, 0), "Failed SwapChain Preset");
 }
 
 material_handle dx_dynamic_rhi::createMaterial(material* mat)
@@ -180,7 +183,8 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
         return material_handle(it->first);
     }
 
-    _pipelineStates.emplace(shaderHash, _deviceHandle, _rootSignature);
+    dx_pipeline_state pipeline_state(_deviceHandle, _rootSignature);
+    _pipelineStates.emplace(shaderHash, pipeline_state);
 
     it = _pipelineStates.find(shaderHash);
 
