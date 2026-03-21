@@ -8,10 +8,7 @@ namespace lucus
 {
     struct vk_render_pass
     {
-        vk_render_pass() = default;
-        vk_render_pass(VkFormat format) : colorFormat(format) {}
-
-        void init(VkDevice device);
+        void init(VkDevice device, VkFormat format);
         void cleanup(VkDevice device);
 
         VkFormat colorFormat{};
@@ -20,9 +17,29 @@ namespace lucus
 
     struct vk_framebuffer
     {
-        std::vector<VkFramebuffer> frameBuffers;
-
         void init(VkDevice device, const vk_viewport& viewport, VkRenderPass renderPass);
         void cleanup(VkDevice device);
+
+        std::vector<VkFramebuffer> frameBuffers;
+    };
+
+    struct vk_commandbuffer_pool
+    {
+        public:
+            void init(VkDevice device, uint32_t queueFamilyIndex);
+            void cleanup(VkDevice device);
+
+            VkCommandBuffer& getCommandBuffer(uint32_t index);
+        
+        protected:
+            void allocateCommandBuffers(VkDevice device);
+            void destroyCommandBuffers(VkDevice device);
+
+        private:
+            // A Command Pool is a data structure that allows you to create command buffers.
+            VkCommandPool _commandPool{ VK_NULL_HANDLE };
+
+            // Command buffers used for rendering
+	        std::array<VkCommandBuffer, g_framesInFlight> _buffers;
     };
 }

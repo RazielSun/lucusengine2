@@ -34,8 +34,7 @@ std::vector<char> filesystem::read_file(const std::string& filename) const
 
 std::vector<char> filesystem::read_shader(const std::string& filename) const
 {
-    std::string filepath = _workingDirectory + "shaders/" + filename;
-    return read_file(filepath);
+    return read_file(get_shader(filename));
 }
 
 std::string filesystem::get_path(const std::string& filename) const
@@ -46,5 +45,10 @@ std::string filesystem::get_path(const std::string& filename) const
 std::string filesystem::get_script(const std::string& filename) const
 {
     return _workingDirectory + "content/scripts/" + filename;
+}
+
+std::string filesystem::get_shader(const std::string& filename) const
+{
+    return _workingDirectory + "shaders/" + filename;
 }
 

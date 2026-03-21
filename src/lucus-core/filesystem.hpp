@@ -15,6 +15,7 @@ namespace lucus
 
         std::string get_path(const std::string& filename) const;
         std::string get_script(const std::string& filename) const;
+        std::string get_shader(const std::string& filename) const;
 
     private:
         std::string _workingDirectory;

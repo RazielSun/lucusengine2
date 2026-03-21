@@ -1,7 +1,6 @@
 #include "vk_dynamic_rhi.hpp"
 
 #include "engine_info.hpp"
-#include "filesystem.hpp"
 #include "window_manager.hpp"
 
 #include "material.hpp"
@@ -49,7 +48,7 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
 
     _pipelineStates.clear();
 
-    _commandbuffer_pool.reset();
+    _commandbuffer_pool.cleanup(_deviceHandle);
     
     for (auto& viewport : _viewports) {
         viewport.cleanup(_instance, _deviceHandle);
@@ -228,7 +227,7 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
 
     vk_viewport& viewport = _viewports[_currentViewport.get()];
 
-    VkCommandBuffer& cmdBuffer = _commandbuffer_pool->getCommandBuffer(_currentBufferIndex);
+    VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(_currentBufferIndex);
 
     vkResetCommandBuffer(cmdBuffer, 0);
 
@@ -318,8 +317,7 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
 
 void vk_dynamic_rhi::createCommandBufferPool()
 {
-    _commandbuffer_pool = std::make_unique<vk_commandbuffer_pool>(_deviceHandle);
-    _commandbuffer_pool->initCommandPool(_device->getQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT));
+    _commandbuffer_pool.init(_deviceHandle, _device->getQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT));
 }
 
 void vk_dynamic_rhi::createFramebuffer(const vk_viewport& viewport, const vk_render_pass& renderPass)
@@ -412,9 +410,9 @@ void vk_dynamic_rhi::getOrCreateRenderPassAndFramebuffer(const vk_viewport& view
     if (index == -1) {
         index = static_cast<int>(_renderPasses.size());
 
-        _renderPasses.emplace_back(viewport.colorFormat);
+        _renderPasses.emplace_back();
         vk_render_pass& newRenderPass = _renderPasses.back();
-        newRenderPass.init(_deviceHandle);
+        newRenderPass.init(_deviceHandle, viewport.colorFormat);
 
         createFramebuffer(viewport, newRenderPass);
     }

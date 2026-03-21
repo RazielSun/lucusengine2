@@ -2,8 +2,10 @@
 
 using namespace lucus;
 
-void vk_render_pass::init(VkDevice device)
+void vk_render_pass::init(VkDevice device, VkFormat format)
 {
+    colorFormat = format;
+
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = colorFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -88,4 +90,54 @@ void vk_framebuffer::cleanup(VkDevice device)
         vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
     frameBuffers.clear();
+}
+
+void vk_commandbuffer_pool::init(VkDevice device, uint32_t queueFamilyIndex)
+{
+    VkCommandPoolCreateInfo cmdPoolInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queueFamilyIndex
+    };
+
+    if (vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &_commandPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create command pool!");
+    }
+
+    allocateCommandBuffers(device);
+}
+
+void vk_commandbuffer_pool::cleanup(VkDevice device)
+{
+    destroyCommandBuffers(device);
+    if (_commandPool != VK_NULL_HANDLE)
+    {
+        vkDestroyCommandPool(device, _commandPool, nullptr);
+    }
+}
+
+VkCommandBuffer& vk_commandbuffer_pool::getCommandBuffer(uint32_t index)
+{
+    return _buffers[index];
+}
+
+void vk_commandbuffer_pool::allocateCommandBuffers(VkDevice device)
+{
+    VkCommandBufferAllocateInfo allocInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = _commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = static_cast<uint32_t>(_buffers.size()),
+    };
+
+    if (vkAllocateCommandBuffers(device, &allocInfo, _buffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate command buffers!");
+    }
+
+    std::printf("Command buffer created successfully\n");
+}
+
+void vk_commandbuffer_pool::destroyCommandBuffers(VkDevice device)
+{
+    vkFreeCommandBuffers(device, _commandPool, static_cast<uint32_t>(_buffers.size()), _buffers.data());
 }

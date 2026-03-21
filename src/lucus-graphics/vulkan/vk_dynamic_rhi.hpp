@@ -6,7 +6,6 @@
 
 #include "vk_render_types.hpp"
 #include "vk_device.hpp"
-#include "vk_commandbuffer_pool.hpp"
 #include "vk_viewport.hpp"
 
 namespace lucus
@@ -55,7 +54,7 @@ namespace lucus
 
             std::vector<vk_viewport> _viewports;
 
-            std::unique_ptr<vk_commandbuffer_pool> _commandbuffer_pool;
+            vk_commandbuffer_pool _commandbuffer_pool;
 
             viewport_handle _currentViewport;
             uint32_t _currentBufferIndex{ 0 };
