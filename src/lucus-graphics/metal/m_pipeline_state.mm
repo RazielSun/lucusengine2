@@ -17,11 +17,10 @@ m_pipeline_state::~m_pipeline_state()
 
 void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorFormat)
 {
-    id<MTLLibrary> vs_library = loadLibrary(shaderName + ".vert");
-    id<MTLLibrary> fs_library = loadLibrary(shaderName + ".frag");
+    id<MTLLibrary> library = loadLibrary(shaderName);
 
-    id<MTLFunction> vs = [vs_library newFunctionWithName:@"vsMain"];
-    id<MTLFunction> fs = [fs_library newFunctionWithName:@"fsMain"];
+    id<MTLFunction> vs = [library newFunctionWithName:@"vsMain"];
+    id<MTLFunction> fs = [library newFunctionWithName:@"fsMain"];
     if (!vs || !fs) {
         throw std::runtime_error("Failed to load shader functions");
     }
