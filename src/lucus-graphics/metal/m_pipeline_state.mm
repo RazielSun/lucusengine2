@@ -17,10 +17,11 @@ m_pipeline_state::~m_pipeline_state()
 
 void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorFormat)
 {
-    id<MTLLibrary> library = loadLibrary(shaderName);
+    id<MTLLibrary> vs_library = loadLibrary(shaderName + ".vert");
+    id<MTLLibrary> fs_library = loadLibrary(shaderName + ".frag");
 
-    id<MTLFunction> vs = [library newFunctionWithName:@"vs_main"];
-    id<MTLFunction> fs = [library newFunctionWithName:@"fs_main"];
+    id<MTLFunction> vs = [vs_library newFunctionWithName:@"vsMain"];
+    id<MTLFunction> fs = [fs_library newFunctionWithName:@"fsMain"];
     if (!vs || !fs) {
         throw std::runtime_error("Failed to load shader functions");
     }
@@ -55,7 +56,7 @@ id<MTLLibrary> m_pipeline_state::loadLibrary(const std::string& filename) const
 {
     // auto shaderCode = filesystem::instance().read_shader(filepath);
 
-    std::string path = filesystem::instance().get_shader(filename + ".metal.metallib");
+    std::string path = filesystem::instance().get_shader(filename + ".metallib");
 
     NSError* error = nil;
     NSString* nsPath = [NSString stringWithUTF8String:path.c_str()];

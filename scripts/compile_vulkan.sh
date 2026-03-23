@@ -16,6 +16,7 @@ OUT_DIR="bin/shaders"
 mkdir -p "$OUT_DIR"
 
 find "$SRC_DIR" -type f \( -name "*.slang" \) | while read -r file; do
+
     rel="${file#$SRC_DIR/}"
     base="${rel%.slang}"
 
