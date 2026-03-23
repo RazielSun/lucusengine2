@@ -2,6 +2,14 @@
 #define TARGET_METAL 0
 #endif
 
+#ifndef TARGET_VULKAN
+#define TARGET_VULKAN 0
+#endif
+
+#ifndef TARGET_DX12
+#define TARGET_DX12 0
+#endif
+
 struct VSOutput
 {
     float4 position : SV_Position;
@@ -27,7 +35,7 @@ VSOutput vsMain(uint vertexIndex : SV_VertexID)
 
     VSOutput o;
     o.position = float4(positions[vertexIndex], 0.0, 1.0);
-#if TARGET_METAL
+#if TARGET_METAL || TARGET_DX12
     o.position.y *= -1.0; // Flip Y for Metal's coordinate system
 #endif
     o.fragColor = colors[vertexIndex];

@@ -2,7 +2,7 @@
 *.d
 
 #
-scripts/tools/slang/*
+scripts/tools/*
 
 # Compiled Object files
 *.slo

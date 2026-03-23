@@ -1,13 +1,15 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-set "ROOT_DIR=%~dp0.."
+for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI"
+
 set "SRC_DIR=%ROOT_DIR%\shaders"
 set "OUT_DIR=%ROOT_DIR%\bin\shaders"
-set "SLANGC=%ROOT_DIR%\tools\slang\bin\slangc.exe"
 
-if not exist "%SLANGC%" (
-    echo slangc not found: %SLANGC%
+set "PATH=%ROOT_DIR%\scripts\tools\dxc\bin\x64;%ROOT_DIR%\scripts\tools\slang\bin;%PATH%"
+
+where slangc >nul 2>nul || (
+    echo slangc not found
     exit /b 1
 )
 
@@ -32,11 +34,11 @@ for /R "%SRC_DIR%" %%F in (*.slang) do (
     )
 
     echo [VS] %%F ^> !OUT_VS!
-    "%SLANGC%" "%%F" -entry vsMain -profile vs_6_0 -target dxil -o "!OUT_VS!"
+    slangc "%%F" -entry vsMain -profile vs_6_0 -target dxil -D TARGET_DX12=1 -o "!OUT_VS!"
     if errorlevel 1 exit /b 1
 
     echo [PS] %%F ^> !OUT_PS!
-    "%SLANGC%" "%%F" -entry psMain -profile ps_6_0 -target dxil -o "!OUT_PS!"
+    slangc "%%F" -entry psMain -profile ps_6_0 -target dxil -D TARGET_DX12=1 -o "!OUT_PS!"
     if errorlevel 1 exit /b 1
 
     echo.

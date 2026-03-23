@@ -27,12 +27,12 @@ find "$SRC_DIR" -type f \( -name "*.slang" \) | while read -r file; do
 
     if [ ! -f "$out_vs" ] || [ "$file" -nt "$out_vs" ]; then
         echo "Compiling $file to $out_vs"
-        slangc "$file" -entry vsMain -profile vs_6_0 -target spirv -o  "$out_vs"
+        slangc "$file" -entry vsMain -profile vs_6_0 -target spirv -o -D TARGET_VULKAN=1 "$out_vs"
     fi
 
     if [ ! -f "$out_ps" ] || [ "$file" -nt "$out_ps" ]; then
         echo "Compiling $file to $out_ps"
-        slangc "$file" -entry psMain -profile ps_6_0 -target spirv -o "$out_ps"
+        slangc "$file" -entry psMain -profile ps_6_0 -target spirv -o -D TARGET_VULKAN=1 "$out_ps"
     fi
 
 done

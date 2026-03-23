@@ -77,7 +77,8 @@ void dx_pipeline_state::init(const std::string& shaderName)
 
     D3D12_RASTERIZER_DESC rasterizer{};
     rasterizer.FillMode = D3D12_FILL_MODE_SOLID;
-    rasterizer.CullMode = D3D12_CULL_MODE_BACK;
+    // rasterizer.CullMode = D3D12_CULL_MODE_BACK;
+    rasterizer.CullMode = D3D12_CULL_MODE_NONE; // Only for Triangle?
     rasterizer.FrontCounterClockwise = FALSE;
     rasterizer.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
     rasterizer.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
