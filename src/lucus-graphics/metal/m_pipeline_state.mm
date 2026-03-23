@@ -20,7 +20,7 @@ void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorF
     id<MTLLibrary> library = loadLibrary(shaderName);
 
     id<MTLFunction> vs = [library newFunctionWithName:@"vsMain"];
-    id<MTLFunction> fs = [library newFunctionWithName:@"fsMain"];
+    id<MTLFunction> fs = [library newFunctionWithName:@"psMain"];
     if (!vs || !fs) {
         throw std::runtime_error("Failed to load shader functions");
     }
