@@ -19,49 +19,61 @@ dx_pipeline_state::~dx_pipeline_state()
 
 void dx_pipeline_state::init(const std::string& shaderName)
 {
-    UINT compile_flags = 0;
-#ifndef NDEBUG
-    compile_flags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
+//     UINT compile_flags = 0;
+// #ifndef NDEBUG
+//     compile_flags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+// #endif
 
-    Com<ID3DBlob> vs;
-    Com<ID3DBlob> ps;
-    Com<ID3DBlob> errors;
+//     Com<ID3DBlob> vs;
+//     Com<ID3DBlob> ps;
+//     Com<ID3DBlob> errors;
 
-    std::string shader_name = shaderName + ".hlsl";
-    auto shader_code = filesystem::instance().read_shader(shader_name);
+//     std::string shader_name = shaderName + ".hlsl";
+//     auto shader_code = filesystem::instance().read_shader(shader_name);
 
-    ThrowIfFailed(D3DCompile(
-            shader_code.data(),
-            shader_code.size(),
-            shader_name.c_str(),
-            nullptr,
-            D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            "VSMain",
-            "vs_5_0",
-            compile_flags,
-            0,
-            &vs,
-            &errors
-        ),
-        "Failed Compile VS Shader"
-    );
+//     ThrowIfFailed(D3DCompile(
+//             shader_code.data(),
+//             shader_code.size(),
+//             shader_name.c_str(),
+//             nullptr,
+//             D3D_COMPILE_STANDARD_FILE_INCLUDE,
+//             "VSMain",
+//             "vs_5_0",
+//             compile_flags,
+//             0,
+//             &vs,
+//             &errors
+//         ),
+//         "Failed Compile VS Shader"
+//     );
 
-    ThrowIfFailed(D3DCompile(
-            shader_code.data(),
-            shader_code.size(),
-            shader_name.c_str(),
-            nullptr,
-            D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            "PSMain",
-            "ps_5_0",
-            compile_flags,
-            0,
-            &ps,
-            &errors
-        ),
-        "Failed Compile PS Shader"
-    );
+//     ThrowIfFailed(D3DCompile(
+//             shader_code.data(),
+//             shader_code.size(),
+//             shader_name.c_str(),
+//             nullptr,
+//             D3D_COMPILE_STANDARD_FILE_INCLUDE,
+//             "PSMain",
+//             "ps_5_0",
+//             compile_flags,
+//             0,
+//             &ps,
+//             &errors
+//         ),
+//         "Failed Compile PS Shader"
+//     );
+
+    auto vs = filesystem::instance().read_shader(shaderName + ".vert.dxil");
+    auto ps = filesystem::instance().read_shader(shaderName + ".frag.dxil");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+    pso.pRootSignature = _rootSignature.Get();
+    // pso.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
+    // pso.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+    pso.VS.pShaderBytecode = vs.data();
+    pso.VS.BytecodeLength = vs.size();
+    pso.PS.pShaderBytecode = ps.data();
+    pso.PS.BytecodeLength = ps.size();
 
     D3D12_RASTERIZER_DESC rasterizer{};
     rasterizer.FillMode = D3D12_FILL_MODE_SOLID;
@@ -75,6 +87,8 @@ void dx_pipeline_state::init(const std::string& shaderName)
     rasterizer.AntialiasedLineEnable = FALSE;
     rasterizer.ForcedSampleCount = 0;
     rasterizer.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+
+    pso.RasterizerState = rasterizer;
 
     D3D12_BLEND_DESC blend{};
     blend.AlphaToCoverageEnable = FALSE;
@@ -90,20 +104,16 @@ void dx_pipeline_state::init(const std::string& shaderName)
 
     for (int i = 0; i < 8; ++i)
         blend.RenderTarget[i] = default_rt_blend;
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
-    pso.pRootSignature = _rootSignature.Get();
-    pso.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
-    pso.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+    
     pso.BlendState = blend;
-    pso.SampleMask = UINT_MAX;
-    pso.RasterizerState = rasterizer;
 
     D3D12_DEPTH_STENCIL_DESC depth_stencil{};
     depth_stencil.DepthEnable = FALSE;
     depth_stencil.StencilEnable = FALSE;
+
     pso.DepthStencilState = depth_stencil;
 
+    pso.SampleMask = UINT_MAX;
     pso.InputLayout = { nullptr, 0 };
     pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pso.NumRenderTargets = 1;
