@@ -20,7 +20,7 @@ vk_pipeline_state::~vk_pipeline_state()
     }
 }
 
-void vk_pipeline_state::init(material* mat, VkRenderPass renderPass, VkDescriptorSetLayout* dscSetLayout)
+void vk_pipeline_state::init(material* mat, VkRenderPass renderPass, uint32_t layoutCount, VkDescriptorSetLayout* layouts)
 {
     assert(mat);
     const std::string& shaderName = mat->getShaderName();
@@ -127,7 +127,7 @@ void vk_pipeline_state::init(material* mat, VkRenderPass renderPass, VkDescripto
     colorBlending.blendConstants[2] = 0.0f; // Optional
     colorBlending.blendConstants[3] = 0.0f; // Optional
 
-    createPipelineLayout(dscSetLayout);
+    createPipelineLayout(layoutCount, layouts);
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -175,16 +175,16 @@ VkShaderModule vk_pipeline_state::loadShader(const std::string& filepath) const
     return shaderModule;
 }
 
-void vk_pipeline_state::createPipelineLayout(VkDescriptorSetLayout* dscSetLayout)
+void vk_pipeline_state::createPipelineLayout(uint32_t layoutCount, VkDescriptorSetLayout* layouts)
 {
     // Pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
-    if (dscSetLayout != nullptr) {
+    if (layouts != nullptr) {
         _useUniformBuffers = true;
-        pipelineLayoutInfo.setLayoutCount = 1;
-        pipelineLayoutInfo.pSetLayouts = dscSetLayout;
+        pipelineLayoutInfo.setLayoutCount = layoutCount;
+        pipelineLayoutInfo.pSetLayouts = layouts;
     } else {
         pipelineLayoutInfo.setLayoutCount = 0; // Optional
         pipelineLayoutInfo.pSetLayouts = nullptr; // Optional

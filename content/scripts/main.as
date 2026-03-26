@@ -8,11 +8,25 @@ void main()
     camera.SetPosition(0.0f, -0.5f, 5.0f);
     g_renderer.SetCamera(camera);
 
-    Mesh@ mesh = Mesh();
-    renderObject.SetMesh(mesh);
+    bool drawSimpleTriangle = false; // Change to false to draw a cube
 
-    // Material@ material = Material("triangle");
-    Material@ material = Material("cube");
-    material.SetUseUniformBuffers(true);
-    renderObject.SetMaterial(material);
+    if (drawSimpleTriangle)
+    {
+        Mesh@ triangle = Mesh();
+        triangle.SetDrawCount(3);
+        renderObject.SetMesh(triangle);
+
+        Material@ triangle_mat = Material("triangle");
+        renderObject.SetMaterial(triangle_mat);
+    }
+    else
+    {
+        Mesh@ cube = Mesh();
+        cube.SetDrawCount(36);
+        renderObject.SetMesh(cube);
+
+        Material@ cube_mat = Material("cube");
+        cube_mat.SetUseUniformBuffers(true);
+        renderObject.SetMaterial(cube_mat);
+    }
 }

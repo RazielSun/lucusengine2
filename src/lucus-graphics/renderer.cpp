@@ -51,8 +51,9 @@ render_object* renderer::emplaceRenderObject()
 
 void renderer::updateFrameUniformBuffer(frame_uniform_buffer& ubo)
 {
-    if (_camera) {
-        ubo.model = glm::mat4(1.0f); // TEST ONLY
+    if (_camera)
+    {
+        // ubo.model = glm::mat4(1.0f); // TEST ONLY
         ubo.view = _camera->getViewMatrix();
         ubo.proj = _camera->getProjectionMatrix();
     }
@@ -82,12 +83,21 @@ void renderer::processObjects(command_buffer& cmd)
         }
         
         render_instance instance;
-        // instance.mesh = meshInst->getHandle();
+        instance.object = obj->getHandle();
+        if (!instance.object.is_valid()) {
+            instance.object = _dynamicRHI->createUniformBuffer(obj);
+            obj->setHandle(instance.object);
+        }
+        instance.object_data.model = math::transform_to_mat4(obj->getTransform());
+
+        instance.mesh = mesh_handle(meshInst->getDrawCount());
+
         instance.material = materialInst->getHandle();
         if (!instance.material.is_valid()) {
             instance.material = _dynamicRHI->createMaterial(materialInst);
             materialInst->setHandle(instance.material);
         }
+
         cmd.render_list.push_back(instance);
     }
 }

@@ -7,6 +7,7 @@
 #include "vk_render_types.hpp"
 #include "vk_device.hpp"
 #include "vk_viewport.hpp"
+#include "vk_buffer.hpp"
 
 namespace lucus
 {
@@ -29,14 +30,16 @@ namespace lucus
 
             virtual material_handle createMaterial(material* mat) override;
 
+            virtual render_object_handle createUniformBuffer(render_object* obj) override;
+
         protected:
             void createInstance();
             void createDevice();
             void createCommandBufferPool();
-            void createFrameUniformBuffers();
+            
             void createDescriptorPool();
-            void createDescriptorSetLayout();
-            void createDescriptorSets();
+            void createDescriptorSetLayouts();
+            void createFrameUniformBuffers();
 
             void createSyncObjectsStable();
             void createSyncObjectsBy(int imageCount);
@@ -45,9 +48,6 @@ namespace lucus
 
             void getOrCreateRenderPassAndFramebuffer(const vk_viewport& viewport, vk_render_pass& outRenderPass, vk_framebuffer& outFramebuffer);
             void createFramebuffer(const vk_viewport& viewport, const vk_render_pass& renderPass);
-
-            void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
-            uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 
         private:
             VkInstance _instance;
@@ -81,14 +81,11 @@ namespace lucus
             std::vector<vk_render_pass> _renderPasses;
             std::vector<vk_framebuffer> _frameBuffers;
 
-            // TODO
-            std::array<VkBuffer, g_framesInFlight> frameUniformBuffers;
-            std::array<VkDeviceMemory, g_framesInFlight> frameUniformBuffersMemory;
-            std::vector<void*> frameUniformBuffersMapped;
-
-            // TODO
-            VkDescriptorSetLayout _descriptorSetLayout{ VK_NULL_HANDLE };
+            VkDescriptorSetLayout _frameDescriptorSetLayout{ VK_NULL_HANDLE };
+            VkDescriptorSetLayout _objectDescriptorSetLayout{ VK_NULL_HANDLE };
             VkDescriptorPool _descriptorPool{ VK_NULL_HANDLE };
-            std::array<VkDescriptorSet, g_framesInFlight> _descriptorSets;
+
+            vk_buffer _frameUniformBuffer;
+            std::vector<vk_buffer> _objectUniformBuffers;
     };
 }

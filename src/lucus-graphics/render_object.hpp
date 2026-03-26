@@ -21,6 +21,9 @@ namespace lucus
             void setMaterial(material* material) { _material.reset(material); }
             material* getMaterial() const { return _material.get(); }
 
+            const transform& getTransform() const { return _transform; }
+            void setTransform(const transform& t) { _transform = t; }
+
             const render_object_handle& getHandle() const { return _handle; }
             void setHandle(const render_object_handle& handle) { _handle = handle; }
 

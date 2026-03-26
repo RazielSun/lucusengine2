@@ -13,4 +13,9 @@ namespace lucus
         glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
         glm::vec3 scale{1.0f};
     };
+
+    namespace math
+    {
+        glm::mat4 transform_to_mat4(const transform& t);
+    }
 }

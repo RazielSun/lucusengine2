@@ -25,12 +25,14 @@ vk_dynamic_rhi::vk_dynamic_rhi()
 vk_dynamic_rhi::~vk_dynamic_rhi()
 {
     vkDestroyDescriptorPool(_deviceHandle, _descriptorPool, nullptr);
-    vkDestroyDescriptorSetLayout(_deviceHandle, _descriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(_deviceHandle, _frameDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(_deviceHandle, _objectDescriptorSetLayout, nullptr);
 
-    for (size_t i = 0; i < g_framesInFlight; i++) {
-        vkDestroyBuffer(_deviceHandle, frameUniformBuffers[i], nullptr);
-        vkFreeMemory(_deviceHandle, frameUniformBuffersMemory[i], nullptr);
+    _frameUniformBuffer.cleanup();
+    for (auto& buffer : _objectUniformBuffers) {
+        buffer.cleanup();
     }
+    _objectUniformBuffers.clear();
 
     for (auto& fence : _waitFences) {
         vkDestroyFence(_deviceHandle, fence, nullptr);
@@ -74,10 +76,10 @@ void vk_dynamic_rhi::init()
     createDevice();
     createCommandBufferPool();
     createSyncObjectsStable();
-    createFrameUniformBuffers();
+    
     createDescriptorPool();
-    createDescriptorSetLayout();
-    createDescriptorSets();
+    createDescriptorSetLayouts();
+    createFrameUniformBuffers();
 }
 
 void vk_dynamic_rhi::createInstance()
@@ -218,7 +220,7 @@ void vk_dynamic_rhi::beginFrame(const viewport_handle& handle)
     vkResetFences(_deviceHandle, 1, &_waitFences[_currentBufferIndex]);
     
     _currentViewport = handle;
-    vk_viewport& viewport = _viewports[_currentViewport.get() - 1];
+    vk_viewport& viewport = _viewports[_currentViewport.as_index()];
 
     vkAcquireNextImageKHR(_deviceHandle, viewport.swapChain, UINT64_MAX, _presentCompleteSemaphores[_currentBufferIndex], (VkFence)nullptr, &_currentImageIndex);
 }
@@ -236,7 +238,7 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
         return;
     }
 
-    vk_viewport& viewport = _viewports[_currentViewport.get() - 1];
+    vk_viewport& viewport = _viewports[_currentViewport.as_index()];
 
     VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(_currentBufferIndex);
 
@@ -271,28 +273,35 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
     vkCmdSetViewport(cmdBuffer, 0, 1, &viewport.viewport);
     vkCmdSetScissor(cmdBuffer, 0, 1, &viewport.scissor);
 
-    // TODO
-    memcpy(frameUniformBuffersMapped[_currentBufferIndex], &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+    _frameUniformBuffer.write(_currentBufferIndex, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
 
-    for (const auto& renderInstance : cmd.render_list) {
+    for (const auto& renderInstance : cmd.render_list)
+    {
+        const auto& object_id = renderInstance.object;
+        vk_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
+
+        buffer.write(_currentBufferIndex, &renderInstance.object_data, sizeof(renderInstance.object_data));
+
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
         {
             auto psoIt = _pipelineStates.find(material_id.get());
             if (psoIt != _pipelineStates.end()) {
                 vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipeline());
-                if (psoIt->second.isUniformBufferUsed()) {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, &_descriptorSets[_currentBufferIndex], 0, nullptr);
+                if (psoIt->second.isUniformBufferUsed())
+                {
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, _frameUniformBuffer.getDescriptorSet(_currentBufferIndex), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 1, 1, buffer.getDescriptorSet(_currentBufferIndex), 0, nullptr);
                 }
             } else {
                 std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
             }
         }
 
-        auto mesh = renderInstance.mesh;
+        const auto& mesh = renderInstance.mesh;
         // TODO: Bind vertex/index buffers and draw
-        // vkCmdDraw(cmdBuffer, 3, 1, 0, 0); // triangle
-        vkCmdDraw(cmdBuffer, 36, 1, 0, 0); // cube
+        // TODO: mesh_handle = mesh.getDrawCount() is for test only
+        vkCmdDraw(cmdBuffer, mesh.get(), 1, 0, 0);
     }
 
     vkCmdEndRenderPass(cmdBuffer);
@@ -338,142 +347,85 @@ void vk_dynamic_rhi::createCommandBufferPool()
     _commandbuffer_pool.init(_deviceHandle, _device->getQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT));
 }
 
-void vk_dynamic_rhi::createFrameUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(frame_uniform_buffer);
-
-    // frameUniformBuffers.resize(g_framesInFlight);
-    // frameUniformBuffersMemory.resize(g_framesInFlight);
-    frameUniformBuffersMapped.resize(g_framesInFlight);
-
-    for (size_t i = 0; i < g_framesInFlight; i++) {
-        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, frameUniformBuffers[i], frameUniformBuffersMemory[i]);
-
-        vkMapMemory(_deviceHandle, frameUniformBuffersMemory[i], 0, bufferSize, 0, &frameUniformBuffersMapped[i]);
-    }
-}
-
 void vk_dynamic_rhi::createDescriptorPool()
 {
+    uint32_t maxObjectCount = 32; // TODO: Make this dynamic or configurable
+    uint32_t totalCount = static_cast<uint32_t>(g_framesInFlight) * (1 + maxObjectCount); // 1 for frame UBO + maxObjectCount for object UBOs
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = static_cast<uint32_t>(g_framesInFlight);
+    poolSize.descriptorCount = totalCount;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = static_cast<uint32_t>(g_framesInFlight);
+    poolInfo.maxSets = totalCount;
     
     if (vkCreateDescriptorPool(_deviceHandle, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
     }
+
+    std::printf("Descriptor pool created successfully\n");
 }
 
-void vk_dynamic_rhi::createDescriptorSetLayout()
+void vk_dynamic_rhi::createDescriptorSetLayouts()
 {
-    constexpr uint32_t bindingCount = 1; // 2;
-    std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
-
-    bindings[0] = VkDescriptorSetLayoutBinding
     {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .pImmutableSamplers = nullptr
-    };
-    // bindings[1] = VkDescriptorSetLayoutBinding
-    // {
-    //     .binding = 1,
-    //     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    //     .descriptorCount = 1,
-    //     .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-    //     .pImmutableSamplers = nullptr
-    // };
+        constexpr uint32_t bindingCount = 1;
+        std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
 
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    layoutInfo.pBindings = bindings.data();
+        bindings[0] = VkDescriptorSetLayoutBinding
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = nullptr
+        };
 
-    if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_descriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor set layout!");
-    }
-}
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
 
-void vk_dynamic_rhi::createDescriptorSets()
-{
-    std::vector<VkDescriptorSetLayout> layouts(g_framesInFlight, _descriptorSetLayout);
-
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = _descriptorPool;
-    allocInfo.descriptorSetCount = static_cast<uint32_t>(g_framesInFlight);
-    allocInfo.pSetLayouts = layouts.data();
-
-    if (vkAllocateDescriptorSets(_deviceHandle, &allocInfo, _descriptorSets.data()) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate descriptor sets!");
-    }
-
-    for (size_t i = 0; i < g_framesInFlight; i++) {
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = frameUniformBuffers[i];
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(frame_uniform_buffer);
-
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = _descriptorSets[i];
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pBufferInfo = &bufferInfo;
-        descriptorWrite.pImageInfo = nullptr; // Optional
-        descriptorWrite.pTexelBufferView = nullptr; // Optional
-        vkUpdateDescriptorSets(_deviceHandle, 1, &descriptorWrite, 0, nullptr);
-    }
-}
-
-void vk_dynamic_rhi::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
-{
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(_deviceHandle, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create buffer!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(_deviceHandle, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(_deviceHandle, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate buffer memory!");
-    }
-
-    vkBindBufferMemory(_deviceHandle, buffer, bufferMemory, 0);
-}
-
-uint32_t vk_dynamic_rhi::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
-{
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(_device->getGPU(), &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
+        if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_frameDescriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
         }
-    }
 
-    throw std::runtime_error("failed to find suitable memory type!");
+        std::printf("Frame Descriptor set layout created successfully\n");
+    }
+    
+    {
+        constexpr uint32_t bindingCount = 1;
+        std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
+
+        bindings[0] = VkDescriptorSetLayoutBinding
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = nullptr
+        };
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+
+        if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_objectDescriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
+        }
+
+        std::printf("Object Descriptor set layout created successfully\n");
+    }
+}
+
+void vk_dynamic_rhi::createFrameUniformBuffers()
+{
+    _frameUniformBuffer.init(_deviceHandle, _device->getGPU(), _frameDescriptorSetLayout, _descriptorPool, sizeof(frame_uniform_buffer));
+
+    std::printf("Frame uniform buffer created successfully\n");
 }
 
 void vk_dynamic_rhi::createFramebuffer(const vk_viewport& viewport, const vk_render_pass& renderPass)
@@ -548,9 +500,33 @@ material_handle vk_dynamic_rhi::createMaterial(material* mat)
         return material_handle();
     }
     
-    it->second.init(mat, _renderPasses[renderPassIndex].renderPass, (mat->isUseUniformBuffers() ? &_descriptorSetLayout : nullptr));
+    if (mat->isUseUniformBuffers())
+    {
+        std::array<VkDescriptorSetLayout, 2> layouts = {
+            _frameDescriptorSetLayout,
+            _objectDescriptorSetLayout
+        };
+        it->second.init(mat, _renderPasses[renderPassIndex].renderPass, static_cast<uint32_t>(layouts.size()), layouts.data());
+    }
+    else
+    {
+        it->second.init(mat, _renderPasses[renderPassIndex].renderPass);
+    }
+
+    std::printf("Material %d created successfully\n", shaderHash);
 
     return material_handle(shaderHash);
+}
+
+render_object_handle vk_dynamic_rhi::createUniformBuffer(render_object* obj)
+{
+    _objectUniformBuffers.emplace_back();
+    vk_buffer& buffer = _objectUniformBuffers.back();
+    buffer.init(_deviceHandle, _device->getGPU(), _objectDescriptorSetLayout, _descriptorPool, sizeof(object_uniform_buffer));
+
+    std::printf("Uniform buffer for object %p created successfully\n", obj);
+
+    return render_object_handle(static_cast<uint32_t>(_objectUniformBuffers.size()));
 }
 
 void vk_dynamic_rhi::getOrCreateRenderPassAndFramebuffer(const vk_viewport& viewport, vk_render_pass& outRenderPass, vk_framebuffer& outFramebuffer)

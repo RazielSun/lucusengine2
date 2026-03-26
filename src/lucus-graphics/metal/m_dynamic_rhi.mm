@@ -57,7 +57,7 @@ void m_dynamic_rhi::beginFrame(const viewport_handle& handle)
     }
 
     _currentViewport = handle;
-    m_viewport& viewport = _viewports[_currentViewport.get() - 1];
+    m_viewport& viewport = _viewports[_currentViewport.as_index()];
 
     _currentDrawable = viewport.getNewDrawable();
 }

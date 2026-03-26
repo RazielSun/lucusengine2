@@ -12,7 +12,7 @@ namespace lucus
             vk_pipeline_state(VkDevice device);
             ~vk_pipeline_state();
 
-            void init(material* mat, VkRenderPass renderPass, VkDescriptorSetLayout* dscSetLayout = nullptr);
+            void init(material* mat, VkRenderPass renderPass, uint32_t layoutCount = 0, VkDescriptorSetLayout* layouts = nullptr);
 
             VkPipeline& getPipeline() { return _pipeline; }
             VkPipelineLayout& getPipelineLayout() { return _pipelineLayout; }
@@ -21,7 +21,7 @@ namespace lucus
         protected:
             VkShaderModule loadShader(const std::string& filepath) const;
 
-            void createPipelineLayout(VkDescriptorSetLayout* dscSetLayout = nullptr);
+            void createPipelineLayout(uint32_t layoutCount = 0, VkDescriptorSetLayout* layouts = nullptr);
 
         private:
             VkDevice _device;

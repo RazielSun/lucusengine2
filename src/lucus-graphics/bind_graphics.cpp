@@ -123,6 +123,13 @@ void lucus::bind_mesh_class()
         mesh_class_name, asBEHAVE_RELEASE, "void f()",
         asMETHOD(mesh, releaseRef), asCALL_THISCALL
     ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        mesh_class_name,
+        "void SetDrawCount(int)",
+        asMETHOD(mesh, setDrawCount),
+        asCALL_THISCALL
+    ); assert(r >= 0);
 }
 
 void lucus::bind_material_class()

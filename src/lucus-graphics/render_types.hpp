@@ -15,6 +15,7 @@ namespace lucus
         explicit resource_handle(uint32_t idx) : index(idx) {}
         
         uint32_t get() const { return index; }
+        uint32_t as_index() const { return index - 1; }
         bool is_valid() const { return index > 0; }
 
         void invalidate() { index = 0; }
@@ -53,16 +54,9 @@ namespace lucus
         explicit render_object_handle(int idx) : resource_handle(idx) {}
     };
 
-    struct render_instance
-    {
-        render_object_handle object;
-        mesh_handle mesh;
-        material_handle material;
-    };
-
     struct frame_uniform_buffer
     {
-        alignas(16) glm::mat4 model; // TEST ONLY
+        // alignas(16) glm::mat4 model; // TEST ONLY
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
     };
@@ -70,6 +64,15 @@ namespace lucus
     struct object_uniform_buffer
     {
         alignas(16) glm::mat4 model;
+    };
+
+    struct render_instance
+    {
+        render_object_handle object;
+        object_uniform_buffer object_data;
+
+        mesh_handle mesh;
+        material_handle material;
     };
 
     struct command_buffer

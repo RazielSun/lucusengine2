@@ -2,20 +2,20 @@
 
 struct FrameUniforms
 {
-    float4x4 model; // TEST ONLY
+    // float4x4 model; // TEST ONLY
     float4x4 view;
     float4x4 proj;
 };
 
-// struct ObjectUniforms
-// {
-//     float4x4 model;
-// };
+struct ObjectUniforms
+{
+    float4x4 model;
+};
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<FrameUniforms> gFrame : register(b0);
-// [[vk::binding(1, 0)]]
-// ConstantBuffer<ObjectUniforms> gObject: register(b1);
+[[vk::binding(0, 1)]]
+ConstantBuffer<ObjectUniforms> gObject: register(b1);
 
 struct VSOutput
 {
@@ -64,8 +64,8 @@ VSOutput vsMain(uint vertexID : SV_VertexID)
     float3 localPos = positions[i];
     float3 color = colors[i];
 
-    // float4 worldPos = mul(gObject.model, float4(localPos, 1.0));
-    float4 worldPos = mul(gFrame.model, float4(localPos, 1.0));
+    float4 worldPos = mul(gObject.model, float4(localPos, 1.0));
+    // float4 worldPos = mul(gFrame.model, float4(localPos, 1.0));
     float4 viewPos  = mul(gFrame.view, worldPos);
     float4 clipPos  = mul(gFrame.proj, viewPos);
 
