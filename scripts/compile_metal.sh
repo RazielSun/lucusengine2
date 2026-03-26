@@ -25,7 +25,7 @@ find "$SRC_DIR" -type f \( -name "*.slang" \) | while read -r file; do
 
     if [ ! -f "$out_mtl" ] || [ "$file" -nt "$out_mtl" ]; then
         echo "Compiling $file to $out_lib"
-        $SLANGC "$file" -target metal -entry vsMain -entry psMain -D TARGET_METAL=1 -o "$out_mtl"
+        $SLANGC "$file" -target metal -entry vsMain -entry psMain -D TARGET_METAL=1 -o "$out_mtl" -I "$SRC_DIR"
         xcrun -sdk macosx metal -c "$out_mtl" -o "$out_air"
         xcrun -sdk macosx metallib "$out_air" -o "$out_lib"
     fi

@@ -7,8 +7,8 @@ endif()
 
 set ( MODULE_NAME "lucus-graphics" )
 set ( CMAKE_CURRENT_SOURCE_DIR "${LUCUS_ENGINE_SRC}/${MODULE_NAME}" )
-get_target_property (MODULE_EXTRA_INCLUDES lucus-core INCLUDE_DIRECTORIES)
-set ( MODULE_EXTRA_LIBS "lucus::glfw"  )
+get_target_property (MODULE_EXTRA_INCLUDES lucus-math INCLUDE_DIRECTORIES)
+set ( MODULE_EXTRA_LIBS "lucus::glfw" )
 
 if (WIN32)
     list(APPEND MODULE_EXTRA_LIBS d3d12 dxgi dxguid d3dcompiler)

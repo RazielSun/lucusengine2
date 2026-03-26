@@ -29,6 +29,7 @@ void renderer::tick(float dt)
     _dynamicRHI->beginFrame(_mainViewport);
 
     command_buffer cmd;
+    updateFrameUniformBuffer(cmd.frame_ubo);
     processObjects(cmd);
 
     _dynamicRHI->submit(cmd);
@@ -46,6 +47,15 @@ render_object* renderer::emplaceRenderObject()
     render_object* renderObject = new render_object();
     _renderObjects.push_back(intrusive_ptr<render_object>(renderObject));
     return renderObject;
+}
+
+void renderer::updateFrameUniformBuffer(frame_uniform_buffer& ubo)
+{
+    if (_camera) {
+        ubo.model = glm::mat4(1.0f); // TEST ONLY
+        ubo.view = _camera->getViewMatrix();
+        ubo.proj = _camera->getProjectionMatrix();
+    }
 }
 
 void renderer::processObjects(command_buffer& cmd)

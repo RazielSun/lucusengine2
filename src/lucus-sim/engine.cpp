@@ -1,6 +1,7 @@
 #include "engine.hpp"
 
 #include "bind_core.hpp"
+#include "bind_math.hpp"
 #include "bind_graphics.hpp"
 
 #include "commandline_args.hpp"
@@ -19,6 +20,7 @@ void engine::run(int argc, char** argv)
     script_manager::instance().init();
 
     bind_core_module();
+    bind_math_module();
     bind_graphics_module();
 
     if (!script_manager::instance().build_module("main.as", "Entry")) {
@@ -35,11 +37,24 @@ void engine::run(int argc, char** argv)
     }
 
     auto mainWindow = window_manager::instance().getWindow(handle);
+    using clock = std::chrono::steady_clock;
+    auto prevFrameTime = clock::now();
+
     while (mainWindow && !mainWindow->shouldClose())
     {
+        const auto now = clock::now();
+        float dt = std::chrono::duration<float>(now - prevFrameTime).count();
+        prevFrameTime = now;
+
+        // Avoid very large frame steps after pauses (e.g. debugger breakpoints).
+        constexpr float max_frame_dt = 0.1f; // 100 ms
+        if (dt > max_frame_dt) {
+            dt = max_frame_dt;
+        }
+
         mainWindow->tick();
 
-        renderer::instance().tick(0.f);
+        renderer::instance().tick(dt);
     }
     
     renderer::instance().cleanup();

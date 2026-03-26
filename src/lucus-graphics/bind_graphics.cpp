@@ -5,6 +5,7 @@
 #include "window_manager.hpp"
 #include "renderer.hpp"
 #include "render_object.hpp"
+#include "camera.hpp"
 
 namespace utils
 {
@@ -17,6 +18,18 @@ namespace utils
     constexpr const char* mesh_class_name = "Mesh";
     constexpr const char* material_class_name = "Material";
     constexpr const char* render_object_class_name = "RenderObject";
+    constexpr const char* camera_class_name = "Camera";
+}
+
+namespace lucus
+{
+    void bind_mesh_class();
+    void bind_material_class();
+    void bind_render_object_class();
+    void bind_camera_class();
+
+    void bind_window_manager_class_and_object();
+    void bind_renderer_class_and_object();
 }
 
 void lucus::bind_graphics_module()
@@ -26,6 +39,7 @@ void lucus::bind_graphics_module()
     bind_mesh_class();
     bind_material_class();
     bind_render_object_class();
+    bind_camera_class();
 
     bind_renderer_class_and_object();
 }
@@ -66,6 +80,14 @@ void lucus::bind_renderer_class_and_object()
         renderer_class_name,
         method_emplace.c_str(),
         asMETHOD(renderer, emplaceRenderObject),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_camera = std::string("void SetCamera(") + camera_class_name + "@)";
+    r = engine->RegisterObjectMethod(
+        renderer_class_name,
+        method_set_camera.c_str(),
+        asMETHOD(renderer, setCamera),
         asCALL_THISCALL
     ); assert(r >= 0);
 
@@ -113,7 +135,7 @@ void lucus::bind_material_class()
 
     r = engine->RegisterObjectType(material_class_name, 0, asOBJ_REF); assert(r >= 0);
 
-    std::string method_create_factory = std::string(material_class_name) + "@ f(const string &in, int renderPass)";
+    std::string method_create_factory = std::string(material_class_name) + "@ f(const string &in)";
     r = engine->RegisterObjectBehaviour(
         material_class_name,
         asBEHAVE_FACTORY,
@@ -136,6 +158,13 @@ void lucus::bind_material_class()
         material_class_name,
         "void SetShaderName(const string &in)",
         asMETHOD(material, setShaderName),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        "void SetUseUniformBuffers(bool)",
+        asMETHOD(material, setUseUniformBuffers),
         asCALL_THISCALL
     ); assert(r >= 0);
 }
@@ -175,4 +204,41 @@ void lucus::bind_render_object_class()
         asMETHOD(render_object, setMaterial),
         asCALL_THISCALL
     );
+}
+
+void lucus::bind_camera_class()
+{
+    asIScriptEngine* engine = script_manager::instance().get_engine();
+
+    int r = 0;
+
+    using namespace utils;
+
+    r = engine->RegisterObjectType(camera_class_name, 0, asOBJ_REF); assert(r >= 0);
+
+    std::string method_create_factory = std::string(camera_class_name) + "@ f()";
+    r = engine->RegisterObjectBehaviour(
+        camera_class_name,
+        asBEHAVE_FACTORY,
+        method_create_factory.c_str(),
+        asFUNCTION(camera::create_factory),
+        asCALL_CDECL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        camera_class_name, asBEHAVE_ADDREF, "void f()",
+        asMETHOD(camera, addRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        camera_class_name, asBEHAVE_RELEASE, "void f()",
+        asMETHOD(camera, releaseRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        camera_class_name,
+        "void SetPosition(float, float, float)",
+        asMETHOD(camera, setPositionXYZ),
+        asCALL_THISCALL
+    ); assert(r >= 0);
 }

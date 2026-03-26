@@ -42,10 +42,9 @@ viewport_handle m_dynamic_rhi::createViewport(const window_handle& handle)
     m_viewport viewport;
     viewport.init(_deviceHandle, window);
 
-    int viewport_id = static_cast<int>(_viewports.size());
     _viewports.push_back(viewport);
 
-    viewport_handle out_handle(viewport_id);
+    viewport_handle out_handle(static_cast<uint32_t>(_viewports.size()));
     return out_handle;
 }
 
@@ -58,7 +57,7 @@ void m_dynamic_rhi::beginFrame(const viewport_handle& handle)
     }
 
     _currentViewport = handle;
-    m_viewport& viewport = _viewports[_currentViewport.get()];
+    m_viewport& viewport = _viewports[_currentViewport.get() - 1];
 
     _currentDrawable = viewport.getNewDrawable();
 }

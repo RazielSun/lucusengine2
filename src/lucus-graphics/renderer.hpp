@@ -5,7 +5,10 @@
 #include "singleton.hpp"
 
 #include "render_types.hpp"
+#include "intrusive_ptr.hpp"
+
 #include "render_object.hpp"
+#include "camera.hpp"
 
 namespace lucus
 {
@@ -15,13 +18,16 @@ namespace lucus
     {
     public:
         void init(window_handle handle);
-        
+
         void tick(float dt);
         void cleanup();
 
         render_object* emplaceRenderObject();
+
+        void setCamera(camera* cam) { _camera.reset(cam); }
     
     protected:
+        void updateFrameUniformBuffer(frame_uniform_buffer& ubo);
         void processObjects(command_buffer& cmd);
 
     private:
@@ -30,5 +36,7 @@ namespace lucus
         std::vector<intrusive_ptr<render_object>> _renderObjects;
         
         viewport_handle _mainViewport;
+
+        intrusive_ptr<camera> _camera;
     };
 }

@@ -34,11 +34,11 @@ for /R "%SRC_DIR%" %%F in (*.slang) do (
     )
 
     echo [VS] %%F ^> !OUT_VS!
-    slangc "%%F" -entry vsMain -profile vs_6_0 -target dxil -D TARGET_DX12=1 -o "!OUT_VS!"
+    slangc "%%F" -entry vsMain -profile vs_6_0 -target dxil -D TARGET_DX12=1 -o "!OUT_VS!" -I "%SRC_DIR%"
     if errorlevel 1 exit /b 1
 
     echo [PS] %%F ^> !OUT_PS!
-    slangc "%%F" -entry psMain -profile ps_6_0 -target dxil -D TARGET_DX12=1 -o "!OUT_PS!"
+    slangc "%%F" -entry psMain -profile ps_6_0 -target dxil -D TARGET_DX12=1 -o "!OUT_PS!" -I "%SRC_DIR%"
     if errorlevel 1 exit /b 1
 
     echo.

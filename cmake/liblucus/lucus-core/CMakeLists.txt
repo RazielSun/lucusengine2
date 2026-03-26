@@ -3,8 +3,13 @@ project ( lucus-core )
 
 set ( MODULE_NAME "lucus-core" )
 set ( CMAKE_CURRENT_SOURCE_DIR "${LUCUS_ENGINE_SRC}/${MODULE_NAME}" )
-get_target_property (MODULE_EXTRA_INCLUDES lucus::angelscript INCLUDE_DIRECTORIES)
-get_target_property (MODULE_EXTRA_INCLUDES lucus::angelscript_addons INCLUDE_DIRECTORIES)
+set ( MODULE_EXTRA_INCLUDES "" )
+foreach(t lucus::angelscript lucus::angelscript_addons)
+    get_target_property(_inc ${t} INCLUDE_DIRECTORIES)
+    if(_inc)
+        list(APPEND MODULE_EXTRA_INCLUDES ${_inc})
+    endif()
+endforeach()
 set (MODULE_EXTRA_LIBS "lucus::angelscript" "lucus::angelscript_addons")
 
 

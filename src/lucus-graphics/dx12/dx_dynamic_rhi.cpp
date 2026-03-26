@@ -59,10 +59,8 @@ viewport_handle dx_dynamic_rhi::createViewport(const window_handle& handle)
     dx_viewport viewport;
     viewport.init(_DXGIFactory, _deviceHandle, _commandQueue, window);
 
-    int viewport_id = static_cast<int>(_viewports.size());
     _viewports.push_back(viewport);
-
-    viewport_handle out_handle(viewport_id);
+    viewport_handle out_handle(static_cast<uint32_t>(_viewports.size()));
 
     return out_handle;
 }
@@ -74,7 +72,7 @@ void dx_dynamic_rhi::beginFrame(const viewport_handle& handle)
     }
     
     _currentViewport = handle;
-    // dx_viewport& viewport = _viewports[_currentViewport.get()];
+    // dx_viewport& viewport = _viewports[_currentViewport.get() - 1];
 
     uint32_t bufferIndex = _currentFrame % g_framesInFlight;
 
@@ -88,7 +86,7 @@ void dx_dynamic_rhi::endFrame()
         return;
     }
 
-    dx_viewport& viewport = _viewports[_currentViewport.get()];
+    dx_viewport& viewport = _viewports[_currentViewport.get() - 1];
 
     uint32_t fenceIndex = _currentFrame % g_framesInFlight;
     const uint64_t current_fence = _fenceValues[fenceIndex];
@@ -112,7 +110,7 @@ void dx_dynamic_rhi::submit(const command_buffer& cmd)
         return;
     }
 
-    dx_viewport& viewport = _viewports[_currentViewport.get()];
+    dx_viewport& viewport = _viewports[_currentViewport.get() - 1];
 
     if (!viewport.mRenderTargets[_currentFrame])
         throw std::runtime_error("Current render target is null");

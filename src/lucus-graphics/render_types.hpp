@@ -1,5 +1,9 @@
 #pragma once
 
+#include "pch.hpp"
+
+#include "math_types.hpp"
+
 namespace lucus
 {
     constexpr uint32_t g_framesInFlight{ 2 };
@@ -7,16 +11,16 @@ namespace lucus
 
     struct resource_handle
     {
-        resource_handle() : index(-1) {}
-        explicit resource_handle(int idx) : index(idx) {}
+        resource_handle() : index(0) {}
+        explicit resource_handle(uint32_t idx) : index(idx) {}
         
-        int get() const { return index; }
-        bool is_valid() const { return index >= 0; }
+        uint32_t get() const { return index; }
+        bool is_valid() const { return index > 0; }
 
-        void invalidate() { index = -1; }
+        void invalidate() { index = 0; }
 
     protected:
-        int index;
+        uint32_t index;
     };
 
     struct window_handle : public resource_handle
@@ -31,18 +35,10 @@ namespace lucus
         explicit viewport_handle(int idx) : resource_handle(idx) {}
     };
 
-    struct material_handle
+    struct material_handle : public resource_handle
     {
-        material_handle() : index(0) {}
-        explicit material_handle(uint32_t idx) : index(idx) {}
-        
-        uint32_t get() const { return index; }
-        bool is_valid() const { return index > 0; }
-
-        void invalidate() { index = 0; }
-
-    protected:
-        uint32_t index;
+        material_handle() : resource_handle() {}
+        explicit material_handle(uint32_t idx) : resource_handle(idx) {}
     };
 
     struct mesh_handle : public resource_handle
@@ -51,16 +47,34 @@ namespace lucus
         explicit mesh_handle(int idx) : resource_handle(idx) {}
     };
 
+    struct render_object_handle : public resource_handle
+    {
+        render_object_handle() : resource_handle() {}
+        explicit render_object_handle(int idx) : resource_handle(idx) {}
+    };
+
     struct render_instance
     {
+        render_object_handle object;
         mesh_handle mesh;
         material_handle material;
     };
 
-    struct command_buffer
+    struct frame_uniform_buffer
     {
-        std::vector<render_instance> render_list;
+        alignas(16) glm::mat4 model; // TEST ONLY
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 proj;
     };
 
-    
+    struct object_uniform_buffer
+    {
+        alignas(16) glm::mat4 model;
+    };
+
+    struct command_buffer
+    {
+        frame_uniform_buffer frame_ubo;
+        std::vector<render_instance> render_list;
+    };
 }

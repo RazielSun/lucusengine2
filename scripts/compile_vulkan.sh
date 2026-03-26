@@ -15,7 +15,7 @@ OUT_DIR="bin/shaders"
 
 mkdir -p "$OUT_DIR"
 
-find "$SRC_DIR" -type f \( -name "*.slang" \) | while read -r file; do
+find "$SRC_DIR" -type f -name "*.slang" ! -path "*/common/*" | while read -r file; do
 
     rel="${file#$SRC_DIR/}"
     base="${rel%.slang}"
@@ -27,12 +27,12 @@ find "$SRC_DIR" -type f \( -name "*.slang" \) | while read -r file; do
 
     if [ ! -f "$out_vs" ] || [ "$file" -nt "$out_vs" ]; then
         echo "Compiling $file to $out_vs"
-        slangc "$file" -entry vsMain -profile vs_6_0 -target spirv -o -D TARGET_VULKAN=1 "$out_vs"
+        slangc "$file" -entry vsMain -profile vs_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_vs" -I "$SRC_DIR"
     fi
 
     if [ ! -f "$out_ps" ] || [ "$file" -nt "$out_ps" ]; then
         echo "Compiling $file to $out_ps"
-        slangc "$file" -entry psMain -profile ps_6_0 -target spirv -o -D TARGET_VULKAN=1 "$out_ps"
+        slangc "$file" -entry psMain -profile ps_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_ps" -I "$SRC_DIR"
     fi
 
 done

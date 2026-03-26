@@ -1,6 +1,7 @@
 #include "vk_pipeline_state.hpp"
 
 #include "filesystem.hpp"
+#include "material.hpp"
 
 using namespace lucus;
 
@@ -19,8 +20,11 @@ vk_pipeline_state::~vk_pipeline_state()
     }
 }
 
-void vk_pipeline_state::init(const std::string& shaderName, VkRenderPass renderPass)
+void vk_pipeline_state::init(material* mat, VkRenderPass renderPass, VkDescriptorSetLayout* dscSetLayout)
 {
+    assert(mat);
+    const std::string& shaderName = mat->getShaderName();
+
     VkShaderModule vertShaderModule = loadShader(shaderName + ".vert.spv");
     VkShaderModule fragShaderModule = loadShader(shaderName + ".frag.spv");
 
@@ -123,17 +127,7 @@ void vk_pipeline_state::init(const std::string& shaderName, VkRenderPass renderP
     colorBlending.blendConstants[2] = 0.0f; // Optional
     colorBlending.blendConstants[3] = 0.0f; // Optional
 
-    // Pipeline layout
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0; // Optional
-    pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
-
-    if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
-    }
+    createPipelineLayout(dscSetLayout);
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -180,3 +174,27 @@ VkShaderModule vk_pipeline_state::loadShader(const std::string& filepath) const
 
     return shaderModule;
 }
+
+void vk_pipeline_state::createPipelineLayout(VkDescriptorSetLayout* dscSetLayout)
+{
+    // Pipeline layout
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+    if (dscSetLayout != nullptr) {
+        _useUniformBuffers = true;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = dscSetLayout;
+    } else {
+        pipelineLayoutInfo.setLayoutCount = 0; // Optional
+        pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
+    }
+
+    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
+    pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
+
+    if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_pipelineLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create pipeline layout!");
+    }
+}
+

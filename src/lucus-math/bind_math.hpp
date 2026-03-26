@@ -4,5 +4,5 @@
 
 namespace lucus
 {
-    void bind_core_module();
+    void bind_math_module();
 }
