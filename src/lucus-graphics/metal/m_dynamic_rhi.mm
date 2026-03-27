@@ -30,6 +30,7 @@ void m_dynamic_rhi::init()
 {
     createDevice();
     createSyncObjectsStable();
+    createFrameUniformBuffers();
 }
 
 viewport_handle m_dynamic_rhi::createViewport(const window_handle& handle)
@@ -94,27 +95,41 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 
+    NSUInteger frameUniformOffset = _currentBufferIndex * sizeof(frame_uniform_buffer);
+    memcpy(_frameUniformBuffers[_currentBufferIndex].contents, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+
     for (const auto& renderInstance : cmd.render_list) {
         id<MTLRenderCommandEncoder> enc = [_currentBuffer renderCommandEncoderWithDescriptor:pass];
+
+        const auto& object_id = renderInstance.object;
+
+        size_t objectSize = sizeof(renderInstance.object_data);
+        NSUInteger objectUniformOffset = object_id.as_index() * objectSize;
+        memcpy(_objectUniformBuffers[_currentBufferIndex][object_id.as_index()].contents, &renderInstance.object_data, objectSize);
 
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
         {
             auto psoIt = _pipelineStates.find(material_id.get());
-            if (psoIt != _pipelineStates.end()) {
+            if (psoIt != _pipelineStates.end())
+            {
                 [enc setRenderPipelineState:psoIt->second.getPipeline()];
-            } else {
-                std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
+                if (psoIt->second.isUniformBufferUsed())
+                {
+                    [enc setVertexBuffer:_frameUniformBuffers offset:frameUniformOffset atIndex:0];
+                    [enc setVertexBuffer:_objectUniformBuffers[_currentBufferIndex] offset:objectUniformOffset atIndex:1];
+                }
+                else
+                {
+                    std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
+                }
             }
         }
 
-        auto mesh = renderInstance.mesh;
+        const auto& mesh = renderInstance.mesh;
         // TODO: Bind vertex/index buffers and draw
-        // vkCmdDraw(cmdBuffer, 3, 1, 0, 0);
-        [enc drawPrimitives:MTLPrimitiveTypeTriangle
-            vertexStart:0
-            vertexCount:3];
-
+        // TODO: mesh_handle = mesh.getDrawCount() is for test only
+        [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:mesh.get()];
         [enc endEncoding];
     }
 }
@@ -140,9 +155,19 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
     // }
 
     // TODO: !    
-    it->second.init(shaderName, _viewports[0].getPixelFormat());
+    it->second.init(mat, _viewports[0].getPixelFormat());
 
     return material_handle(shaderHash);
+}
+
+render_object_handle m_dynamic_rhi::createUniformBuffer(render_object* obj)
+{
+    static uint32_t nextObjectId = 0;
+    uint32_t objectId = ++nextObjectId;
+    if (objectId >= g_maxObjectBufferCount) {
+        throw std::runtime_error("Exceeded maximum object buffer count");
+    }
+    return render_object_handle(objectId);
 }
 
 void m_dynamic_rhi::createDevice()
@@ -158,4 +183,18 @@ void m_dynamic_rhi::createDevice()
 void m_dynamic_rhi::createSyncObjectsStable()
 {
     _frameSemaphore = dispatch_semaphore_create(g_framesInFlight);
+}
+
+void m_dynamic_rhi::createFrameUniformBuffers()
+{
+    size_t frameAlignedSize = (sizeof(frame_uniform_buffer) * g_framesInFlight + 255) & ~255;
+    _frameUniformBuffers = [_deviceHandle newBufferWithLength:frameAlignedSize options:MTLResourceStorageModeShared];
+
+    size_t objectAlignedSize = (sizeof(object_uniform_buffer) * g_maxObjectBufferCount + 255) & ~255;
+    for (int i = 0; i < g_framesInFlight; ++i)
+    {
+        _objectUniformBuffers[i] = [_deviceHandle newBufferWithLength:objectAlignedSize options:MTLResourceStorageModeShared];
+    }
+
+    std::printf("Frame & Object uniform buffers created successfully\n");
 }

@@ -1,6 +1,7 @@
 #include "m_pipeline_state.hpp"
 
 #include "filesystem.hpp"
+#include "material.hpp"
 
 using namespace lucus;
 
@@ -15,9 +16,10 @@ m_pipeline_state::~m_pipeline_state()
     _pipeline = nil;
 }
 
-void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorFormat)
+void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat)
 {
-    id<MTLLibrary> library = loadLibrary(shaderName);
+    assert(mat && "Material pointer cannot be null");
+    id<MTLLibrary> library = loadLibrary(mat->getShaderName());
 
     id<MTLFunction> vs = [library newFunctionWithName:@"vsMain"];
     id<MTLFunction> fs = [library newFunctionWithName:@"psMain"];
@@ -43,13 +45,9 @@ void m_pipeline_state::init(const std::string& shaderName, MTLPixelFormat colorF
     }
 
     _pipeline = pso;
-}
 
-// void m_renderer::createPipeline()
-// {
-//     id<MTLLibrary> library = loadLibrary("shaders/triangle.metal.metallib");
-//     _pipeline = createPipeline(library, _metalLayer.pixelFormat);
-// }
+    _useUniformBuffers = mat->isUseUniformBuffers();
+}
 
 id<MTLLibrary> m_pipeline_state::loadLibrary(const std::string& filename) const
 {

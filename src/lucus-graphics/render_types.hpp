@@ -8,6 +8,7 @@ namespace lucus
 {
     constexpr uint32_t g_framesInFlight{ 2 };
     constexpr uint32_t g_swapchainImageCount{ 3 };
+    constexpr uint32_t g_maxObjectBufferCount{ 32 }; // TODO: Make this dynamic or configurable
 
     struct resource_handle
     {

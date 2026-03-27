@@ -352,8 +352,7 @@ void vk_dynamic_rhi::createCommandBufferPool()
 
 void vk_dynamic_rhi::createDescriptorPool()
 {
-    uint32_t maxObjectCount = 32; // TODO: Make this dynamic or configurable
-    uint32_t totalCount = static_cast<uint32_t>(g_framesInFlight) * (1 + maxObjectCount); // 1 for frame UBO + maxObjectCount for object UBOs
+    uint32_t totalCount = static_cast<uint32_t>(g_framesInFlight) * (1 + g_maxObjectBufferCount); // 1 for frame UBO + maxObjectCount for object UBOs
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSize.descriptorCount = totalCount;

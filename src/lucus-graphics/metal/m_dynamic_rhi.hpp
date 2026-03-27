@@ -26,10 +26,14 @@ namespace lucus
             virtual void submit(const command_buffer& cmd) override;
 
             virtual material_handle createMaterial(material* mat) override;
+
+            virtual render_object_handle createUniformBuffer(render_object* obj) override;
         
         protected:
             void createDevice();
             void createSyncObjectsStable();
+
+            void createFrameUniformBuffers();
 
         private:
             std::unique_ptr<m_device> _device;
@@ -44,5 +48,8 @@ namespace lucus
             dispatch_semaphore_t _frameSemaphore;
 
             std::unordered_map<uint32_t, m_pipeline_state> _pipelineStates;
+
+            id<MTLBuffer> _frameUniformBuffers;
+            std::array<id<MTLBuffer>, g_framesInFlight> _objectUniformBuffers;
     };
 }
