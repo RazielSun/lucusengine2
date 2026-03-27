@@ -15,7 +15,9 @@ namespace lucus
             void setPosition(const glm::vec3& pos) { _transform.position = pos; }
             glm::vec3 getPosition() const { return _transform.position; }
 
-            void setPositionXYZ(float x, float y, float z) { _transform.position = glm::vec3(x, y, z); }
+            void setRotation(const glm::quat& rot) { _transform.rotation = rot; }
+            glm::quat getRotation() const { return _transform.rotation; }
+            void setRotationEuler(const glm::vec3& eulerAngles) { _transform.rotation = glm::quat(eulerAngles); }
 
             glm::mat4 getViewMatrix() const;
             glm::mat4 getProjectionMatrix() const;

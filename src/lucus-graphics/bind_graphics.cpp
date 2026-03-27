@@ -7,6 +7,8 @@
 #include "render_object.hpp"
 #include "camera.hpp"
 
+#include "bind_math.hpp"
+
 namespace utils
 {
     constexpr const char* window_manager_class_name = "WindowManagerClass";
@@ -202,7 +204,7 @@ void lucus::bind_render_object_class()
         method_set_mesh.c_str(),
         asMETHOD(render_object, setMesh),
         asCALL_THISCALL
-    );
+    ); assert(r >= 0);
 
     std::string method_set_material = std::string("void SetMaterial(") + material_class_name + "@)";
     r = engine->RegisterObjectMethod(
@@ -210,7 +212,23 @@ void lucus::bind_render_object_class()
         method_set_material.c_str(),
         asMETHOD(render_object, setMaterial),
         asCALL_THISCALL
-    );
+    ); assert(r >= 0);
+
+    std::string method_set_position = std::string("void SetPosition(const ") + binds::vec3_class_name + " &in)";
+    r = engine->RegisterObjectMethod(
+        render_object_class_name,
+        method_set_position.c_str(),
+        asMETHOD(render_object, setPosition),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_rotation_euler = std::string("void SetRotationEuler(const ") + binds::vec3_class_name + " &in)";
+    r = engine->RegisterObjectMethod(
+        render_object_class_name,
+        method_set_rotation_euler.c_str(),
+        asMETHOD(render_object, setRotationEuler),
+        asCALL_THISCALL
+    ); assert(r >= 0);
 }
 
 void lucus::bind_camera_class()
@@ -242,10 +260,19 @@ void lucus::bind_camera_class()
         asMETHOD(camera, releaseRef), asCALL_THISCALL
     ); assert(r >= 0);
 
+    std::string method_set_position = std::string("void SetPosition(const ") + binds::vec3_class_name + " &in)";
     r = engine->RegisterObjectMethod(
         camera_class_name,
-        "void SetPosition(float, float, float)",
-        asMETHOD(camera, setPositionXYZ),
+        method_set_position.c_str(),
+        asMETHOD(camera, setPosition),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_rotation_euler = std::string("void SetRotationEuler(const ") + binds::vec3_class_name + " &in)";
+    r = engine->RegisterObjectMethod(
+        camera_class_name,
+        method_set_rotation_euler.c_str(),
+        asMETHOD(camera, setRotationEuler),
         asCALL_THISCALL
     ); assert(r >= 0);
 }

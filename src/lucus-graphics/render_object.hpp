@@ -24,6 +24,16 @@ namespace lucus
             const transform& getTransform() const { return _transform; }
             void setTransform(const transform& t) { _transform = t; }
 
+            const glm::vec3& getPosition() const { return _transform.position; }
+            void setPosition(const glm::vec3& position) { _transform.position = position; }
+
+            const glm::quat& getRotation() const { return _transform.rotation; }
+            void setRotation(const glm::quat& rotation) { _transform.rotation = rotation; }
+            void setRotationEuler(const glm::vec3& eulerAngles) { _transform.rotation = glm::quat(eulerAngles); }
+
+            const glm::vec3& getScale() const { return _transform.scale; }
+            void setScale(const glm::vec3& scale) { _transform.scale = scale; }
+
             const render_object_handle& getHandle() const { return _handle; }
             void setHandle(const render_object_handle& handle) { _handle = handle; }
 
