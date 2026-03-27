@@ -91,18 +91,19 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
         dispatch_semaphore_signal(semaphore);
     }];
 
-    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].texture = _currentDrawable.texture;
-    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    descriptor.colorAttachments[0].texture = _currentDrawable.texture;
+    descriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+    descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+    descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+
+    id<MTLRenderCommandEncoder> pass = [_currentBuffer renderCommandEncoderWithDescriptor:descriptor];
 
     size_t frameUniformOffset = _currentBufferIndex * sizeof(frame_uniform_buffer);
     memcpy((uint8_t*)_frameUniformBuffers.contents + frameUniformOffset, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
 
-    for (const auto& renderInstance : cmd.render_list) {
-        id<MTLRenderCommandEncoder> enc = [_currentBuffer renderCommandEncoderWithDescriptor:pass];
-
+    for (const auto& renderInstance : cmd.render_list)
+    {
         const auto& object_id = renderInstance.object;
 
         size_t objectSize = sizeof(renderInstance.object_data);
@@ -115,11 +116,11 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
             auto psoIt = _pipelineStates.find(material_id.get());
             if (psoIt != _pipelineStates.end())
             {
-                [enc setRenderPipelineState:psoIt->second.getPipeline()];
+                [pass setRenderPipelineState:psoIt->second.getPipeline()];
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    [enc setVertexBuffer:_frameUniformBuffers offset:frameUniformOffset atIndex:0];
-                    [enc setVertexBuffer:_objectUniformBuffers[_currentBufferIndex] offset:objectUniformOffset atIndex:1];
+                    [pass setVertexBuffer:_frameUniformBuffers offset:frameUniformOffset atIndex:0];
+                    [pass setVertexBuffer:_objectUniformBuffers[_currentBufferIndex] offset:objectUniformOffset atIndex:1];
                 }
                 else
                 {
@@ -131,9 +132,10 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
         const auto& mesh = renderInstance.mesh;
         // TODO: Bind vertex/index buffers and draw
         // TODO: mesh_handle = mesh.getDrawCount() is for test only
-        [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:mesh.get()];
-        [enc endEncoding];
+        [pass drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:mesh.get()];
     }
+
+    [pass endEncoding];
 }
 
 material_handle m_dynamic_rhi::createMaterial(material* mat)
