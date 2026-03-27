@@ -28,7 +28,7 @@ void main()
         cube_mat.SetUseUniformBuffers(true);
 
         RenderObject@ cube_obj1 = g_renderer.EmplaceRenderObject();
-        cube_obj1.SetPosition(Vec3(-1.5f, 0.f, 0.f));
+        cube_obj1.SetPosition(Vec3(-1.f, 0.f, 0.f));
         cube_obj1.SetRotationEuler(Vec3(0.f, 0.f, 0.f));
         cube_obj1.SetMesh(cube);
         cube_obj1.SetMaterial(cube_mat);
@@ -40,7 +40,7 @@ void main()
         cube_obj2.SetMaterial(cube_mat);
 
         RenderObject@ cube_obj3 = g_renderer.EmplaceRenderObject();
-        cube_obj3.SetPosition(Vec3(1.5f, 0.f, 0.f));
+        cube_obj3.SetPosition(Vec3(1.f, 0.f, 0.f));
         cube_obj3.SetRotationEuler(Vec3(90.f, 0.f, 0.f));
         cube_obj3.SetMesh(cube);
         cube_obj3.SetMaterial(cube_mat);

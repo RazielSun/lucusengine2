@@ -273,7 +273,10 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
     vkCmdSetViewport(cmdBuffer, 0, 1, &viewport.viewport);
     vkCmdSetScissor(cmdBuffer, 0, 1, &viewport.scissor);
 
-    _frameUniformBuffer.write(_currentBufferIndex, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+    // HACK: clip space Y for Vulkan
+    auto frame_ubo = cmd.frame_ubo;
+    frame_ubo.proj[1][1] *= -1;
+    _frameUniformBuffer.write(_currentBufferIndex, &frame_ubo, sizeof(frame_ubo));
 
     for (const auto& renderInstance : cmd.render_list)
     {
