@@ -41,10 +41,6 @@ target_include_directories (${MODULE_NAME} PUBLIC
 #     "$<$<COMPILE_LANGUAGE:CXX>:${LUCUS_ENGINE_SRC}/lucus-pch/pch.hpp>"
 # )
 
-if(APPLE OR WIN32)
-    target_compile_features ( ${MODULE_NAME} PUBLIC cxx_std_20 )
-endif()
-
 target_link_libraries ( ${MODULE_NAME} PUBLIC
     ${MODULE_EXTRA_LIBS}
 )

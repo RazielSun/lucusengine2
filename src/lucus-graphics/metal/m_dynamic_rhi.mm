@@ -72,6 +72,8 @@ void m_dynamic_rhi::endFrame()
 
     [_currentBuffer presentDrawable:_currentDrawable];
     [_currentBuffer commit];
+
+    _currentBufferIndex = (_currentBufferIndex + 1) % g_framesInFlight;
 }
 
 void m_dynamic_rhi::submit(const command_buffer& cmd)
@@ -95,8 +97,8 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 
-    NSUInteger frameUniformOffset = _currentBufferIndex * sizeof(frame_uniform_buffer);
-    memcpy(_frameUniformBuffers[_currentBufferIndex].contents, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+    size_t frameUniformOffset = _currentBufferIndex * sizeof(frame_uniform_buffer);
+    memcpy((uint8_t*)_frameUniformBuffers.contents + frameUniformOffset, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
 
     for (const auto& renderInstance : cmd.render_list) {
         id<MTLRenderCommandEncoder> enc = [_currentBuffer renderCommandEncoderWithDescriptor:pass];
@@ -104,8 +106,8 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
         const auto& object_id = renderInstance.object;
 
         size_t objectSize = sizeof(renderInstance.object_data);
-        NSUInteger objectUniformOffset = object_id.as_index() * objectSize;
-        memcpy(_objectUniformBuffers[_currentBufferIndex][object_id.as_index()].contents, &renderInstance.object_data, objectSize);
+        size_t objectUniformOffset = objectSize * object_id.as_index();
+        memcpy((uint8_t*)_objectUniformBuffers[_currentBufferIndex].contents + objectUniformOffset, &renderInstance.object_data, objectSize);
 
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())

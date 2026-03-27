@@ -44,6 +44,7 @@ namespace lucus
             viewport_handle _currentViewport;
             id<CAMetalDrawable> _currentDrawable = nil;
             id<MTLCommandBuffer> _currentBuffer = nil;
+            uint32_t _currentBufferIndex{ 0 };
 
             dispatch_semaphore_t _frameSemaphore;
 
