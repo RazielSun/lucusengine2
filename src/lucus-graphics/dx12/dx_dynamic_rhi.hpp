@@ -6,6 +6,7 @@
 #include "dx_device.hpp"
 #include "dx_viewport.hpp"
 #include "dx_pipeline_state.hpp"
+#include "dx_buffer.hpp"
 #include "dx_render_types.hpp"
 
 namespace lucus
@@ -27,6 +28,8 @@ namespace lucus
 
             virtual material_handle createMaterial(material* mat) override;
 
+            virtual render_object_handle createUniformBuffer(render_object* obj) override;
+
         protected:
             void createInstance();
             void createDevice();
@@ -34,7 +37,7 @@ namespace lucus
 
             void createSyncObjectsStable();
 
-            void createRootSignature();
+            void createFrameUniformBuffers();
 
             void wait_idle();
 
@@ -56,11 +59,13 @@ namespace lucus
             std::array<uint64_t, g_framesInFlight> _fenceValues{};
             void* _fenceEvent = nullptr;
 
-            Com<ID3D12RootSignature> _rootSignature;
-
             std::vector<dx_viewport> _viewports;
 
             //
             std::unordered_map<uint32_t, dx_pipeline_state> _pipelineStates;
+
+            //
+            dx_buffer _frameUniformBuffer;
+            std::vector<dx_buffer> _objectUniformBuffers;
     };
 }

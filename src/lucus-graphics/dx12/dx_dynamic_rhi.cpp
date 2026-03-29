@@ -22,7 +22,12 @@ dx_dynamic_rhi::dx_dynamic_rhi()
 
 dx_dynamic_rhi::~dx_dynamic_rhi()
 {
-    // TODO: destroy other
+    _frameUniformBuffer.cleanup();
+    for (auto& buffer : _objectUniformBuffers) {
+        buffer.cleanup();
+    }
+    _objectUniformBuffers.clear();
+
     _fence.Reset();
 
     _pipelineStates.clear();
@@ -46,7 +51,7 @@ void dx_dynamic_rhi::init()
     createDevice();
     createCommandBufferPool();
     createSyncObjectsStable();
-    createRootSignature();
+    createFrameUniformBuffers();
 }
 
 viewport_handle dx_dynamic_rhi::createViewport(const window_handle& handle)
@@ -141,24 +146,42 @@ void dx_dynamic_rhi::submit(const command_buffer& cmd)
     _commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
     _commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
 
-    _commandBuffer->SetGraphicsRootSignature(_rootSignature.Get());
+    uint32_t bufferIndex = _currentFrame % g_framesInFlight;
 
-    for (const auto& renderInstance : cmd.render_list) {
+    _frameUniformBuffer.write(bufferIndex, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+
+    for (const auto& renderInstance : cmd.render_list)
+    {
+        const auto& object_id = renderInstance.object;
+
+        dx_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
+        buffer.write(bufferIndex, &renderInstance.object_data, sizeof(renderInstance.object_data));
+
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
         {
             auto psoIt = _pipelineStates.find(material_id.get());
-            if (psoIt != _pipelineStates.end()) {
+            if (psoIt != _pipelineStates.end())
+            {
+                _commandBuffer->SetGraphicsRootSignature(psoIt->second.getRootSignature().Get());
                 _commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
-            } else {
+                if (psoIt->second.isUniformBufferUsed())
+                {
+                    cmd->SetGraphicsRootConstantBufferView(0, frameCB[currentFrame]->GetGPUVirtualAddress());
+                    cmd->SetGraphicsRootConstantBufferView(1, objectCBs[object_id.as_index()][currentFrame]->GetGPUVirtualAddress());
+                }
+            }
+            else
+            {
                 std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
             }
         }
-
-        auto mesh = renderInstance.mesh;
+        
+        const auto& mesh = renderInstance.mesh;
         // TODO: Bind vertex/index buffers and draw
         _commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        _commandBuffer->DrawInstanced(3, 1, 0, 0);
+        // TODO: mesh_handle = mesh.getDrawCount() is for test only
+        _commandBuffer->DrawInstanced(mesh.get(), 1, 0, 0);
     }
 
     D3D12_RESOURCE_BARRIER barrier_end{};
@@ -181,6 +204,8 @@ void dx_dynamic_rhi::submit(const command_buffer& cmd)
 
 material_handle dx_dynamic_rhi::createMaterial(material* mat)
 {
+    assert(mat != nullptr);
+
     const std::string& shaderName = mat->getShaderName();
     uint32_t shaderHash = std::hash<std::string>{}(shaderName);
 
@@ -189,7 +214,7 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
         return material_handle(it->first);
     }
 
-    dx_pipeline_state pipeline_state(_deviceHandle, _rootSignature);
+    dx_pipeline_state pipeline_state(_deviceHandle);
     _pipelineStates.emplace(shaderHash, pipeline_state);
 
     it = _pipelineStates.find(shaderHash);
@@ -200,9 +225,22 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
     //     return material_handle();
     // }
     
-    it->second.init(shaderName);
+    it->second.init(mat, mat->isUseUniformBuffers() ? 2 : 0);
 
     return material_handle(shaderHash);
+}
+
+render_object_handle dx_dynamic_rhi::createUniformBuffer(render_object* obj)
+{
+    assert(obj != nullptr);
+
+    _objectUniformBuffers.emplace_back();
+    dx_buffer& buffer = _objectUniformBuffers.back();
+    buffer.init(_deviceHandle, sizeof(uniform_buffer));
+
+    std::printf("Uniform buffer for object %p created successfully\n", obj);
+
+    return render_object_handle(static_cast<uint32_t>(_objectUniformBuffers.size()));
 }
 
 void dx_dynamic_rhi::createInstance()
@@ -337,73 +375,11 @@ void dx_dynamic_rhi::createSyncObjectsStable()
     std::printf("ID3D12Fence created successfully\n");
 }
 
-void dx_dynamic_rhi::createRootSignature()
+void dx_dynamic_rhi::createFrameUniformBuffers()
 {
-    // Create an empty root signature.
-	//with 1 parameter for CB
-	// {
-	// 	CD3DX12_DESCRIPTOR_RANGE cbRange;
-	// 	cbRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+    _frameUniformBuffer.init(_deviceHandle, sizeof(frame_uniform_buffer));
 
-	// 	CD3DX12_DESCRIPTOR_RANGE srRange;
-	// 	srRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-
-	// 	CD3DX12_ROOT_PARAMETER rootParameters[2];
-	// 	rootParameters[0].InitAsConstantBufferView(0);
-	// 	//rootParameters[0].InitAsDescriptorTable(1, &cbRange, D3D12_SHADER_VISIBILITY_VERTEX);
-	// 	rootParameters[1].InitAsDescriptorTable(1, &srRange, D3D12_SHADER_VISIBILITY_PIXEL);
-
-	// 	// Use a static sampler that matches the defaults
-	// 	// https://msdn.microsoft.com/en-us/library/windows/desktop/dn913202(v=vs.85).aspx#static_sampler
-	// 	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
-	// 	samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
-	// 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	// 	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	// 	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	// 	samplerDesc.MaxAnisotropy = 16;
-	// 	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-	// 	samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-	// 	samplerDesc.MinLOD = 0;
-	// 	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	// 	samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-	// 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	// 	//rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-	// 	rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 1, &samplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	// 	Com<ID3DBlob> signature;
-	// 	Com<ID3DBlob> error;
-	// 	ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
-	// 	ThrowIfFailed(deviceDX->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&mRootSignature)));
-
-	// 	mRootSignature->SetName(L"Root Signature");
-	// }
-
-    D3D12_ROOT_SIGNATURE_DESC desc{};
-    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-    Com<ID3DBlob> signature;
-    Com<ID3DBlob> error;
-
-    ThrowIfFailed(D3D12SerializeRootSignature(
-            &desc,
-            D3D_ROOT_SIGNATURE_VERSION_1,
-            &signature,
-            &error
-        ),
-        "Failed Serialize Root Signature"
-    );
-
-    ThrowIfFailed(_deviceHandle->CreateRootSignature(
-            0,
-            signature->GetBufferPointer(),
-            signature->GetBufferSize(),
-            IID_PPV_ARGS(&_rootSignature)
-        ),
-        "Failed Create Root Signature"
-    );
-
-    std::printf("ID3D12RootSignature created successfully\n");
+    std::printf("Frame uniform buffer created successfully\n");
 }
 
 void dx_dynamic_rhi::wait_idle()

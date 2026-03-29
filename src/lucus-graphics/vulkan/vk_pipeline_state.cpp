@@ -20,7 +20,7 @@ vk_pipeline_state::~vk_pipeline_state()
     }
 }
 
-void vk_pipeline_state::init(material* mat, VkRenderPass renderPass, uint32_t layoutCount, VkDescriptorSetLayout* layouts)
+void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint32_t layoutCount, VkDescriptorSetLayout* layouts)
 {
     assert(mat);
     const std::string& shaderName = mat->getShaderName();

@@ -12,7 +12,7 @@ namespace lucus
             vk_pipeline_state(VkDevice device);
             ~vk_pipeline_state();
 
-            void init(material* mat, VkRenderPass renderPass, uint32_t layoutCount = 0, VkDescriptorSetLayout* layouts = nullptr);
+            void init(const material* mat, VkRenderPass renderPass, uint32_t layoutCount = 0, VkDescriptorSetLayout* layouts = nullptr);
 
             VkPipeline& getPipeline() { return _pipeline; }
             VkPipelineLayout& getPipelineLayout() { return _pipelineLayout; }
