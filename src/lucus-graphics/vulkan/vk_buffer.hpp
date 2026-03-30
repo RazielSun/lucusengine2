@@ -14,7 +14,7 @@ namespace lucus
 
             void write(uint32_t index, const void* data, size_t size);
 
-            VkDescriptorSet* getDescriptorSet(uint32_t index) { return &_descriptorSets[index]; }
+            VkDescriptorSet* get(uint32_t index) { return &_descriptorSets[index]; }
 
         protected:
             void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);

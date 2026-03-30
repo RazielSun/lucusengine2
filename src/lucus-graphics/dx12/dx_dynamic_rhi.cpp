@@ -167,8 +167,8 @@ void dx_dynamic_rhi::submit(const command_buffer& cmd)
                 _commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    cmd->SetGraphicsRootConstantBufferView(0, frameCB[currentFrame]->GetGPUVirtualAddress());
-                    cmd->SetGraphicsRootConstantBufferView(1, objectCBs[object_id.as_index()][currentFrame]->GetGPUVirtualAddress());
+                    _commandBuffer->SetGraphicsRootConstantBufferView(0, _frameUniformBuffer.get(bufferIndex)->GetGPUVirtualAddress());
+                    _commandBuffer->SetGraphicsRootConstantBufferView(1, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
                 }
             }
             else
@@ -236,7 +236,7 @@ render_object_handle dx_dynamic_rhi::createUniformBuffer(render_object* obj)
 
     _objectUniformBuffers.emplace_back();
     dx_buffer& buffer = _objectUniformBuffers.back();
-    buffer.init(_deviceHandle, sizeof(uniform_buffer));
+    buffer.init(_deviceHandle, sizeof(frame_uniform_buffer));
 
     std::printf("Uniform buffer for object %p created successfully\n", obj);
 

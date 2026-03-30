@@ -89,7 +89,7 @@ void dx_pipeline_state::init(const material* mat, uint32_t layoutCount)
     std::printf("ID3D12PipelineState created successfully\n");
 }
 
-void dx_pipeline_state::createRootSignature(uint32_t layoutCount = 0)
+void dx_pipeline_state::createRootSignature(uint32_t layoutCount)
 {
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc{};
     desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
@@ -145,10 +145,4 @@ void dx_pipeline_state::createRootSignature(uint32_t layoutCount = 0)
     );
 
     std::printf("ID3D12RootSignature created successfully\n");
-}
-
-
-void dx_dynamic_rhi::createRootSignature()
-{
-    
 }
