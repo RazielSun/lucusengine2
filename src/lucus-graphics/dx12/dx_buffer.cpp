@@ -12,10 +12,11 @@ void dx_buffer::init(Com<ID3D12Device> device, uint32_t bufferSize)
 
     uniformBuffersMapped.resize(g_framesInFlight);
 
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
     for (size_t i = 0; i < g_framesInFlight; ++i)
     {
         ThrowIfFailed(_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &bufferDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
