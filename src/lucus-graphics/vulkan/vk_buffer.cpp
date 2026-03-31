@@ -1,5 +1,7 @@
 #include "vk_buffer.hpp"
 
+#include "vk_utils.hpp"
+
 using namespace lucus;
 
 void vk_buffer::init(VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, VkDeviceSize bufferSize)
@@ -54,27 +56,13 @@ void vk_buffer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemo
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+    allocInfo.memoryTypeIndex = utils::findMemoryType(_gpu, memRequirements.memoryTypeBits, properties);
 
     if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate buffer memory!");
     }
 
     vkBindBufferMemory(_device, buffer, bufferMemory, 0);
-}
-
-uint32_t vk_buffer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
-{
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(_gpu, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("failed to find suitable memory type!");
 }
 
 void vk_buffer::createDescriptorSets(VkDeviceSize bufferSize)

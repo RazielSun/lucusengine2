@@ -34,36 +34,15 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     }
     _objectUniformBuffers.clear();
 
-    for (auto& fence : _waitFences) {
-        vkDestroyFence(_deviceHandle, fence, nullptr);
-    }
-    
-    for (auto& semaphore : _renderCompleteSemaphores) {
-        vkDestroySemaphore(_deviceHandle, semaphore, nullptr);
-    }
-
-    for (auto& semaphore : _presentCompleteSemaphores) {
-        vkDestroySemaphore(_deviceHandle, semaphore, nullptr);
-    }
-
-	for (auto& framebuffer : _frameBuffers) {
-        framebuffer.cleanup(_deviceHandle);
-    }
-    _frameBuffers.clear();
-
-    for (auto& renderPass : _renderPasses) {
-        renderPass.cleanup(_deviceHandle);
-    }
-    _renderPasses.clear();
-
     _pipelineStates.clear();
 
-    _commandbuffer_pool.cleanup(_deviceHandle);
+    _commandbuffer_pool.cleanup();
     
-    for (auto& viewport : _viewports) {
-        viewport.cleanup(_instance, _deviceHandle);
+    for (auto& ctx : _contexts) {
+        ctx.cleanup();
     }
-    _viewports.clear();
+    _contexts.clear();
+    _contextHandles.clear();
 
     _device.reset();
 
@@ -75,7 +54,6 @@ void vk_dynamic_rhi::init()
     createInstance();
     createDevice();
     createCommandBufferPool();
-    createSyncObjectsStable();
     
     createDescriptorPool();
     createDescriptorSetLayouts();
@@ -186,61 +164,58 @@ void vk_dynamic_rhi::createDevice()
     // vkGetDeviceQueue(_device, indices.presentFamily.value(), 0, &_presentQueue);
 }
 
-viewport_handle vk_dynamic_rhi::createViewport(const window_handle& handle)
+window_context_handle vk_dynamic_rhi::createWindowContext(const window_handle& handle)
 {
     window* window = window_manager::instance().getWindow(handle);
 	if (!window) {
 		throw std::runtime_error("Invalid window handle provided to vk_swapchain::init");
 	}
 
-    vk_viewport viewport;
-    viewport.init(_instance, _device->getGPU(), _deviceHandle, window);
+    vk_window_context context;
+    context.init(_instance, _device->getGPU(), _deviceHandle, window);
 
-    _viewports.push_back(viewport);
+    _contexts.push_back(context);
 
-    viewport_handle out_handle(static_cast<uint32_t>(_viewports.size()));
-
-    createSyncObjectsBy(viewport.imageCount);
-
-    // TODO: ?
-    vk_render_pass renderPass;
-    vk_framebuffer framebuffer;
-    getOrCreateRenderPassAndFramebuffer(viewport, renderPass, framebuffer);
+    window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
+    _contextHandles.push_back(out_handle);
 
     return out_handle;
 }
 
-void vk_dynamic_rhi::beginFrame(const viewport_handle& handle)
+const std::vector<window_context_handle>& vk_dynamic_rhi::getWindowContexts() const
+{
+    return _contextHandles;
+}
+
+float vk_dynamic_rhi::getWindowContextAspectRatio(const window_context_handle& handle) const
 {
     if (!handle.is_valid()) {
+        return 1.0f;
+    }
+
+    const auto& ctx = _contexts[handle.as_index()];
+    return static_cast<float>(ctx.swapChain.extent.width) / static_cast<float>(ctx.swapChain.extent.height);
+}
+
+void vk_dynamic_rhi::beginFrame(const window_context_handle& ctx_handle)
+{
+    if (!ctx_handle.is_valid()) {
         return;
     }
 
-    vkWaitForFences(_deviceHandle, 1, &_waitFences[_currentBufferIndex], VK_TRUE, UINT64_MAX);
-    vkResetFences(_deviceHandle, 1, &_waitFences[_currentBufferIndex]);
-    
-    _currentViewport = handle;
-    vk_viewport& viewport = _viewports[_currentViewport.as_index()];
-
-    vkAcquireNextImageKHR(_deviceHandle, viewport.swapChain, UINT64_MAX, _presentCompleteSemaphores[_currentBufferIndex], (VkFence)nullptr, &_currentImageIndex);
+    auto& ctx = _contexts[ctx_handle.as_index()];
+    ctx.wait_frame();
 }
 
-void vk_dynamic_rhi::endFrame()
+void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const command_buffer& cmd)
 {
-    _currentBufferIndex = (_currentBufferIndex + 1) % g_framesInFlight;
-
-    wait_idle();
-}
-
-void vk_dynamic_rhi::submit(const command_buffer& cmd)
-{
-    if (!_currentViewport.is_valid()) {
+    if (!ctx_handle.is_valid()) {
         return;
     }
 
-    vk_viewport& viewport = _viewports[_currentViewport.as_index()];
+    vk_window_context& ctx = _contexts[ctx_handle.as_index()];
 
-    VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(_currentBufferIndex);
+    VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(ctx.currentFrame);
 
     vkResetCommandBuffer(cmdBuffer, 0);
 
@@ -253,37 +228,36 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
-    vk_render_pass renderPass;
-    vk_framebuffer framebuffer;
-    getOrCreateRenderPassAndFramebuffer(viewport, renderPass, framebuffer);
-
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass.renderPass;
-    renderPassInfo.framebuffer = framebuffer.frameBuffers[_currentImageIndex];
+    renderPassInfo.renderPass = ctx.renderPass.renderPass;
+    renderPassInfo.framebuffer = ctx.framebuffers.frameBuffers[ctx.currentImageIndex].framebuffer;
     renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = viewport.extent;
+    renderPassInfo.renderArea.extent = ctx.swapChain.extent;
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
+
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
 
     vkCmdBeginRenderPass(cmdBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport.viewport);
-    vkCmdSetScissor(cmdBuffer, 0, 1, &viewport.scissor);
+    vkCmdSetViewport(cmdBuffer, 0, 1, &ctx.viewport.viewport);
+    vkCmdSetScissor(cmdBuffer, 0, 1, &ctx.viewport.scissor);
 
     // HACK: clip space Y for Vulkan
     auto frame_ubo = cmd.frame_ubo;
     frame_ubo.proj[1][1] *= -1;
-    _frameUniformBuffer.write(_currentBufferIndex, &frame_ubo, sizeof(frame_ubo));
+    _frameUniformBuffer.write(ctx.currentFrame, &frame_ubo, sizeof(frame_ubo));
 
     for (const auto& renderInstance : cmd.render_list)
     {
         const auto& object_id = renderInstance.object;
         vk_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
 
-        buffer.write(_currentBufferIndex, &renderInstance.object_data, sizeof(renderInstance.object_data));
+        buffer.write(ctx.currentFrame, &renderInstance.object_data, sizeof(renderInstance.object_data));
 
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
@@ -293,8 +267,8 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
                 vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipeline());
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, _frameUniformBuffer.get(_currentBufferIndex), 0, nullptr);
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 1, 1, buffer.get(_currentBufferIndex), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, _frameUniformBuffer.get(ctx.currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 1, 1, buffer.get(ctx.currentFrame), 0, nullptr);
                 }
             } else {
                 std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
@@ -313,36 +287,47 @@ void vk_dynamic_rhi::submit(const command_buffer& cmd)
         throw std::runtime_error("failed to record command buffer!");
     }
 
-    uint32_t imageIndex = _currentImageIndex;
-
 	const VkPipelineStageFlags waitPipelineStage{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	VkSubmitInfo submitInfo{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &_presentCompleteSemaphores[_currentBufferIndex],
+		.pWaitSemaphores = &ctx.frames[ctx.currentFrame].imageAvailable,
 		.pWaitDstStageMask = &waitPipelineStage,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &cmdBuffer,
 		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &_renderCompleteSemaphores[_currentBufferIndex]
+		.pSignalSemaphores = &ctx.frames[ctx.currentFrame].renderFinished
 	};
     
-	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _waitFences[_currentBufferIndex]) != VK_SUCCESS) {
+	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, ctx.frames[ctx.currentFrame].fence) != VK_SUCCESS) {
 		throw std::runtime_error("failed to submit draw command buffer!");
 	}
 
 	VkPresentInfoKHR presentInfo{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &_renderCompleteSemaphores[_currentBufferIndex],
+        .pWaitSemaphores = &ctx.frames[ctx.currentFrame].renderFinished,
         .swapchainCount = 1,
-        .pSwapchains = &viewport.swapChain,
-        .pImageIndices = &_currentImageIndex,
+        .pSwapchains = &ctx.swapChain.swapChain,
+        .pImageIndices = &ctx.currentImageIndex,
         .pResults = nullptr // Optional
     };
 
     // vkQueuePresentKHR(_presentQueue, &presentInfo);
     vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+}
+
+void vk_dynamic_rhi::endFrame(const window_context_handle& ctx_handle)
+{
+    if (!ctx_handle.is_valid()) {
+        return;
+    }
+
+    vk_window_context& ctx = _contexts[ctx_handle.as_index()];
+
+    ctx.currentFrame = (ctx.currentFrame + 1) % g_framesInFlight;
+
+    wait_idle();
 }
 
 void vk_dynamic_rhi::createCommandBufferPool()
@@ -430,58 +415,6 @@ void vk_dynamic_rhi::createFrameUniformBuffers()
     std::printf("Frame uniform buffer created successfully\n");
 }
 
-void vk_dynamic_rhi::createFramebuffer(const vk_viewport& viewport, const vk_render_pass& renderPass)
-{
-    vk_framebuffer framebuffer;
-    framebuffer.init(_deviceHandle, viewport, renderPass.renderPass);
-    _frameBuffers.push_back(framebuffer);
-}
-
-void vk_dynamic_rhi::createSyncObjectsStable()
-{
-    VkFenceCreateInfo fenceInfo{
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT
-    };
-
-    // Wait fences to sync command buffer access
-    for (auto& fence : _waitFences) {
-        if (vkCreateFence(_deviceHandle, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
-        }
-    }
-
-    VkSemaphoreCreateInfo semaphoreInfo{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
-    };
-
-    // Used to ensure that image presentation is complete before starting to submit again
-    for (auto& semaphore : _presentCompleteSemaphores) {
-        if (vkCreateSemaphore(_deviceHandle, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
-        }
-    }
-
-    std::printf("Semaphores and fences [Stable] created successfully\n");
-}
-
-void vk_dynamic_rhi::createSyncObjectsBy(int imageCount)
-{
-    VkSemaphoreCreateInfo semaphoreInfo{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
-    };
-
-    // Semaphore used to ensure that all commands submitted have been finished before submitting the image to the queue
-	_renderCompleteSemaphores.resize(imageCount);
-    for (auto& semaphore : _renderCompleteSemaphores) {
-        if (vkCreateSemaphore(_deviceHandle, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
-        }
-    }
-
-    std::printf("Semaphores [ImageCount: %d] created successfully\n", imageCount);
-}
-
 material_handle vk_dynamic_rhi::createMaterial(material* mat)
 {
     assert(mat != nullptr);
@@ -496,11 +429,7 @@ material_handle vk_dynamic_rhi::createMaterial(material* mat)
 
     it = _pipelineStates.find(shaderHash);
 
-    int renderPassIndex = mat->getRenderPass();
-    if (renderPassIndex < 0 || renderPassIndex >= static_cast<int>(_renderPasses.size())) {
-        std::cerr << "Invalid render pass index in material: " << renderPassIndex << std::endl;
-        return material_handle();
-    }
+    auto& renderPass = _contexts[0].renderPass; // HACK: using first context's render pass for now
     
     if (mat->isUseUniformBuffers())
     {
@@ -508,11 +437,11 @@ material_handle vk_dynamic_rhi::createMaterial(material* mat)
             _frameDescriptorSetLayout,
             _objectDescriptorSetLayout
         };
-        it->second.init(mat, _renderPasses[renderPassIndex].renderPass, static_cast<uint32_t>(layouts.size()), layouts.data());
+        it->second.init(mat, renderPass.renderPass, static_cast<uint32_t>(layouts.size()), layouts.data());
     }
     else
     {
-        it->second.init(mat, _renderPasses[renderPassIndex].renderPass);
+        it->second.init(mat, renderPass.renderPass);
     }
 
     std::printf("Material %d created successfully\n", shaderHash);
@@ -529,30 +458,6 @@ render_object_handle vk_dynamic_rhi::createUniformBuffer(render_object* obj)
     std::printf("Uniform buffer for object %p created successfully\n", obj);
 
     return render_object_handle(static_cast<uint32_t>(_objectUniformBuffers.size()));
-}
-
-void vk_dynamic_rhi::getOrCreateRenderPassAndFramebuffer(const vk_viewport& viewport, vk_render_pass& outRenderPass, vk_framebuffer& outFramebuffer)
-{
-    int index = -1;
-    for (size_t i = 0; i < _renderPasses.size(); i++) {
-        if (_renderPasses[i].colorFormat == viewport.colorFormat) {
-            index = static_cast<int>(i);
-            break;
-        }
-    }
-
-    if (index == -1) {
-        index = static_cast<int>(_renderPasses.size());
-
-        _renderPasses.emplace_back();
-        vk_render_pass& newRenderPass = _renderPasses.back();
-        newRenderPass.init(_deviceHandle, viewport.colorFormat);
-
-        createFramebuffer(viewport, newRenderPass);
-    }
-
-    outRenderPass = _renderPasses[index];
-    outFramebuffer = _frameBuffers[index];
 }
 
 void vk_dynamic_rhi::wait_idle()

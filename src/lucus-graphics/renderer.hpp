@@ -27,15 +27,13 @@ namespace lucus
         void setCamera(camera* cam) { _camera.reset(cam); }
     
     protected:
-        void updateFrameUniformBuffer(frame_uniform_buffer& ubo);
+        void updateFrameUniformBuffer(const window_context_handle& ctx_handle, frame_uniform_buffer& ubo);
         void processObjects(command_buffer& cmd);
 
     private:
         std::shared_ptr<dynamic_rhi> _dynamicRHI;
 
         std::vector<intrusive_ptr<render_object>> _renderObjects;
-        
-        viewport_handle _mainViewport;
 
         intrusive_ptr<camera> _camera;
     };

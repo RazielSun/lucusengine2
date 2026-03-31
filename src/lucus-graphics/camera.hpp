@@ -20,13 +20,12 @@ namespace lucus
             void setRotationEuler(const glm::vec3& eulerAngles) { _transform.rotation = glm::quat(eulerAngles); }
 
             glm::mat4 getViewMatrix() const;
-            glm::mat4 getProjectionMatrix() const;
+            glm::mat4 getProjectionMatrix(float aspectRatio) const;
 
         private:
             transform _transform;
 
             float _fovYRadians = glm::radians(60.0f);
-            float _aspect = 16.0f / 9.0f;
             float _zNear = 0.1f;
             float _zFar = 1000.0f;
     };

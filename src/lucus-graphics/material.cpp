@@ -11,6 +11,8 @@ material* material::create_factory(const std::string& shaderName)
 
 uint32_t material::getHash() const
 {
-    // TODO: Other params
-    return std::hash<std::string>{}(_shaderName);
+    const uint32_t shaderHash = static_cast<uint32_t>(std::hash<std::string>{}(_shaderName));
+    const uint32_t uniformBufferHash = static_cast<uint32_t>(_useUniformBuffers);
+
+    return shaderHash ^ (uniformBufferHash << 1);
 }

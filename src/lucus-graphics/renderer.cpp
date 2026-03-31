@@ -17,24 +17,27 @@ void renderer::init(window_handle handle)
     }
     
     if (_dynamicRHI) {
-        auto viewport = _dynamicRHI->createViewport(handle);
-        if (!_mainViewport.is_valid()) {
-            _mainViewport = viewport;
+        auto window_context = _dynamicRHI->createWindowContext(handle);
+        if (!window_context.is_valid())
+        {
+            // Handle error: Failed to create window context
+            std::printf("Error: Failed to create window context for handle %u\n", handle.get());
         }
     }
 }
 
 void renderer::tick(float dt)
 {
-    _dynamicRHI->beginFrame(_mainViewport);
+    for (const auto& context : _dynamicRHI->getWindowContexts())
+    {
+        command_buffer cmd;
+        updateFrameUniformBuffer(context, cmd.frame_ubo);
+        processObjects(cmd);
 
-    command_buffer cmd;
-    updateFrameUniformBuffer(cmd.frame_ubo);
-    processObjects(cmd);
-
-    _dynamicRHI->submit(cmd);
-
-    _dynamicRHI->endFrame();
+        _dynamicRHI->beginFrame(context);
+        _dynamicRHI->submit(context, cmd);
+        _dynamicRHI->endFrame(context);
+    }
 }
 
 void renderer::cleanup()
@@ -49,13 +52,15 @@ render_object* renderer::emplaceRenderObject()
     return renderObject;
 }
 
-void renderer::updateFrameUniformBuffer(frame_uniform_buffer& ubo)
+void renderer::updateFrameUniformBuffer(const window_context_handle& ctx_handle, frame_uniform_buffer& ubo)
 {
     if (_camera)
     {
         // ubo.model = glm::mat4(1.0f); // TEST ONLY
         ubo.view = _camera->getViewMatrix();
-        ubo.proj = _camera->getProjectionMatrix();
+
+        float aspectRatio = _dynamicRHI->getWindowContextAspectRatio(ctx_handle);
+        ubo.proj = _camera->getProjectionMatrix(aspectRatio);
     }
 }
 

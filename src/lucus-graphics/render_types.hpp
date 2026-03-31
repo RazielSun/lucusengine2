@@ -31,10 +31,10 @@ namespace lucus
         explicit window_handle(int idx) : resource_handle(idx) {}
     };
 
-    struct viewport_handle : public resource_handle
+    struct window_context_handle : public resource_handle
     {
-        viewport_handle() : resource_handle() {}
-        explicit viewport_handle(int idx) : resource_handle(idx) {}
+        window_context_handle() : resource_handle() {}
+        explicit window_context_handle(int idx) : resource_handle(idx) {}
     };
 
     struct material_handle : public resource_handle

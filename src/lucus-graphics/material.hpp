@@ -21,16 +21,11 @@ namespace lucus
             bool isUseUniformBuffers() const { return _useUniformBuffers; }
             void setUseUniformBuffers(bool useUniformBuffers) { _useUniformBuffers = useUniformBuffers; }
 
-            // TODO: This is Vulkan specific, should be moved to a more appropriate place
-            void setRenderPass(int renderPass) { _renderPass = renderPass; }
-            int getRenderPass() const { return _renderPass; }
-
             uint32_t getHash() const;
 
         private:
             std::string _shaderName;
             bool _useUniformBuffers{false};
-            int _renderPass{0}; // Vk specific?
 
             // transient
             material_handle _material_handle;

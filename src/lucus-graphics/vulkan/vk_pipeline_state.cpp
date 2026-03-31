@@ -86,7 +86,7 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f; // Optional
     rasterizer.depthBiasClamp = 0.0f; // Optional
@@ -129,6 +129,21 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
 
     createPipelineLayout(layoutCount, layouts);
 
+    VkPipelineDepthStencilStateCreateInfo depthState{};
+    depthState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+
+    depthState.depthTestEnable = VK_TRUE;
+    depthState.depthWriteEnable = VK_TRUE;
+    depthState.depthCompareOp = VK_COMPARE_OP_LESS;
+
+    depthState.depthBoundsTestEnable = VK_FALSE;
+    depthState.minDepthBounds = 0.0f; // Optional
+    depthState.maxDepthBounds = 1.0f; // Optional
+
+    depthState.stencilTestEnable = VK_FALSE;
+    depthState.front = {}; // Optional
+    depthState.back = {}; // Optional
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
@@ -138,7 +153,7 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = nullptr; // Optional
+    pipelineInfo.pDepthStencilState = &depthState; // Optional
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = _pipelineLayout;

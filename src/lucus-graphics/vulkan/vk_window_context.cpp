@@ -1,17 +1,40 @@
-#include "vk_viewport.hpp"
+#include "vk_window_context.hpp"
 
 #include "window.hpp"
+#include "vk_utils.hpp"
 
 #include "glfw_include.hpp"
 
 using namespace lucus;
 
-void vk_viewport::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window)
+void vk_framebuffer_list::init(VkDevice device, VkPhysicalDevice gpu, VkRenderPass renderPass, const vk_swapchain& swapchain, VkFormat depthFormat)
+{
+    frameBuffers.resize(swapchain.imageViews.size());
+
+    for (size_t i = 0; i < swapchain.imageViews.size(); i++) {
+        frameBuffers[i].init(device, gpu, renderPass, swapchain.extent, swapchain.imageViews[i], depthFormat);
+    }
+
+    std::printf("Created %zu frame buffers\n", frameBuffers.size());
+}
+
+void vk_framebuffer_list::cleanup()
+{
+    for (auto& framebuffer : frameBuffers) {
+        framebuffer.cleanup();
+    }
+    frameBuffers.clear();
+}
+
+void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window)
 {
     assert(gpu);
     assert(device);
     assert(instance);
     assert(window);
+
+    _instance = instance;
+    _device = device;
 
     VkResult result = glfwCreateWindowSurface(instance, window->getGLFWwindow(), nullptr, &surface);
     if (result != VK_SUCCESS) {
@@ -19,23 +42,45 @@ void vk_viewport::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice devic
     }
 
     initSurface(gpu, window);
-    createSwapchain(gpu, device, window);
+    swapChain.init(gpu, device, surface, window);
+
+    // Setup the viewport and scissor rect to cover the whole framebuffer by default
+    viewport.viewport.x = 0.0f;
+    viewport.viewport.y = 0.0f;
+    viewport.viewport.width = static_cast<float>(swapChain.extent.width);
+    viewport.viewport.height = static_cast<float>(swapChain.extent.height);
+    viewport.viewport.minDepth = 0.0f;
+    viewport.viewport.maxDepth = 1.0f;
+
+    viewport.scissor.offset = {0, 0};
+    viewport.scissor.extent = swapChain.extent;
+
+    auto depthFormat = utils::findDepthFormat(gpu);
+
+    renderPass.init(device, swapChain.colorFormat, depthFormat);
+    framebuffers.init(device, gpu, renderPass.renderPass, swapChain, depthFormat);
+
+    for (auto& frame : frames) {
+        frame.init(device);
+    }
 }
 
-void vk_viewport::cleanup(VkInstance instance, VkDevice device)
+void vk_window_context::cleanup()
 {
-    for (auto imageView : imageViews) {
-        vkDestroyImageView(device, imageView, nullptr);
+    for (auto& frame : frames) {
+        frame.cleanup();
     }
-    if (swapChain != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
-    }
+
+    swapChain.cleanup();
+    framebuffers.cleanup();
+    renderPass.cleanup();
+
     if (surface != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(instance, surface, nullptr);
+        vkDestroySurfaceKHR(_instance, surface, nullptr);
     }
 }
 
-void vk_viewport::initSurface(VkPhysicalDevice gpu, window* window)
+void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 {
     // Get available queue family properties
 	uint32_t queueCount;
@@ -116,14 +161,24 @@ void vk_viewport::initSurface(VkPhysicalDevice gpu, window* window)
 		}
 	}
 
-	colorFormat = selectedFormat.format;
-	colorSpace = selectedFormat.colorSpace;
+	swapChain.colorFormat = selectedFormat.format;
+	swapChain.colorSpace = selectedFormat.colorSpace;
 
     std::printf("VkSurfaceKHR created successfully\n");
 }
 
-void vk_viewport::createSwapchain(VkPhysicalDevice gpu, VkDevice device, window* window)
+void vk_window_context::wait_frame()
 {
+    vkWaitForFences(_device, 1, &frames[currentFrame].fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(_device, 1, &frames[currentFrame].fence);
+
+    vkAcquireNextImageKHR(_device, swapChain.swapChain, UINT64_MAX, frames[currentFrame].imageAvailable, (VkFence)nullptr, &currentImageIndex);
+}
+
+void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surface, window* window)
+{
+    _device = device;
+
 	// Store the current swap chain handle so we can use it later on to ease up recreation
 	VkSwapchainKHR oldSwapchain = swapChain;
 
@@ -147,17 +202,6 @@ void vk_viewport::createSwapchain(VkPhysicalDevice gpu, VkDevice device, window*
 		width = capabilities.currentExtent.width;
 		height = capabilities.currentExtent.height;
 	}
-
-    // Setup the viewport and scissor rect to cover the whole framebuffer by default
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    scissor.offset = {0, 0};
-    scissor.extent = extent;
 
     // Select a present mode for the swapchain
 	uint32_t presentModeCount;
@@ -259,24 +303,19 @@ void vk_viewport::createSwapchain(VkPhysicalDevice gpu, VkDevice device, window*
     std::printf("VkSwapchainKHR created successfully (%dx%d)\n", extent.width, extent.height);
 
     imageViews.resize(images.size());
-    for (size_t i = 0; i < images.size(); i++) {
-        VkImageViewCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.image = images[i];
-        createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        createInfo.format = colorFormat;
-        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        createInfo.subresourceRange.baseMipLevel = 0;
-        createInfo.subresourceRange.levelCount = 1;
-        createInfo.subresourceRange.baseArrayLayer = 0;
-        createInfo.subresourceRange.layerCount = 1;
-        if (vkCreateImageView(device, &createInfo, nullptr, &imageViews[i]) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create image views!");
-        }
+    for (size_t i = 0; i < images.size(); i++)
+    {
+        utils::createImageView(device, images[i], colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, imageViews[i]);
     }
     std::printf("Created %zu image views\n", imageViews.size());
+}
+
+void vk_swapchain::cleanup()
+{
+	for (auto imageView : imageViews) {
+        vkDestroyImageView(_device, imageView, nullptr);
+    }
+    if (swapChain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(_device, swapChain, nullptr);
+    }
 }

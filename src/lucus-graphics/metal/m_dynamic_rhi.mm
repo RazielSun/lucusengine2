@@ -152,12 +152,6 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
 
     it = _pipelineStates.find(shaderHash);
 
-    // int renderPassIndex = mat->getRenderPass();
-    // if (renderPassIndex < 0 || renderPassIndex >= static_cast<int>(_renderPasses.size())) {
-    //     std::cerr << "Invalid render pass index in material: " << renderPassIndex << std::endl;
-    //     return material_handle();
-    // }
-
     // TODO: !    
     it->second.init(mat, _viewports[0].getPixelFormat());
 
