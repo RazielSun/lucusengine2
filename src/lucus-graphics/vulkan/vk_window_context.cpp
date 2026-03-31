@@ -67,6 +67,8 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
 
 void vk_window_context::cleanup()
 {
+	uniformbuffers.cleanup();
+
     for (auto& frame : frames) {
         frame.cleanup();
     }

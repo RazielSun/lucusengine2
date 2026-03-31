@@ -40,7 +40,6 @@ namespace lucus
             
             void createDescriptorPool();
             void createDescriptorSetLayouts();
-            void createFrameUniformBuffers();
 
             void wait_idle();
 
@@ -69,7 +68,6 @@ namespace lucus
             VkDescriptorSetLayout _objectDescriptorSetLayout{ VK_NULL_HANDLE };
             VkDescriptorPool _descriptorPool{ VK_NULL_HANDLE };
 
-            vk_buffer _frameUniformBuffer;
             std::vector<vk_buffer> _objectUniformBuffers;
     };
 }

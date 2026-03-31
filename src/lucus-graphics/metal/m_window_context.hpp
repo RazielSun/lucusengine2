@@ -22,6 +22,8 @@ namespace lucus
 
         dispatch_semaphore_t frameSemaphore;
 
+        id<MTLBuffer> uniformbuffers;
+
         void init(id<MTLDevice> device, window* window);
 
         void wait_frame();

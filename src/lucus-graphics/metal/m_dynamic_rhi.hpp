@@ -33,7 +33,7 @@ namespace lucus
         protected:
             void createDevice();
 
-            void createFrameUniformBuffers();
+            void createObjectUniformBuffers();
 
         private:
             std::unique_ptr<m_device> _device;
@@ -44,7 +44,6 @@ namespace lucus
 
             std::unordered_map<uint32_t, m_pipeline_state> _pipelineStates;
 
-            id<MTLBuffer> _frameUniformBuffers;
             std::array<id<MTLBuffer>, g_framesInFlight> _objectUniformBuffers;
     };
 }

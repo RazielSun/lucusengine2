@@ -4,8 +4,6 @@
 
 #include "material.hpp"
 
-#include "m_viewport.hpp"
-
 namespace lucus
 {
     std::shared_ptr<dynamic_rhi> create_dynamic_rhi()
@@ -29,7 +27,7 @@ m_dynamic_rhi::~m_dynamic_rhi()
 void m_dynamic_rhi::init()
 {
     createDevice();
-    createFrameUniformBuffers();
+    createObjectUniformBuffers();
 }
 
 window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& handle)
@@ -41,6 +39,9 @@ window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& ha
 
     m_window_context context;
     context.init(_deviceHandle, window);
+
+    size_t frameAlignedSize = (sizeof(frame_uniform_buffer) * g_framesInFlight + 255) & ~255;
+    context.uniformbuffers = [_deviceHandle newBufferWithLength:frameAlignedSize options:MTLResourceStorageModeShared];
 
     _contexts.push_back(context);
 
@@ -115,7 +116,7 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
     id<MTLRenderCommandEncoder> pass = [currentBuffer renderCommandEncoderWithDescriptor:descriptor];
 
     size_t frameUniformOffset = ctx.currentBufferIndex * sizeof(frame_uniform_buffer);
-    memcpy((uint8_t*)_frameUniformBuffers.contents + frameUniformOffset, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+    memcpy((uint8_t*)ctx.uniformbuffers.contents + frameUniformOffset, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
 
     for (const auto& renderInstance : cmd.render_list)
     {
@@ -135,7 +136,7 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
                 [pass setDepthStencilState:psoIt->second.getDepthStencilState()];
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    [pass setVertexBuffer:_frameUniformBuffers offset:frameUniformOffset atIndex:0];
+                    [pass setVertexBuffer:ctx.uniformbuffers offset:frameUniformOffset atIndex:0];
                     [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex] offset:objectUniformOffset atIndex:1];
                 }
             }
@@ -208,11 +209,8 @@ void m_dynamic_rhi::createDevice()
     _deviceHandle = _device->getDevice();
 }
 
-void m_dynamic_rhi::createFrameUniformBuffers()
+void m_dynamic_rhi::createObjectUniformBuffers()
 {
-    size_t frameAlignedSize = (sizeof(frame_uniform_buffer) * g_framesInFlight + 255) & ~255;
-    _frameUniformBuffers = [_deviceHandle newBufferWithLength:frameAlignedSize options:MTLResourceStorageModeShared];
-
     size_t objectAlignedSize = (sizeof(object_uniform_buffer) * g_maxObjectBufferCount + 255) & ~255;
     for (int i = 0; i < g_framesInFlight; ++i)
     {

@@ -3,6 +3,7 @@
 #include "vk_pch.hpp"
 
 #include "vk_render_types.hpp"
+#include "vk_buffer.hpp"
 
 namespace lucus
 {
@@ -47,6 +48,7 @@ namespace lucus
         vk_framebuffer_list framebuffers;
 
         vk_viewport viewport;
+        vk_buffer uniformbuffers;
 
         std::array<vk_frame_sync, g_framesInFlight> frames{};
         uint32_t currentFrame = 0;

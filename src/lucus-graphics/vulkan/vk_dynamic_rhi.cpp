@@ -28,7 +28,6 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     vkDestroyDescriptorSetLayout(_deviceHandle, _frameDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(_deviceHandle, _objectDescriptorSetLayout, nullptr);
 
-    _frameUniformBuffer.cleanup();
     for (auto& buffer : _objectUniformBuffers) {
         buffer.cleanup();
     }
@@ -57,7 +56,6 @@ void vk_dynamic_rhi::init()
     
     createDescriptorPool();
     createDescriptorSetLayouts();
-    createFrameUniformBuffers();
 }
 
 void vk_dynamic_rhi::createInstance()
@@ -173,6 +171,7 @@ window_context_handle vk_dynamic_rhi::createWindowContext(const window_handle& h
 
     vk_window_context context;
     context.init(_instance, _device->getGPU(), _deviceHandle, window);
+    context.uniformbuffers.init(_deviceHandle, _device->getGPU(), _frameDescriptorSetLayout, _descriptorPool, sizeof(frame_uniform_buffer));
 
     _contexts.push_back(context);
 
@@ -250,7 +249,7 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     // HACK: clip space Y for Vulkan
     auto frame_ubo = cmd.frame_ubo;
     frame_ubo.proj[1][1] *= -1;
-    _frameUniformBuffer.write(ctx.currentFrame, &frame_ubo, sizeof(frame_ubo));
+    ctx.uniformbuffers.write(ctx.currentFrame, &frame_ubo, sizeof(frame_ubo));
 
     for (const auto& renderInstance : cmd.render_list)
     {
@@ -267,7 +266,7 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
                 vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipeline());
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, _frameUniformBuffer.get(ctx.currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, ctx.uniformbuffers.get(ctx.currentFrame), 0, nullptr);
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 1, 1, buffer.get(ctx.currentFrame), 0, nullptr);
                 }
             } else {
@@ -406,13 +405,6 @@ void vk_dynamic_rhi::createDescriptorSetLayouts()
 
         std::printf("Object Descriptor set layout created successfully\n");
     }
-}
-
-void vk_dynamic_rhi::createFrameUniformBuffers()
-{
-    _frameUniformBuffer.init(_deviceHandle, _device->getGPU(), _frameDescriptorSetLayout, _descriptorPool, sizeof(frame_uniform_buffer));
-
-    std::printf("Frame uniform buffer created successfully\n");
 }
 
 material_handle vk_dynamic_rhi::createMaterial(material* mat)
