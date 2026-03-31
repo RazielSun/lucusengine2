@@ -5,7 +5,7 @@
 #include "dynamic_rhi.hpp"
 #include "render_types.hpp"
 #include "m_device.hpp"
-#include "m_viewport.hpp"
+#include "m_window_context.hpp"
 #include "m_pipeline_state.hpp"
 
 namespace lucus
@@ -18,12 +18,13 @@ namespace lucus
 
             virtual void init() override;
 
-            virtual viewport_handle createViewport(const window_handle& handle) override;
+            virtual window_context_handle createWindowContext(const window_handle& handle) override;
+            virtual const std::vector<window_context_handle>& getWindowContexts() const override;
+            virtual float getWindowContextAspectRatio(const window_context_handle& handle) const override;
 
-            virtual void beginFrame(const viewport_handle& handle) override;
-            virtual void endFrame() override;
-
-            virtual void submit(const command_buffer& cmd) override;
+            virtual void beginFrame(const window_context_handle& handle) override;
+            virtual void submit(const window_context_handle& handle, const command_buffer& cmd) override;
+            virtual void endFrame(const window_context_handle& handle) override;
 
             virtual material_handle createMaterial(material* mat) override;
 
@@ -31,7 +32,6 @@ namespace lucus
         
         protected:
             void createDevice();
-            void createSyncObjectsStable();
 
             void createFrameUniformBuffers();
 
@@ -39,14 +39,8 @@ namespace lucus
             std::unique_ptr<m_device> _device;
             id<MTLDevice> _deviceHandle;
 
-            std::vector<m_viewport> _viewports;
-
-            viewport_handle _currentViewport;
-            id<CAMetalDrawable> _currentDrawable = nil;
-            id<MTLCommandBuffer> _currentBuffer = nil;
-            uint32_t _currentBufferIndex{ 0 };
-
-            dispatch_semaphore_t _frameSemaphore;
+            std::vector<m_window_context> _contexts;
+            std::vector<window_context_handle> _contextHandles;
 
             std::unordered_map<uint32_t, m_pipeline_state> _pipelineStates;
 

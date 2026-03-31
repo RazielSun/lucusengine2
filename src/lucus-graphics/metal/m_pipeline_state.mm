@@ -16,7 +16,7 @@ m_pipeline_state::~m_pipeline_state()
     _pipeline = nil;
 }
 
-void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat)
+void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat, MTLPixelFormat depthFormat)
 {
     assert(mat && "Material pointer cannot be null");
     id<MTLLibrary> library = loadLibrary(mat->getShaderName());
@@ -31,6 +31,7 @@ void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat)
     desc.vertexFunction = vs;
     desc.fragmentFunction = fs;
     desc.colorAttachments[0].pixelFormat = colorFormat;
+    desc.depthAttachmentPixelFormat = depthFormat;
 
     NSError* error = nil;
     id<MTLRenderPipelineState> pso =
@@ -47,6 +48,11 @@ void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat)
     _pipeline = pso;
 
     _useUniformBuffers = mat->isUseUniformBuffers();
+
+    MTLDepthStencilDescriptor* depthDesc = [[MTLDepthStencilDescriptor alloc] init];
+    depthDesc.depthCompareFunction = MTLCompareFunctionLess;
+    depthDesc.depthWriteEnabled = YES;
+    _depthStencilState = [_device newDepthStencilStateWithDescriptor:depthDesc];
 }
 
 id<MTLLibrary> m_pipeline_state::loadLibrary(const std::string& filename) const

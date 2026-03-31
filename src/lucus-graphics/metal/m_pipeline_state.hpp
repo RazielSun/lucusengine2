@@ -12,9 +12,10 @@ namespace lucus
             m_pipeline_state(id<MTLDevice> device);
             ~m_pipeline_state();
 
-            void init(material* mat, MTLPixelFormat colorFormat);
+            void init(material* mat, MTLPixelFormat colorFormat, MTLPixelFormat depthFormat);
 
             id<MTLRenderPipelineState> getPipeline() { return _pipeline; }
+            id<MTLDepthStencilState> getDepthStencilState() { return _depthStencilState; }
 
             bool isUniformBufferUsed() const { return _useUniformBuffers; }
         
@@ -25,6 +26,7 @@ namespace lucus
             id<MTLDevice> _device;
 
             id<MTLRenderPipelineState> _pipeline = nil;
+            id<MTLDepthStencilState> _depthStencilState = nil;
 
             bool _useUniformBuffers{false};
     };

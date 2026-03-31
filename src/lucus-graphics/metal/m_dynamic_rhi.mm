@@ -29,77 +29,92 @@ m_dynamic_rhi::~m_dynamic_rhi()
 void m_dynamic_rhi::init()
 {
     createDevice();
-    createSyncObjectsStable();
     createFrameUniformBuffers();
 }
 
-viewport_handle m_dynamic_rhi::createViewport(const window_handle& handle)
+window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& handle)
 {
     window* window = window_manager::instance().getWindow(handle);
 	if (!window) {
 		throw std::runtime_error("Invalid window handle provided to m_viewport::init");
 	}
 
-    m_viewport viewport;
-    viewport.init(_deviceHandle, window);
+    m_window_context context;
+    context.init(_deviceHandle, window);
 
-    _viewports.push_back(viewport);
+    _contexts.push_back(context);
 
-    viewport_handle out_handle(static_cast<uint32_t>(_viewports.size()));
+    window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
+    _contextHandles.push_back(out_handle);
+
     return out_handle;
 }
 
-void m_dynamic_rhi::beginFrame(const viewport_handle& handle)
+const std::vector<window_context_handle>& m_dynamic_rhi::getWindowContexts() const
 {
-    dispatch_semaphore_wait(_frameSemaphore, DISPATCH_TIME_FOREVER);
-
-    if (!handle.is_valid()) {
-        return;
-    }
-
-    _currentViewport = handle;
-    m_viewport& viewport = _viewports[_currentViewport.as_index()];
-
-    _currentDrawable = viewport.getNewDrawable();
+    return _contextHandles;
 }
 
-void m_dynamic_rhi::endFrame()
+float m_dynamic_rhi::getWindowContextAspectRatio(const window_context_handle& ctx_handle) const
 {
-    if (!_currentDrawable || !_currentBuffer)
-    {
-        return;
+    if (!ctx_handle.is_valid()) {
+        return 1.0f; // Default aspect ratio for invalid handle
     }
 
-    [_currentBuffer presentDrawable:_currentDrawable];
-    [_currentBuffer commit];
-
-    _currentBufferIndex = (_currentBufferIndex + 1) % g_framesInFlight;
+    const m_window_context& context = _contexts[ctx_handle.as_index()];
+    CGSize drawableSize = context.getDrawableSize();
+    return drawableSize.width / drawableSize.height;
 }
 
-void m_dynamic_rhi::submit(const command_buffer& cmd)
+void m_dynamic_rhi::beginFrame(const window_context_handle& ctx_handle)
 {
-    if (!_currentDrawable)
-    {
-        dispatch_semaphore_signal(_frameSemaphore);
+    if (!ctx_handle.is_valid()) {
         return;
     }
 
-    _currentBuffer = [_device->getCommandPool() commandBuffer];
+    m_window_context& ctx = _contexts[ctx_handle.as_index()];
 
-    dispatch_semaphore_t semaphore = _frameSemaphore;
-    [_currentBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
+    ctx.wait_frame();
+}
+
+void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const command_buffer& cmd)
+{
+    if (!ctx_handle.is_valid()) {
+        return;
+    }
+
+    m_window_context& ctx = _contexts[ctx_handle.as_index()];
+
+    if (!ctx.currentDrawable)
+    {
+        dispatch_semaphore_signal(ctx.frameSemaphore);
+        return;
+    }
+
+    id<MTLCommandBuffer> currentBuffer = [_device->getCommandPool() commandBuffer];
+
+    dispatch_semaphore_t semaphore = ctx.frameSemaphore;
+    [currentBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
         dispatch_semaphore_signal(semaphore);
     }];
 
     MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-    descriptor.colorAttachments[0].texture = _currentDrawable.texture;
+    descriptor.colorAttachments[0].texture = ctx.currentDrawable.texture;
     descriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
     descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
     descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    descriptor.depthAttachment.texture = ctx.depthTextures[ctx.currentBufferIndex];
+    descriptor.depthAttachment.loadAction = MTLLoadActionClear;
+    descriptor.depthAttachment.storeAction = MTLStoreActionDontCare;
+    descriptor.depthAttachment.clearDepth = 1.0;
+    // descriptor.stencilAttachment.texture = ctx.depthTexture;
+    // descriptor.stencilAttachment.storeAction = MTLStoreActionStore;
+    // descriptor.stencilAttachment.loadAction = MTLLoadActionClear;
+    // descriptor.stencilAttachment.clearStencil = 0;
 
-    id<MTLRenderCommandEncoder> pass = [_currentBuffer renderCommandEncoderWithDescriptor:descriptor];
+    id<MTLRenderCommandEncoder> pass = [currentBuffer renderCommandEncoderWithDescriptor:descriptor];
 
-    size_t frameUniformOffset = _currentBufferIndex * sizeof(frame_uniform_buffer);
+    size_t frameUniformOffset = ctx.currentBufferIndex * sizeof(frame_uniform_buffer);
     memcpy((uint8_t*)_frameUniformBuffers.contents + frameUniformOffset, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
 
     for (const auto& renderInstance : cmd.render_list)
@@ -108,7 +123,7 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
 
         size_t objectSize = sizeof(renderInstance.object_data);
         size_t objectUniformOffset = objectSize * object_id.as_index();
-        memcpy((uint8_t*)_objectUniformBuffers[_currentBufferIndex].contents + objectUniformOffset, &renderInstance.object_data, objectSize);
+        memcpy((uint8_t*)_objectUniformBuffers[ctx.currentBufferIndex].contents + objectUniformOffset, &renderInstance.object_data, objectSize);
 
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
@@ -117,15 +132,16 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
             if (psoIt != _pipelineStates.end())
             {
                 [pass setRenderPipelineState:psoIt->second.getPipeline()];
+                [pass setDepthStencilState:psoIt->second.getDepthStencilState()];
                 if (psoIt->second.isUniformBufferUsed())
                 {
                     [pass setVertexBuffer:_frameUniformBuffers offset:frameUniformOffset atIndex:0];
-                    [pass setVertexBuffer:_objectUniformBuffers[_currentBufferIndex] offset:objectUniformOffset atIndex:1];
+                    [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex] offset:objectUniformOffset atIndex:1];
                 }
-                else
-                {
-                    std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
-                }
+            }
+            else
+            {
+                std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
             }
         }
 
@@ -136,6 +152,20 @@ void m_dynamic_rhi::submit(const command_buffer& cmd)
     }
 
     [pass endEncoding];
+
+    [currentBuffer presentDrawable:ctx.currentDrawable];
+    [currentBuffer commit];
+}
+
+void m_dynamic_rhi::endFrame(const window_context_handle& ctx_handle)
+{
+    if (!ctx_handle.is_valid()) {
+        return;
+    }
+
+    m_window_context& ctx = _contexts[ctx_handle.as_index()];
+    
+    ctx.currentBufferIndex = (ctx.currentBufferIndex + 1) % g_framesInFlight;
 }
 
 material_handle m_dynamic_rhi::createMaterial(material* mat)
@@ -153,7 +183,7 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
     it = _pipelineStates.find(shaderHash);
 
     // TODO: !    
-    it->second.init(mat, _viewports[0].getPixelFormat());
+    it->second.init(mat, _contexts[0].getPixelFormat(), _contexts[0].getDepthPixelFormat());
 
     return material_handle(shaderHash);
 }
@@ -176,11 +206,6 @@ void m_dynamic_rhi::createDevice()
     _device->createLogicalDevice();
 
     _deviceHandle = _device->getDevice();
-}
-
-void m_dynamic_rhi::createSyncObjectsStable()
-{
-    _frameSemaphore = dispatch_semaphore_create(g_framesInFlight);
 }
 
 void m_dynamic_rhi::createFrameUniformBuffers()

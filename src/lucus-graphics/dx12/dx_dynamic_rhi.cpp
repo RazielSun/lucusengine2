@@ -218,12 +218,6 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
     _pipelineStates.emplace(shaderHash, pipeline_state);
 
     it = _pipelineStates.find(shaderHash);
-
-    // int renderPassIndex = mat->getRenderPass();
-    // if (renderPassIndex < 0 || renderPassIndex >= static_cast<int>(_renderPasses.size())) {
-    //     std::cerr << "Invalid render pass index in material: " << renderPassIndex << std::endl;
-    //     return material_handle();
-    // }
     
     it->second.init(mat, mat->isUseUniformBuffers() ? 2 : 0);
 
