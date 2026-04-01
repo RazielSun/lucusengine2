@@ -20,6 +20,9 @@ namespace lucus
 
         Com<IDXGISwapChain3> swapChain;
 
+        dx_commandbuffer_pool commandPool;
+        Com<ID3D12GraphicsCommandList> commandBuffer;
+
         Com<ID3D12DescriptorHeap> mRTVHeap;
         uint32_t mRTVDescriptorSize = 0;
 
@@ -40,6 +43,7 @@ namespace lucus
         DXGI_FORMAT mDepthFormat = DXGI_FORMAT_D32_FLOAT;
 
         protected:
+            void createCommandBufferPool();
             void createRTVHeaps();
             void createDSVHeap();
             void createRenderTargets();

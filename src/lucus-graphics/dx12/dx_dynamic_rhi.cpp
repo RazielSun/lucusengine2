@@ -27,9 +27,6 @@ dx_dynamic_rhi::~dx_dynamic_rhi()
 
     _pipelineStates.clear();
 
-    _commandBuffer.Reset();
-    _commandPool.cleanup();
-
     for (auto& context : _contexts) {
         context.cleanup();
     }
@@ -45,7 +42,6 @@ void dx_dynamic_rhi::init()
 {
     createInstance();
     createDevice();
-    createCommandBufferPool();
 }
 
 window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& handle) 
@@ -103,10 +99,10 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     uint32_t bufferIndex = ctx.backBufferIndex % g_framesInFlight;
 
     // Here or in beginFrame?
-    ThrowIfFailed(_commandPool.commandAllocators[bufferIndex]->Reset(), "Failed Reset Command Allocator");
-    ThrowIfFailed(_commandBuffer->Reset(_commandPool.commandAllocators[bufferIndex].Get(), nullptr), "Failed Reset Command Buffer");
+    ThrowIfFailed(ctx.commandPool.commandAllocators[bufferIndex]->Reset(), "Failed Reset Command Allocator");
+    ThrowIfFailed(ctx.commandBuffer->Reset(ctx.commandPool.commandAllocators[bufferIndex].Get(), nullptr), "Failed Reset Command Buffer");
     
-    if (!_commandBuffer)
+    if (!ctx.commandBuffer)
         throw std::runtime_error("Command buffer is null");
 
     if (!ctx.mRTVHeap)
@@ -127,10 +123,10 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     barrier_begin.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier_begin.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-    _commandBuffer->ResourceBarrier(1, &barrier_begin);
+    ctx.commandBuffer->ResourceBarrier(1, &barrier_begin);
 
-    _commandBuffer->RSSetViewports(1, &ctx.viewport.viewport);
-    _commandBuffer->RSSetScissorRects(1, &ctx.viewport.scissor);
+    ctx.commandBuffer->RSSetViewports(1, &ctx.viewport.viewport);
+    ctx.commandBuffer->RSSetScissorRects(1, &ctx.viewport.scissor);
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtv = ctx.mRTVHeap->GetCPUDescriptorHandleForHeapStart();
     rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
@@ -140,9 +136,9 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
 
     const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-    _commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-    _commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
-    _commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    ctx.commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+    ctx.commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
+    ctx.commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     ctx.uniformbuffers.write(bufferIndex, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
 
@@ -159,12 +155,12 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
             auto psoIt = _pipelineStates.find(material_id.get());
             if (psoIt != _pipelineStates.end())
             {
-                _commandBuffer->SetGraphicsRootSignature(psoIt->second.getRootSignature().Get());
-                _commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
+                ctx.commandBuffer->SetGraphicsRootSignature(psoIt->second.getRootSignature().Get());
+                ctx.commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    _commandBuffer->SetGraphicsRootConstantBufferView(0, ctx.uniformbuffers.get(bufferIndex)->GetGPUVirtualAddress());
-                    _commandBuffer->SetGraphicsRootConstantBufferView(1, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
+                    ctx.commandBuffer->SetGraphicsRootConstantBufferView(0, ctx.uniformbuffers.get(bufferIndex)->GetGPUVirtualAddress());
+                    ctx.commandBuffer->SetGraphicsRootConstantBufferView(1, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
                 }
             }
             else
@@ -175,9 +171,9 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
         
         const auto& mesh = renderInstance.mesh;
         // TODO: Bind vertex/index buffers and draw
-        _commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         // TODO: mesh_handle = mesh.getDrawCount() is for test only
-        _commandBuffer->DrawInstanced(mesh.get(), 1, 0, 0);
+        ctx.commandBuffer->DrawInstanced(mesh.get(), 1, 0, 0);
     }
 
     D3D12_RESOURCE_BARRIER barrier_end{};
@@ -188,11 +184,11 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     barrier_end.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
     barrier_end.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-    _commandBuffer->ResourceBarrier(1, &barrier_end);
+    ctx.commandBuffer->ResourceBarrier(1, &barrier_end);
 
-    ThrowIfFailed(_commandBuffer->Close(), "Failed Close Command Buffer");
+    ThrowIfFailed(ctx.commandBuffer->Close(), "Failed Close Command Buffer");
 
-    ID3D12CommandList* command_lists[] = { _commandBuffer.Get() };
+    ID3D12CommandList* command_lists[] = { ctx.commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
     ThrowIfFailed(ctx.swapChain->Present(1, 0), "Failed SwapChain Preset");
@@ -359,20 +355,6 @@ void dx_dynamic_rhi::createDevice()
     // _swapchain->setContext(mDXGIFactory, _commandQueue);
 
     std::printf("ID3D12CommandQueue created successfully\n");
-}
-
-void dx_dynamic_rhi::createCommandBufferPool()
-{
-    _commandPool.init(_deviceHandle);
-
-    // Create command list for recording graphics commands
-	ThrowIfFailed(_deviceHandle->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, _commandPool.commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(_commandBuffer.ReleaseAndGetAddressOf())),
-        "Failed Create Command List"
-    );
-	ThrowIfFailed(_commandBuffer->Close(), "Failed Close Command List");
-	_commandBuffer->SetName(L"Command List");
-
-    std::printf("ID3D12GraphicsCommandList created successfully\n");
 }
 
 // void dx_dynamic_rhi::wait_idle()

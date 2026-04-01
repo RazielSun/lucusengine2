@@ -34,7 +34,6 @@ namespace lucus
         protected:
             void createInstance();
             void createDevice();
-            void createCommandBufferPool();
 
             // void wait_idle();
 
@@ -43,9 +42,6 @@ namespace lucus
 
             std::unique_ptr<dx_device> _device;
             Com<ID3D12Device> _deviceHandle;
-
-            dx_commandbuffer_pool _commandPool;
-            Com<ID3D12GraphicsCommandList> _commandBuffer;
 
             Com<ID3D12CommandQueue> _commandQueue;
 

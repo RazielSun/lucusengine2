@@ -65,9 +65,8 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
     createRenderTargets();
     createDepthStencils();
     createSyncObjects();
+    createCommandBufferPool();
 }
-
-
 
 void dx_window_context::cleanup()
 {
@@ -88,6 +87,9 @@ void dx_window_context::cleanup()
     {
         mRenderTargets[i].Reset();
     }
+
+    commandBuffer.Reset();
+    commandPool.cleanup();
 
     mDSVHeap.Reset();
     mRTVHeap.Reset();
@@ -203,4 +205,18 @@ void dx_window_context::createSyncObjects()
 	}
 
     std::printf("ID3D12Fence created successfully\n");
+}
+
+void dx_window_context::createCommandBufferPool()
+{
+    commandPool.init(mDevice);
+
+    // Create command list for recording graphics commands
+	ThrowIfFailed(mDevice->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, commandPool.commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(commandBuffer.ReleaseAndGetAddressOf())),
+        "Failed Create Command List"
+    );
+	ThrowIfFailed(commandBuffer->Close(), "Failed Close Command List");
+	commandBuffer->SetName(L"Command List");
+
+    std::printf("ID3D12GraphicsCommandList created successfully\n");
 }
