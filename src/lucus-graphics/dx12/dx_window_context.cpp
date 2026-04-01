@@ -120,7 +120,7 @@ void dx_window_context::createDSVHeap()
     ThrowIfFailed(mDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&mDSVHeap)), "Failed Create Descriptor Heap");
 
     mDSVDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    
+
     std::printf("DSVHeap created successfully\n");
 }
 
@@ -164,10 +164,12 @@ void dx_window_context::createDepthStencils()
     clear_value.DepthStencil.Depth = 1.0f;
     clear_value.DepthStencil.Stencil = 0;
 
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+
     for (int i = 0; i < mDepthStencils.size(); ++i)
     {
         ThrowIfFailed(mDevice->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &depth_desc,
             D3D12_RESOURCE_STATE_DEPTH_WRITE,
@@ -175,11 +177,10 @@ void dx_window_context::createDepthStencils()
             IID_PPV_ARGS(&mDepthStencils[i])
         ), "Failed Create Committed Resource for Depth Stencil");
 
-        ThrowIfFailed(mDevice->CreateDepthStencilView(
+        mDevice->CreateDepthStencilView(
             mDepthStencils[i].Get(),
             &dsv_depth_desc,
-            mDSVHeap->GetCPUDescriptorHandleForHeapStart()),
-            "Failed Create Depth Stencil View");
+            mDSVHeap->GetCPUDescriptorHandleForHeapStart());
     }
 
     std::printf("Depth Stencils created successfully\n");

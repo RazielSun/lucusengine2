@@ -57,7 +57,7 @@ window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& h
 
     dx_window_context context;
     context.init(_DXGIFactory, _deviceHandle, _commandQueue, window);
-    context.uniformbuffers.init(_deviceHandle, _device->getGPU(), context.swapChain.Get(), sizeof(frame_uniform_buffer));
+    context.uniformbuffers.init(_deviceHandle, _DXGIFactory, context.swapChain.Get(), sizeof(frame_uniform_buffer));
 
     _contexts.push_back(context);
     window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
@@ -195,7 +195,7 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     ID3D12CommandList* command_lists[] = { _commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
-    ThrowIfFailed(viewport.swapChain->Present(1, 0), "Failed SwapChain Preset");
+    ThrowIfFailed(ctx.swapChain->Present(1, 0), "Failed SwapChain Preset");
 }
 
 void dx_dynamic_rhi::endFrame(const window_context_handle& ctx_handle)
@@ -235,7 +235,7 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
     }
 
     dx_pipeline_state pipeline_state(_deviceHandle);
-    _pipelineStates.add(shaderHash, pipeline_state);
+    _pipelineStates.emplace(shaderHash, pipeline_state);
 
     it = _pipelineStates.find(shaderHash);
     
