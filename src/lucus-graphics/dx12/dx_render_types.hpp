@@ -14,4 +14,10 @@ namespace lucus
         
             std::array<Com<ID3D12CommandAllocator>, g_framesInFlight> commandAllocators{};
     };
+
+    struct dx_viewport
+    {
+        D3D12_VIEWPORT viewport{};
+        D3D12_RECT scissor{};
+    };
 }

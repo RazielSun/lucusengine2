@@ -18,7 +18,7 @@ dx_pipeline_state::~dx_pipeline_state()
     _device.Reset();
 }
 
-void dx_pipeline_state::init(const material* mat, uint32_t layoutCount)
+void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat, uint32_t layoutCount)
 {
     assert(mat);
     const std::string& shaderName = mat->getShaderName();
@@ -72,10 +72,13 @@ void dx_pipeline_state::init(const material* mat, uint32_t layoutCount)
     pso.BlendState = blend;
 
     D3D12_DEPTH_STENCIL_DESC depth_stencil{};
-    depth_stencil.DepthEnable = FALSE;
+    depth_stencil.DepthEnable = TRUE;
+    depth_stencil.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    depth_stencil.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
     depth_stencil.StencilEnable = FALSE;
 
     pso.DepthStencilState = depth_stencil;
+    pso.DSVFormat = depthFormat;
 
     pso.SampleMask = UINT_MAX;
     pso.InputLayout = { nullptr, 0 };

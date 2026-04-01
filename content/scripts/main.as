@@ -1,7 +1,7 @@
 void main()
 {
     g_window_manager.CreateWindow(1280, 720, "Lucus Engine 2");
-    // g_window_manager.CreateWindow(800, 600, "Lucus Engine 2");
+    // g_window_manager.CreateWindow(800, 600, "Lucus Engine 2 - Advanced");
 
     Camera@ camera = Camera();
     camera.SetPosition(Vec3(0.f, 0.f, 5.f));
