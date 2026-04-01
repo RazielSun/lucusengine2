@@ -116,7 +116,7 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
 
     if (!ctx.mDSVHeap)
         throw std::runtime_error("DSV heap is null");
-    if (!ctx.mDepthStencils[bufferIndex])
+    if (!ctx.mDepthStencils[ctx.backBufferIndex])
         throw std::runtime_error("Depth stencil is null");
 
     D3D12_RESOURCE_BARRIER barrier_begin{};
@@ -136,7 +136,7 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
 
     D3D12_CPU_DESCRIPTOR_HANDLE dsv = ctx.mDSVHeap->GetCPUDescriptorHandleForHeapStart();
-    dsv.ptr += static_cast<SIZE_T>(bufferIndex) * ctx.mDSVDescriptorSize;
+    dsv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mDSVDescriptorSize;
 
     const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 

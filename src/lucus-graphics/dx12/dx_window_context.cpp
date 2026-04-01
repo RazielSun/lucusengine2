@@ -113,7 +113,7 @@ void dx_window_context::createRTVHeaps()
 void dx_window_context::createDSVHeap()
 {
     D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
-    heap_desc.NumDescriptors = 1;
+    heap_desc.NumDescriptors = g_swapchainImageCount;
     heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
@@ -166,6 +166,8 @@ void dx_window_context::createDepthStencils()
 
     CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
 
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = mDSVHeap->GetCPUDescriptorHandleForHeapStart();
+
     for (int i = 0; i < mDepthStencils.size(); ++i)
     {
         ThrowIfFailed(mDevice->CreateCommittedResource(
@@ -180,7 +182,9 @@ void dx_window_context::createDepthStencils()
         mDevice->CreateDepthStencilView(
             mDepthStencils[i].Get(),
             &dsv_depth_desc,
-            mDSVHeap->GetCPUDescriptorHandleForHeapStart());
+            handle);
+        
+        handle.ptr += mDSVDescriptorSize;
     }
 
     std::printf("Depth Stencils created successfully\n");

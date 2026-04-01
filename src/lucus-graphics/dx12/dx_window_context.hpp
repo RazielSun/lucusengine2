@@ -36,7 +36,7 @@ namespace lucus
         Com<ID3D12DescriptorHeap> mDSVHeap;
         uint32_t mDSVDescriptorSize = 0;
         
-        std::array<Com<ID3D12Resource>, g_framesInFlight> mDepthStencils{};
+        std::array<Com<ID3D12Resource>, g_swapchainImageCount> mDepthStencils{};
         DXGI_FORMAT mDepthFormat = DXGI_FORMAT_D32_FLOAT;
 
         protected:
