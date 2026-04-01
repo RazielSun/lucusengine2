@@ -57,7 +57,7 @@ window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& h
 
     dx_window_context context;
     context.init(_DXGIFactory, _deviceHandle, _commandQueue, window);
-    context.uniformbuffers.init(_deviceHandle, _DXGIFactory, context.swapChain.Get(), sizeof(frame_uniform_buffer));
+    context.uniformbuffers.init(_deviceHandle, sizeof(frame_uniform_buffer));
 
     _contexts.push_back(context);
     window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
