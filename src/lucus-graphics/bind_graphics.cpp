@@ -23,6 +23,19 @@ namespace utils
     constexpr const char* camera_class_name = "Camera";
 }
 
+namespace wrappers
+{
+    lucus::mesh* mesh_cube_factory_wrapper()
+    {
+        return lucus::mesh::create_cube_factory();
+    }
+
+    lucus::mesh* mesh_triangle_factory_wrapper()
+    {
+        return lucus::mesh::create_triangle_factory();
+    }
+}
+
 namespace lucus
 {
     void bind_mesh_class();
@@ -107,12 +120,21 @@ void lucus::bind_mesh_class()
 
     r = engine->RegisterObjectType(mesh_class_name, 0, asOBJ_REF); assert(r >= 0);
 
-    std::string method_create_factory = std::string(mesh_class_name) + "@ f()";
+    std::string method_nodata_factory = std::string(mesh_class_name) + "@ f(int)";
     r = engine->RegisterObjectBehaviour(
         mesh_class_name,
         asBEHAVE_FACTORY,
-        method_create_factory.c_str(),
-        asFUNCTION(mesh::create_factory),
+        method_nodata_factory.c_str(),
+        asFUNCTION(mesh::create_nodata_factory),
+        asCALL_CDECL
+    ); assert(r >= 0);
+
+    std::string method_gltf_factory = std::string(mesh_class_name) + "@ f(const string &in)";
+    r = engine->RegisterObjectBehaviour(
+        mesh_class_name,
+        asBEHAVE_FACTORY,
+        method_gltf_factory.c_str(),
+        asFUNCTION(mesh::create_gltf_factory),
         asCALL_CDECL
     ); assert(r >= 0);
 
@@ -126,12 +148,18 @@ void lucus::bind_mesh_class()
         asMETHOD(mesh, releaseRef), asCALL_THISCALL
     ); assert(r >= 0);
 
-    r = engine->RegisterObjectMethod(
-        mesh_class_name,
-        "void SetDrawCount(int)",
-        asMETHOD(mesh, setDrawCount),
-        asCALL_THISCALL
+    r = engine->SetDefaultNamespace(mesh_class_name); assert(r >= 0);
+    r = engine->RegisterGlobalFunction(
+        "Mesh@ cube()",
+        asFUNCTION(wrappers::mesh_cube_factory_wrapper),
+        asCALL_CDECL
     ); assert(r >= 0);
+    r = engine->RegisterGlobalFunction(
+        "Mesh@ triangle()",
+        asFUNCTION(wrappers::mesh_triangle_factory_wrapper),
+        asCALL_CDECL
+    ); assert(r >= 0);
+    r = engine->SetDefaultNamespace(""); assert(r >= 0);
 }
 
 void lucus::bind_material_class()
@@ -174,6 +202,13 @@ void lucus::bind_material_class()
         material_class_name,
         "void SetUseUniformBuffers(bool)",
         asMETHOD(material, setUseUniformBuffers),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        "void SetUseVertexIndexBuffers(bool)",
+        asMETHOD(material, setUseVertexIndexBuffers),
         asCALL_THISCALL
     ); assert(r >= 0);
 }

@@ -4,6 +4,7 @@
 #include "window_manager.hpp"
 
 #include "material.hpp"
+#include "mesh.hpp"
 #include "vk_pipeline_state.hpp"
 
 #include "glfw_include.hpp"
@@ -32,6 +33,11 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
         buffer.cleanup();
     }
     _objectUniformBuffers.clear();
+
+    for (auto& mesh : _meshes) {
+        mesh.second.cleanup();
+    }
+    _meshes.clear();
 
     _pipelineStates.clear();
 
@@ -254,7 +260,7 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     for (const auto& renderInstance : cmd.render_list)
     {
         const auto& object_id = renderInstance.object;
-        vk_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
+        vk_uniform_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
 
         buffer.write(ctx.currentFrame, &renderInstance.object_data, sizeof(renderInstance.object_data));
 
@@ -274,10 +280,31 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
             }
         }
 
-        const auto& mesh = renderInstance.mesh;
-        // TODO: Bind vertex/index buffers and draw
-        // TODO: mesh_handle = mesh.getDrawCount() is for test only
-        vkCmdDraw(cmdBuffer, mesh.get(), 1, 0, 0);
+        const auto& mesh_id = renderInstance.mesh;
+        if (mesh_id.is_valid())
+        {
+            auto meshIt = _meshes.find(mesh_id.get());
+            if (meshIt != _meshes.end())
+            {
+                auto& gpuMesh = meshIt->second;
+                if (gpuMesh.bHasVertexData)
+                {
+                    VkBuffer vertexBuffers[] = { gpuMesh.vertexBuffer.get() };
+                    VkDeviceSize offsets[] = { 0 };
+                    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
+                }
+
+                if (gpuMesh.indexCount > 0)
+                {
+                    vkCmdBindIndexBuffer(cmdBuffer, gpuMesh.indexBuffer.get(), 0, VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(cmdBuffer, gpuMesh.indexCount, 1, 0, 0, 0);
+                }
+                else if (gpuMesh.vertexCount > 0)
+                {
+                    vkCmdDraw(cmdBuffer, gpuMesh.vertexCount, 1, 0, 0);
+                }
+            }
+        }
     }
 
     vkCmdEndRenderPass(cmdBuffer);
@@ -410,7 +437,7 @@ void vk_dynamic_rhi::createDescriptorSetLayouts()
 material_handle vk_dynamic_rhi::createMaterial(material* mat)
 {
     assert(mat != nullptr);
-    uint32_t shaderHash = mat->getHash();
+    uint64_t shaderHash = mat->getHash();
 
     auto it = _pipelineStates.find(shaderHash);
     if (it != _pipelineStates.end()) {
@@ -436,15 +463,36 @@ material_handle vk_dynamic_rhi::createMaterial(material* mat)
         it->second.init(mat, renderPass.renderPass);
     }
 
-    std::printf("Material %d created successfully\n", shaderHash);
+    std::printf("Material %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
 
     return material_handle(shaderHash);
+}
+
+mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
+{
+    assert(msh != nullptr);
+    uint64_t meshHash = msh->getHash();
+
+    auto it = _meshes.find(meshHash);
+    if (it != _meshes.end()) {
+        return mesh_handle(it->first);
+    }
+
+    _meshes.emplace(meshHash, vk_mesh());
+
+    it = _meshes.find(meshHash);
+
+    it->second.init(_deviceHandle, _device->getGPU(), msh);
+
+    std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
+
+    return mesh_handle(meshHash);
 }
 
 render_object_handle vk_dynamic_rhi::createUniformBuffer(render_object* obj)
 {
     _objectUniformBuffers.emplace_back();
-    vk_buffer& buffer = _objectUniformBuffers.back();
+    vk_uniform_buffer& buffer = _objectUniformBuffers.back();
     buffer.init(_deviceHandle, _device->getGPU(), _objectDescriptorSetLayout, _descriptorPool, sizeof(object_uniform_buffer));
 
     std::printf("Uniform buffer for object %p created successfully\n", obj);

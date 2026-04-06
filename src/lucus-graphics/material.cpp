@@ -9,10 +9,11 @@ material* material::create_factory(const std::string& shaderName)
     return mat;
 }
 
-uint32_t material::getHash() const
+uint64_t material::getHash() const
 {
-    const uint32_t shaderHash = static_cast<uint32_t>(std::hash<std::string>{}(_shaderName));
-    const uint32_t uniformBufferHash = static_cast<uint32_t>(_useUniformBuffers);
+    const uint64_t shaderHash = static_cast<uint64_t>(std::hash<std::string>{}(_shaderName));
+    const uint64_t uniformBufferHash = static_cast<uint64_t>(_useUniformBuffers);
+    const uint64_t vertexIndexBufferHash = static_cast<uint64_t>(_useVertexIndexBuffers);
 
-    return shaderHash ^ (uniformBufferHash << 1);
+    return shaderHash ^ (uniformBufferHash << 1) ^ (vertexIndexBufferHash << 2);
 }

@@ -21,11 +21,15 @@ namespace lucus
             bool isUseUniformBuffers() const { return _useUniformBuffers; }
             void setUseUniformBuffers(bool useUniformBuffers) { _useUniformBuffers = useUniformBuffers; }
 
-            uint32_t getHash() const;
+            bool isUseVertexIndexBuffers() const { return _useVertexIndexBuffers; }
+            void setUseVertexIndexBuffers(bool useVertexIndexBuffers) { _useVertexIndexBuffers = useVertexIndexBuffers; }
+
+            uint64_t getHash() const;
 
         private:
             std::string _shaderName;
             bool _useUniformBuffers{false};
+            bool _useVertexIndexBuffers{false};
 
             // transient
             material_handle _material_handle;

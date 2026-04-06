@@ -25,6 +25,20 @@ namespace lucus
         uint32_t index;
     };
 
+    struct hash_handle
+    {
+        hash_handle() : index(0) {}
+        explicit hash_handle(uint64_t idx) : index(idx) {}
+        
+        uint64_t get() const { return index; }
+        bool is_valid() const { return index > 0; }
+
+        void invalidate() { index = 0; }
+
+    protected:
+        uint64_t index;
+    };
+
     struct window_handle : public resource_handle
     {
         window_handle() : resource_handle() {}
@@ -37,16 +51,16 @@ namespace lucus
         explicit window_context_handle(int idx) : resource_handle(idx) {}
     };
 
-    struct material_handle : public resource_handle
+    struct material_handle : public hash_handle
     {
-        material_handle() : resource_handle() {}
-        explicit material_handle(uint32_t idx) : resource_handle(idx) {}
+        material_handle() : hash_handle() {}
+        explicit material_handle(uint64_t idx) : hash_handle(idx) {}
     };
 
-    struct mesh_handle : public resource_handle
+    struct mesh_handle : public hash_handle
     {
-        mesh_handle() : resource_handle() {}
-        explicit mesh_handle(int idx) : resource_handle(idx) {}
+        mesh_handle() : hash_handle() {}
+        explicit mesh_handle(uint64_t idx) : hash_handle(idx) {}
     };
 
     struct render_object_handle : public resource_handle
@@ -80,5 +94,11 @@ namespace lucus
     {
         frame_uniform_buffer frame_ubo;
         std::vector<render_instance> render_list;
+    };
+
+    struct vertex
+    {
+        glm::vec3 position{0.0f};
+        glm::vec3 color{1.0f};
     };
 }

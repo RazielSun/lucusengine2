@@ -14,7 +14,7 @@ foreach(t lucus-math)
         list(APPEND MODULE_EXTRA_INCLUDES ${_inc})
     endif()
 endforeach()
-set ( MODULE_EXTRA_LIBS "lucus::glfw" )
+set ( MODULE_EXTRA_LIBS "lucus::glfw" "lucus::tinygltf" )
 
 if (WIN32)
     list(APPEND MODULE_EXTRA_INCLUDES "${LUCUS_ENGINE_ROOT}/third-party/directx")

@@ -48,7 +48,7 @@ namespace lucus
         vk_framebuffer_list framebuffers;
 
         vk_viewport viewport;
-        vk_buffer uniformbuffers;
+        vk_uniform_buffer uniformbuffers;
 
         std::array<vk_frame_sync, g_framesInFlight> frames{};
         uint32_t currentFrame = 0;

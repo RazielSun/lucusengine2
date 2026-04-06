@@ -1,10 +1,5 @@
 #include "common/defines.slang"
-
-struct VSOutput
-{
-    float4 position : SV_Position;
-    float3 fragColor : TEXCOORD0;
-};
+#include "common/structs.slang"
 
 [shader("vertex")]
 VSOutput vsMain(uint vertexIndex : SV_VertexID)
@@ -28,12 +23,12 @@ VSOutput vsMain(uint vertexIndex : SV_VertexID)
 #if TARGET_METAL || TARGET_DX12
     o.position.y *= -1.0; // Flip Y for Metal's coordinate system
 #endif
-    o.fragColor = colors[vertexIndex];
+    o.color = colors[vertexIndex];
     return o;
 }
 
 [shader("fragment")]
 float4 psMain(VSOutput input) : SV_Target
 {
-    return float4(input.fragColor, 1.0);
+    return float4(input.color, 1.0);
 }

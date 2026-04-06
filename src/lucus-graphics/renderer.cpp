@@ -95,7 +95,11 @@ void renderer::processObjects(command_buffer& cmd)
         }
         instance.object_data.model = math::transform_to_mat4(obj->getTransform());
 
-        instance.mesh = mesh_handle(meshInst->getDrawCount());
+        instance.mesh = meshInst->getHandle();
+        if (!instance.mesh.is_valid()) {
+            instance.mesh = _dynamicRHI->createMesh(meshInst);
+            meshInst->setHandle(instance.mesh);
+        }
 
         instance.material = materialInst->getHandle();
         if (!instance.material.is_valid()) {

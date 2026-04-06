@@ -13,20 +13,27 @@ void main()
     {
         RenderObject@ renderObject = g_renderer.EmplaceRenderObject();
 
-        Mesh@ triangle = Mesh();
-        triangle.SetDrawCount(3);
+        // Mesh@ triangle = Mesh(3); // hardcoded triangle
+        Mesh@ triangle = Mesh::triangle(); // non hardcoded triangle
+
         renderObject.SetMesh(triangle);
 
-        Material@ triangle_mat = Material("triangle");
+        // Material@ triangle_mat = Material("triangle"); // hardcoded triangle
+        Material@ triangle_mat = Material("nounb_simple");
+        triangle_mat.SetUseVertexIndexBuffers(true); // non hardcoded triangle
+
         renderObject.SetMaterial(triangle_mat);
     }
     else
     {
-        Mesh@ cube = Mesh();
-        cube.SetDrawCount(36);
+        // Mesh@ cube = Mesh(36); // hardcoded cube
+        Mesh@ cube = Mesh("content/assets/cube.gltf");
+        // Mesh@ cube = Mesh::cube();
 
-        Material@ cube_mat = Material("cube");
+        // Material@ cube_mat = Material("cube"); // hardcoded cube
+        Material@ cube_mat = Material("simple");
         cube_mat.SetUseUniformBuffers(true);
+        cube_mat.SetUseVertexIndexBuffers(true); // non hardcoded cube
 
         RenderObject@ cube_obj1 = g_renderer.EmplaceRenderObject();
         cube_obj1.SetPosition(Vec3(-0.8f, 0.2f, 0.f));

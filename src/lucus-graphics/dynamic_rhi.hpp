@@ -30,7 +30,7 @@ namespace lucus
         virtual void endFrame(const window_context_handle& handle) = 0;
 
         virtual material_handle createMaterial(material* mat) = 0;
-        // virtual mesh_handle createMesh(mesh* msh) = 0;
+        virtual mesh_handle createMesh(mesh* msh) = 0;
         virtual render_object_handle createUniformBuffer(render_object* obj) = 0;
     };
 }

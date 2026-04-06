@@ -1,71 +1,90 @@
 #include "vk_buffer.hpp"
 
 #include "vk_utils.hpp"
+#include "mesh.hpp"
 
 using namespace lucus;
 
-void vk_buffer::init(VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, VkDeviceSize bufferSize)
+void vk_buffer::init(VkDevice device, VkPhysicalDevice gpu, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
+{
+    _device = device;
+    _gpu = gpu;
+    _size = size;
+
+    utils::createBuffer(_device, _gpu, size, usage, properties, _buffer, _memory);
+}
+
+void vk_buffer::cleanup()
+{
+    if (_buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(_device, _buffer, nullptr);
+        _buffer = VK_NULL_HANDLE;
+    }
+    if (_memory != VK_NULL_HANDLE) {
+        vkFreeMemory(_device, _memory, nullptr);
+        _memory = VK_NULL_HANDLE;
+    }
+}
+
+void vk_buffer::map()
+{
+    if (vkMapMemory(_device, _memory, 0, _size, 0, &_mapped) != VK_SUCCESS) {
+        throw std::runtime_error("failed to map buffer memory!");
+    }
+}
+
+void vk_buffer::unmap()
+{
+    if (_mapped) {
+        vkUnmapMemory(_device, _memory);
+        _mapped = nullptr;
+    }
+}
+
+void vk_buffer::write(const void* data, size_t size, size_t offset)
+{
+    if (!_mapped) {
+        throw std::runtime_error("Buffer memory is not mapped!");
+    }
+    if (offset + size > _size) {
+        throw std::out_of_range("Write range exceeds buffer size!");
+    }
+    std::memcpy(static_cast<char*>(_mapped) + offset, data, size);
+}
+
+void vk_uniform_buffer::init(VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, VkDeviceSize bufferSize)
 {
     _device = device;
     _gpu = gpu;
     _descriptorSetLayout = descriptorSetLayout;
     _descriptorPool = descriptorPool;
 
-    uniformBuffersMapped.resize(g_framesInFlight);
-
-    for (size_t i = 0; i < g_framesInFlight; i++) {
-        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
-
-        vkMapMemory(_device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+    for (size_t i = 0; i < g_framesInFlight; i++)
+    {
+        _buffers[i].init(_device, _gpu, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        _buffers[i].map();
     }
 
     createDescriptorSets(bufferSize);
 }
 
-void vk_buffer::cleanup()
+void vk_uniform_buffer::cleanup()
 {
-    for (size_t i = 0; i < g_framesInFlight; i++) {
-        vkDestroyBuffer(_device, uniformBuffers[i], nullptr);
-        vkFreeMemory(_device, uniformBuffersMemory[i], nullptr);
+    for (size_t i = 0; i < g_framesInFlight; i++)
+    {
+        _buffers[i].cleanup();
     }
 }
 
-void vk_buffer::write(uint32_t index, const void* data, size_t size)
+void vk_uniform_buffer::write(uint32_t index, const void* data, size_t size)
 {
-    if (index >= uniformBuffersMapped.size()) {
+    if (index >= _buffers.size()) {
         throw std::out_of_range("Buffer index out of range");
     }
-    memcpy(uniformBuffersMapped[index], data, size);
+    _buffers[index].write(data, size);
 }
 
-void vk_buffer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
-{
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(_device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create buffer!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(_device, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = utils::findMemoryType(_gpu, memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(_device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate buffer memory!");
-    }
-
-    vkBindBufferMemory(_device, buffer, bufferMemory, 0);
-}
-
-void vk_buffer::createDescriptorSets(VkDeviceSize bufferSize)
+void vk_uniform_buffer::createDescriptorSets(VkDeviceSize bufferSize)
 {
     std::vector<VkDescriptorSetLayout> layouts(g_framesInFlight, _descriptorSetLayout);
 
@@ -81,7 +100,7 @@ void vk_buffer::createDescriptorSets(VkDeviceSize bufferSize)
 
     for (size_t i = 0; i < g_framesInFlight; i++) {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = uniformBuffers[i];
+        bufferInfo.buffer = _buffers[i].get();
         bufferInfo.offset = 0;
         bufferInfo.range = bufferSize;
 
@@ -97,4 +116,47 @@ void vk_buffer::createDescriptorSets(VkDeviceSize bufferSize)
         descriptorWrite.pTexelBufferView = nullptr; // Optional
         vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
     }
+}
+
+void vk_mesh::init(VkDevice device, VkPhysicalDevice gpu, mesh* msh)
+{
+    assert(msh != nullptr);
+
+    vertexCount = msh->getDrawCount();
+
+    const auto vtxCount = msh->getVertices().size();
+    const auto idxCount = msh->getIndices().size();
+
+    bHasVertexData = vtxCount > 0;
+    if (bHasVertexData)
+    {
+        vertexBuffer.init(
+            device,
+            gpu,
+            sizeof(vertex) * vtxCount,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        vertexBuffer.map();
+        vertexBuffer.write(msh->getVertices().data(), sizeof(vertex) * vtxCount);
+
+        if (idxCount > 0) {
+            indexCount = idxCount;
+            indexBuffer.init(
+                device,
+                gpu,
+                sizeof(uint32_t) * idxCount,
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            indexBuffer.map();
+            indexBuffer.write(msh->getIndices().data(), sizeof(uint32_t) * idxCount);
+        }
+    }
+}
+
+void vk_mesh::cleanup()
+{
+    vertexBuffer.cleanup();
+    indexBuffer.cleanup();
 }

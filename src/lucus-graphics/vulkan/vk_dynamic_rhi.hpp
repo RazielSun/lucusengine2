@@ -30,7 +30,7 @@ namespace lucus
             virtual void endFrame(const window_context_handle& handle) override;
 
             virtual material_handle createMaterial(material* mat) override;
-
+            virtual mesh_handle createMesh(mesh* msh) override;
             virtual render_object_handle createUniformBuffer(render_object* obj) override;
 
         protected:
@@ -58,16 +58,18 @@ namespace lucus
 
             vk_commandbuffer_pool _commandbuffer_pool;
 
-            //
-            std::unordered_map<uint32_t, vk_pipeline_state> _pipelineStates;
+            VkQueue _graphicsQueue;
 
             //
-            VkQueue _graphicsQueue;
+            std::unordered_map<uint64_t, vk_pipeline_state> _pipelineStates;
+
+            //
+            std::unordered_map<uint64_t, vk_mesh> _meshes;
 
             VkDescriptorSetLayout _frameDescriptorSetLayout{ VK_NULL_HANDLE };
             VkDescriptorSetLayout _objectDescriptorSetLayout{ VK_NULL_HANDLE };
             VkDescriptorPool _descriptorPool{ VK_NULL_HANDLE };
 
-            std::vector<vk_buffer> _objectUniformBuffers;
+            std::vector<vk_uniform_buffer> _objectUniformBuffers;
     };
 }
