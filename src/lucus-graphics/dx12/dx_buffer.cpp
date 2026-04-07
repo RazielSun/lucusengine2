@@ -6,43 +6,55 @@ void dx_buffer::init(Com<ID3D12Device> device, uint32_t bufferSize)
 {
     _device = device;
 
-    // Create buffer
-
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
     CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
 
-    uniformBuffersMapped.resize(g_framesInFlight);
-
-    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-    for (size_t i = 0; i < g_framesInFlight; ++i)
-    {
-        ThrowIfFailed(_device->CreateCommittedResource(
+    ThrowIfFailed(device->CreateCommittedResource(
             &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &bufferDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_PPV_ARGS(&uniformBuffers[i])), "Failed to create uniform buffer");
+            IID_PPV_ARGS(&_buffer)), "Failed to create buffer");
 
-        // Map the buffers.
-        ThrowIfFailed(uniformBuffers[i]->Map(0, nullptr, reinterpret_cast<void**>(&uniformBuffersMapped[i])), "Failed to map uniform buffer");
-    }
+    // Map the buffers.
+    ThrowIfFailed(_buffer->Map(0, nullptr, reinterpret_cast<void**>(&_mapped)), "Failed to map buffer");
 }
 
 void dx_buffer::cleanup()
 {
-    for (size_t i = 0; i < g_framesInFlight; ++i) {
-        if (uniformBuffers[i]) {
-            uniformBuffers[i]->Unmap(0, nullptr);
-            uniformBuffers[i].Reset();
-        }
+    if (_buffer) {
+        _buffer->Unmap(0, nullptr);
+        _buffer.Reset();
     }
-    uniformBuffersMapped.clear();
+    _mapped = nullptr;
 }
 
-void dx_buffer::write(uint32_t index, const void* data, size_t size)
+void dx_buffer::write(const void* data, size_t size, size_t offset)
 {
-    if (index >= uniformBuffersMapped.size()) {
-        throw std::out_of_range("Buffer index out of range");
+    if (!_mapped) {
+        throw std::runtime_error("Buffer is not mapped");
     }
-    memcpy(uniformBuffersMapped[index], data, size);
+    memcpy(static_cast<uint8_t*>(_mapped) + offset, data, size);
+}
+
+void dx_uniform_buffer::init(Com<ID3D12Device> device, uint32_t bufferSize)
+{
+    for (size_t i = 0; i < g_framesInFlight; ++i)
+    {
+        _buffers[i].init(device, bufferSize);
+    }
+}
+
+void dx_uniform_buffer::cleanup()
+{
+    for (size_t i = 0; i < g_framesInFlight; ++i)
+    {
+        _buffers[i].cleanup();
+    }
+}
+
+void dx_uniform_buffer::write(uint32_t index, const void* data, size_t size, size_t offset)
+{
+    _buffers[index].write(data, size, offset);
 }

@@ -34,7 +34,7 @@ namespace lucus
         std::array<uint64_t, g_framesInFlight> fenceValues{};
         void* fenceEvent = nullptr;
 
-        dx_buffer uniformbuffers;
+        dx_uniform_buffer uniformbuffers;
 
         Com<ID3D12DescriptorHeap> mDSVHeap;
         uint32_t mDSVDescriptorSize = 0;

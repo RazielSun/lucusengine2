@@ -23,6 +23,7 @@ void m_mesh::init(id<MTLDevice> device, mesh* msh)
 
         if (idxCount > 0)
         {
+            indexCount = idxCount;
             indexBuffer.init(device, idxCount * sizeof(uint32_t));
             indexBuffer.write(msh->getIndices().data(), idxCount * sizeof(uint32_t));
         }

@@ -28,7 +28,7 @@ namespace lucus
             virtual void endFrame(const window_context_handle& handle) override;
 
             virtual material_handle createMaterial(material* mat) override;
-
+            virtual mesh_handle createMesh(mesh* msh) override;
             virtual render_object_handle createUniformBuffer(render_object* obj) override;
 
         protected:
@@ -49,9 +49,12 @@ namespace lucus
             std::vector<window_context_handle> _contextHandles;
 
             //
-            std::unordered_map<uint32_t, dx_pipeline_state> _pipelineStates;
+            std::unordered_map<uint64_t, dx_pipeline_state> _pipelineStates;
 
             //
-            std::vector<dx_buffer> _objectUniformBuffers;
+            std::unordered_map<uint64_t, dx_mesh> _meshes;
+
+            //
+            std::vector<dx_uniform_buffer> _objectUniformBuffers;
     };
 }

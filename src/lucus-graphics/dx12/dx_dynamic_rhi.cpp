@@ -53,7 +53,6 @@ window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& h
 
     dx_window_context context;
     context.init(_DXGIFactory, _deviceHandle, _commandQueue, window);
-    context.uniformbuffers.init(_deviceHandle, sizeof(frame_uniform_buffer));
 
     _contexts.push_back(context);
     window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
@@ -146,7 +145,7 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     {
         const auto& object_id = renderInstance.object;
 
-        dx_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
+        dx_uniform_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
         buffer.write(bufferIndex, &renderInstance.object_data, sizeof(renderInstance.object_data));
 
         const auto& material_id = renderInstance.material;
@@ -159,8 +158,8 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
                 ctx.commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    ctx.commandBuffer->SetGraphicsRootConstantBufferView(0, ctx.uniformbuffers.get(bufferIndex)->GetGPUVirtualAddress());
-                    ctx.commandBuffer->SetGraphicsRootConstantBufferView(1, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
+                    ctx.commandBuffer->SetGraphicsRootConstantBufferView((uint32_t)shader_binding::frame, ctx.uniformbuffers.get(bufferIndex)->GetGPUVirtualAddress());
+                    ctx.commandBuffer->SetGraphicsRootConstantBufferView((uint32_t)shader_binding::object, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
                 }
             }
             else
@@ -169,11 +168,31 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
             }
         }
         
-        const auto& mesh = renderInstance.mesh;
-        // TODO: Bind vertex/index buffers and draw
-        ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        // TODO: mesh_handle = mesh.getDrawCount() is for test only
-        ctx.commandBuffer->DrawInstanced(mesh.get(), 1, 0, 0);
+        const auto& mesh_id = renderInstance.mesh;
+        if (mesh_id.is_valid())
+        {
+            auto meshIt = _meshes.find(mesh_id.get());
+            if (meshIt != _meshes.end())
+            {
+                auto& gpuMesh = meshIt->second;
+                if (gpuMesh.bHasVertexData)
+                {
+                    cmdList->IASetVertexBuffers(0, 1, &gpuMesh.vbView);
+                }
+
+                ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+                if (gpuMesh.indexCount > 0)
+                {
+                    cmdList->IASetIndexBuffer(&gpuMesh.ibView);
+                    cmdList->DrawIndexedInstanced(gpuMesh.indexCount, 1, 0, 0, 0);
+                }
+                else if (gpuMesh.vertexCount > 0)
+                {
+                    ctx.commandBuffer->DrawInstanced(gpuMesh.vertexCount, 1, 0, 0);
+                }
+            }
+        }
     }
 
     D3D12_RESOURCE_BARRIER barrier_end{};
@@ -222,8 +241,7 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
 {
     assert(mat != nullptr);
 
-    const std::string& shaderName = mat->getShaderName();
-    uint32_t shaderHash = std::hash<std::string>{}(shaderName);
+    uint64_t shaderHash = mat->getHash();
 
     auto it = _pipelineStates.find(shaderHash);
     if (it != _pipelineStates.end()) {
@@ -236,9 +254,32 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
     it = _pipelineStates.find(shaderHash);
     
     // TODO: depth format should be determined by window context or material properties, not hardcoded
-    it->second.init(mat, _contexts[0].mDepthFormat, mat->isUseUniformBuffers() ? 2 : 0);
+    it->second.init(mat, _contexts[0].mDepthFormat);
+
+    std::printf("Material %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
 
     return material_handle(shaderHash);
+}
+
+mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
+{
+    assert(msh != nullptr);
+    uint64_t meshHash = msh->getHash();
+
+    auto it = _meshes.find(meshHash);
+    if (it != _meshes.end()) {
+        return mesh_handle(it->first);
+    }
+
+    _meshes.emplace(meshHash, dx_mesh());
+
+    it = _meshes.find(meshHash);
+
+    it->second.init(_deviceHandle, msh);
+
+    std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
+
+    return mesh_handle(meshHash);
 }
 
 render_object_handle dx_dynamic_rhi::createUniformBuffer(render_object* obj)
@@ -246,8 +287,8 @@ render_object_handle dx_dynamic_rhi::createUniformBuffer(render_object* obj)
     assert(obj != nullptr);
 
     _objectUniformBuffers.emplace_back();
-    dx_buffer& buffer = _objectUniformBuffers.back();
-    buffer.init(_deviceHandle, sizeof(frame_uniform_buffer));
+    dx_uniform_buffer& buffer = _objectUniformBuffers.back();
+    buffer.init(_deviceHandle, sizeof(object_uniform_buffer));
 
     std::printf("Uniform buffer for object %p created successfully\n", obj);
 

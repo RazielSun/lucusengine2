@@ -12,7 +12,7 @@ namespace lucus
             dx_pipeline_state(Com<ID3D12Device> device);
             ~dx_pipeline_state();
 
-            void init(const material* mat, DXGI_FORMAT depthFormat, uint32_t layoutCount = 0);
+            void init(const material* mat, DXGI_FORMAT depthFormat);
 
             Com<ID3D12PipelineState> getPipeline() { return _pipelineState; }
             Com<ID3D12RootSignature> getRootSignature() { return _rootSignature; }

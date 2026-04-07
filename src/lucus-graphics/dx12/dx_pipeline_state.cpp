@@ -18,7 +18,7 @@ dx_pipeline_state::~dx_pipeline_state()
     _device.Reset();
 }
 
-void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat, uint32_t layoutCount)
+void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
 {
     assert(mat);
     const std::string& shaderName = mat->getShaderName();
@@ -35,6 +35,7 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat, uint3
     pso.PS.pShaderBytecode = ps.data();
     pso.PS.BytecodeLength = ps.size();
 
+    uint32_t layoutCount = mat->isUseUniformBuffers() ? 2 : 0;
     createRootSignature(layoutCount);
     pso.pRootSignature = _rootSignature.Get();
 
@@ -81,7 +82,21 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat, uint3
     pso.DSVFormat = depthFormat;
 
     pso.SampleMask = UINT_MAX;
-    pso.InputLayout = { nullptr, 0 };
+
+    if (mat->isUseVertexIndexBuffers())
+    {
+        D3D12_INPUT_ELEMENT_DESC inputLayout[] =
+        {
+            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+            { "COLOR",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        };
+        pso.InputLayout = { inputLayout, _countof(inputLayout) };
+    }
+    else
+    {
+        pso.InputLayout = { nullptr, 0 }; 
+    } 
+    
     pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pso.NumRenderTargets = 1;
     pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
