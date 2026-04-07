@@ -3,6 +3,7 @@
 #include "window_manager.hpp"
 
 #include "material.hpp"
+#include "mesh.hpp"
 
 namespace lucus
 {
@@ -133,8 +134,8 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
                 [pass setDepthStencilState:psoIt->second.getDepthStencilState()];
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    [pass setVertexBuffer:ctx.uniformbuffers.get() offset:frameUniformOffset atIndex:shader_binding::frame];
-                    [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex].get() offset:objectUniformOffset atIndex:shader_binding::object];
+                    [pass setVertexBuffer:ctx.uniformbuffers.get() offset:frameUniformOffset atIndex:(NSUInteger)shader_binding::frame];
+                    [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex].get() offset:objectUniformOffset atIndex:(NSUInteger)shader_binding::object];
                 }
             }
             else
@@ -152,7 +153,7 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
                 auto& gpuMesh = meshIt->second;
                 if (gpuMesh.bHasVertexData)
                 {
-                    [pass setVertexBuffer:gpuMesh.vertexBuffer.get() offset:0 atIndex:shader_binding::vertex];
+                    [pass setVertexBuffer:gpuMesh.vertexBuffer.get() offset:0 atIndex:(NSUInteger)shader_binding::vertex];
                 }
 
                 if (gpuMesh.indexCount > 0)
@@ -202,6 +203,8 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
     // TODO: !    
     it->second.init(mat, _contexts[0].getPixelFormat(), _contexts[0].getDepthPixelFormat());
 
+    std::printf("Material %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
+
     return material_handle(shaderHash);
 }
 
@@ -216,10 +219,12 @@ mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
         return mesh_handle(it->first);
     }
 
-    _meshes.emplace(meshHash, {});
+    _meshes.emplace(meshHash, m_mesh());
 
     it = _meshes.find(meshHash);
     it->second.init(_deviceHandle, msh);
+
+    std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
 
     return mesh_handle(meshHash);
 }

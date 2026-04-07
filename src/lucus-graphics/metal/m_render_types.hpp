@@ -21,3 +21,4 @@ namespace lucus
         void init(id<MTLDevice> device, mesh* msh);
         void cleanup();
     };
+}

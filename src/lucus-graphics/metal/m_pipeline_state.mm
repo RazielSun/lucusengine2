@@ -36,15 +36,18 @@ void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat, MTLPixelF
 
     if (mat->isUseVertexIndexBuffers())
     {
+        NSUInteger bufferIndex = (NSUInteger)shader_binding::vertex;
         MTLVertexDescriptor *vertexDescriptor = [[MTLVertexDescriptor alloc] init];
 
         vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
         vertexDescriptor.attributes[0].offset = offsetof(vertex, position);
-        vertexDescriptor.attributes[0].bufferIndex = 0;
+        vertexDescriptor.attributes[0].bufferIndex = bufferIndex;
 
         vertexDescriptor.attributes[1].format = MTLVertexFormatFloat3;
         vertexDescriptor.attributes[1].offset = offsetof(vertex, color);
-        vertexDescriptor.attributes[1].bufferIndex = 0;
+        vertexDescriptor.attributes[1].bufferIndex = bufferIndex;
+
+        vertexDescriptor.layouts[bufferIndex].stride = sizeof(vertex);
 
         desc.vertexDescriptor = vertexDescriptor;
     }

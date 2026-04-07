@@ -21,13 +21,13 @@ void m_buffer::write(const void* data, size_t size, size_t offset)
     assert(data);
     assert(size <= _buffer.length);
 
-    uint8_t* bufferPointer = _buffer.contents;
+    void* bufferPointer = _buffer.contents;
     if (!bufferPointer)
     {
         throw std::runtime_error("Failed to get buffer contents pointer");
     }
 
-    std::memcpy(bufferPointer + offset, data, size);
+    std::memcpy((uint8_t*)bufferPointer + offset, data, size);
 }
 
 void m_buffer::cleanup()

@@ -78,7 +78,6 @@ namespace lucus
 
     struct frame_uniform_buffer
     {
-        // alignas(16) glm::mat4 model; // TEST ONLY
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
     };

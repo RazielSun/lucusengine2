@@ -9,8 +9,6 @@
 
 namespace
 {
-    using lucus_mesh = lucus::mesh;
-
     const char* severity_to_string(tg3_severity severity)
     {
         switch (severity)
