@@ -13,8 +13,8 @@ struct ObjectUniforms
 };
 
 struct VSInput {
-    float3 position : LOCATION0;
-    float3 color : LOCATION1;
+    float3 position : POSITION;
+    float3 color : COLOR;
 };
 
 struct VSOutput

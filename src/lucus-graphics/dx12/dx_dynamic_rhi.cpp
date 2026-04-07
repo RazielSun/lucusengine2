@@ -3,6 +3,7 @@
 #include "window_manager.hpp"
 
 #include "material.hpp"
+#include "mesh.hpp"
 
 namespace lucus
 {
@@ -177,15 +178,15 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
                 auto& gpuMesh = meshIt->second;
                 if (gpuMesh.bHasVertexData)
                 {
-                    cmdList->IASetVertexBuffers(0, 1, &gpuMesh.vbView);
+                    ctx.commandBuffer->IASetVertexBuffers(0, 1, &gpuMesh.vbView);
                 }
 
                 ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
                 if (gpuMesh.indexCount > 0)
                 {
-                    cmdList->IASetIndexBuffer(&gpuMesh.ibView);
-                    cmdList->DrawIndexedInstanced(gpuMesh.indexCount, 1, 0, 0, 0);
+                    ctx.commandBuffer->IASetIndexBuffer(&gpuMesh.ibView);
+                    ctx.commandBuffer->DrawIndexedInstanced(gpuMesh.indexCount, 1, 0, 0, 0);
                 }
                 else if (gpuMesh.vertexCount > 0)
                 {

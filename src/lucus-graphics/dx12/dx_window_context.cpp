@@ -66,6 +66,8 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
     createDepthStencils();
     createSyncObjects();
     createCommandBufferPool();
+
+    uniformbuffers.init(device, sizeof(frame_uniform_buffer));
 }
 
 void dx_window_context::cleanup()
