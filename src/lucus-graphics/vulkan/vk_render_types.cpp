@@ -1,6 +1,7 @@
 #include "vk_render_types.hpp"
 
 #include "vk_utils.hpp"
+#include "mesh.hpp"
 
 using namespace lucus;
 
@@ -215,4 +216,49 @@ void vk_frame_sync::cleanup()
     vkDestroyFence(_device, fence, nullptr);
     vkDestroySemaphore(_device, imageAvailable, nullptr);
     vkDestroySemaphore(_device, renderFinished, nullptr);
+}
+
+
+void vk_mesh::init(VkDevice device, VkPhysicalDevice gpu, mesh* msh)
+{
+    assert(msh != nullptr);
+
+    vertexCount = msh->getDrawCount();
+
+    const auto vtxCount = msh->getVertices().size();
+    const auto idxCount = msh->getIndices().size();
+
+    bHasVertexData = vtxCount > 0;
+    if (bHasVertexData)
+    {
+        // TODO: Consider staging buffer for larger meshes
+        vertexBuffer.init(
+            device,
+            gpu,
+            sizeof(vertex) * vtxCount,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        vertexBuffer.map();
+        vertexBuffer.write(msh->getVertices().data(), sizeof(vertex) * vtxCount);
+
+        if (idxCount > 0) {
+            indexCount = idxCount;
+            indexBuffer.init(
+                device,
+                gpu,
+                sizeof(uint32_t) * idxCount,
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            indexBuffer.map();
+            indexBuffer.write(msh->getIndices().data(), sizeof(uint32_t) * idxCount);
+        }
+    }
+}
+
+void vk_mesh::cleanup()
+{
+    vertexBuffer.cleanup();
+    indexBuffer.cleanup();
 }

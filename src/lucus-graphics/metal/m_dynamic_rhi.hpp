@@ -3,8 +3,9 @@
 #include "m_pch.hpp"
 
 #include "dynamic_rhi.hpp"
-#include "render_types.hpp"
+#include "m_render_types.hpp"
 #include "m_device.hpp"
+#include "m_buffer.hpp"
 #include "m_window_context.hpp"
 #include "m_pipeline_state.hpp"
 
@@ -27,7 +28,7 @@ namespace lucus
             virtual void endFrame(const window_context_handle& handle) override;
 
             virtual material_handle createMaterial(material* mat) override;
-
+            virtual mesh_handle createMesh(mesh* msh) override;
             virtual render_object_handle createUniformBuffer(render_object* obj) override;
         
         protected:
@@ -42,8 +43,12 @@ namespace lucus
             std::vector<m_window_context> _contexts;
             std::vector<window_context_handle> _contextHandles;
 
-            std::unordered_map<uint32_t, m_pipeline_state> _pipelineStates;
+            //
+            std::unordered_map<uint64_t, m_pipeline_state> _pipelineStates;
 
-            std::array<id<MTLBuffer>, g_framesInFlight> _objectUniformBuffers;
+            //
+            std::unordered_map<uint64_t, m_mesh> _meshes;
+
+            std::array<m_buffer, g_framesInFlight> _objectUniformBuffers;
     };
 }

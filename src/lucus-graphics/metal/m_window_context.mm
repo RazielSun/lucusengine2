@@ -50,6 +50,8 @@ void m_window_context::init(id<MTLDevice> device, window* window)
 
     // Create a semaphore for synchronizing frame rendering
     frameSemaphore = dispatch_semaphore_create(g_framesInFlight);
+
+    uniformbuffers.init(device, sizeof(frame_uniform_buffer) * g_framesInFlight);
 }
 
 void m_window_context::wait_frame()

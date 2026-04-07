@@ -2,6 +2,7 @@
 
 #include "filesystem.hpp"
 #include "material.hpp"
+#include "render_types.hpp"
 
 using namespace lucus;
 
@@ -33,6 +34,21 @@ void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat, MTLPixelF
     desc.colorAttachments[0].pixelFormat = colorFormat;
     desc.depthAttachmentPixelFormat = depthFormat;
 
+    if (mat->isUseVertexIndexBuffers())
+    {
+        MTLVertexDescriptor *vertexDescriptor = [[MTLVertexDescriptor alloc] init];
+
+        vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
+        vertexDescriptor.attributes[0].offset = offsetof(vertex, position);
+        vertexDescriptor.attributes[0].bufferIndex = 0;
+
+        vertexDescriptor.attributes[1].format = MTLVertexFormatFloat3;
+        vertexDescriptor.attributes[1].offset = offsetof(vertex, color);
+        vertexDescriptor.attributes[1].bufferIndex = 0;
+
+        desc.vertexDescriptor = vertexDescriptor;
+    }
+    
     NSError* error = nil;
     id<MTLRenderPipelineState> pso =
         [_device newRenderPipelineStateWithDescriptor:desc error:&error];

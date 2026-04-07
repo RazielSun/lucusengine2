@@ -53,19 +53,4 @@ namespace lucus
 
             std::array<vk_buffer, g_framesInFlight> _buffers;
     };
-
-    class mesh;
-
-    struct vk_mesh
-    {
-        bool bHasVertexData{false};
-        uint32_t vertexCount{0};
-        uint32_t indexCount{0};
-
-        vk_buffer vertexBuffer;
-        vk_buffer indexBuffer;
-
-        void init(VkDevice device, VkPhysicalDevice gpu, mesh* msh);
-        void cleanup();
-    };
 }

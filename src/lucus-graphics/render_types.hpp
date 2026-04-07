@@ -10,6 +10,13 @@ namespace lucus
     constexpr uint32_t g_swapchainImageCount{ 3 };
     constexpr uint32_t g_maxObjectBufferCount{ 32 }; // TODO: Make this dynamic or configurable
 
+    enum class shader_binding : uint8_t
+    {
+        frame = 0,
+        object = 1,
+        vertex = 2,
+    };
+
     struct resource_handle
     {
         resource_handle() : index(0) {}

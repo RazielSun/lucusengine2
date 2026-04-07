@@ -2,6 +2,7 @@
 
 #include "vk_pch.hpp"
 
+#include "vk_buffer.hpp"
 #include "render_types.hpp"
 
 namespace lucus
@@ -84,5 +85,20 @@ namespace lucus
 
         private:
             VkDevice _device;
+    };
+
+    class mesh;
+
+    struct vk_mesh
+    {
+        bool bHasVertexData{false};
+        uint32_t vertexCount{0};
+        uint32_t indexCount{0};
+
+        vk_buffer vertexBuffer;
+        vk_buffer indexBuffer;
+
+        void init(VkDevice device, VkPhysicalDevice gpu, mesh* msh);
+        void cleanup();
     };
 }

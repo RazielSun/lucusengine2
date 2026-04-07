@@ -40,9 +40,6 @@ window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& ha
     m_window_context context;
     context.init(_deviceHandle, window);
 
-    size_t frameAlignedSize = (sizeof(frame_uniform_buffer) * g_framesInFlight + 255) & ~255;
-    context.uniformbuffers = [_deviceHandle newBufferWithLength:frameAlignedSize options:MTLResourceStorageModeShared];
-
     _contexts.push_back(context);
 
     window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
@@ -116,7 +113,7 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
     id<MTLRenderCommandEncoder> pass = [currentBuffer renderCommandEncoderWithDescriptor:descriptor];
 
     size_t frameUniformOffset = ctx.currentBufferIndex * sizeof(frame_uniform_buffer);
-    memcpy((uint8_t*)ctx.uniformbuffers.contents + frameUniformOffset, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
+    ctx.uniformbuffers.write(&cmd.frame_ubo, sizeof(cmd.frame_ubo), frameUniformOffset);
 
     for (const auto& renderInstance : cmd.render_list)
     {
@@ -124,7 +121,7 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
 
         size_t objectSize = sizeof(renderInstance.object_data);
         size_t objectUniformOffset = objectSize * object_id.as_index();
-        memcpy((uint8_t*)_objectUniformBuffers[ctx.currentBufferIndex].contents + objectUniformOffset, &renderInstance.object_data, objectSize);
+        _objectUniformBuffers[ctx.currentBufferIndex].write(&renderInstance.object_data, objectSize, objectUniformOffset);
 
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
@@ -136,8 +133,8 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
                 [pass setDepthStencilState:psoIt->second.getDepthStencilState()];
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    [pass setVertexBuffer:ctx.uniformbuffers offset:frameUniformOffset atIndex:0];
-                    [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex] offset:objectUniformOffset atIndex:1];
+                    [pass setVertexBuffer:ctx.uniformbuffers.get() offset:frameUniformOffset atIndex:shader_binding::frame];
+                    [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex].get() offset:objectUniformOffset atIndex:shader_binding::object];
                 }
             }
             else
@@ -146,10 +143,28 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
             }
         }
 
-        const auto& mesh = renderInstance.mesh;
-        // TODO: Bind vertex/index buffers and draw
-        // TODO: mesh_handle = mesh.getDrawCount() is for test only
-        [pass drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:mesh.get()];
+        const auto& mesh_id = renderInstance.mesh;
+        if (mesh_id.is_valid())
+        {
+            auto meshIt = _meshes.find(mesh_id.get());
+            if (meshIt != _meshes.end())
+            {
+                auto& gpuMesh = meshIt->second;
+                if (gpuMesh.bHasVertexData)
+                {
+                    [pass setVertexBuffer:gpuMesh.vertexBuffer.get() offset:0 atIndex:shader_binding::vertex];
+                }
+
+                if (gpuMesh.indexCount > 0)
+                {
+                    [pass drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:gpuMesh.indexCount indexType:MTLIndexTypeUInt32 indexBuffer:gpuMesh.indexBuffer.get() indexBufferOffset:0];
+                }
+                else if (gpuMesh.vertexCount > 0)
+                {
+                    [pass drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:gpuMesh.vertexCount instanceCount:1];
+                }
+            }
+        }
     }
 
     [pass endEncoding];
@@ -171,8 +186,9 @@ void m_dynamic_rhi::endFrame(const window_context_handle& ctx_handle)
 
 material_handle m_dynamic_rhi::createMaterial(material* mat)
 {
-    const std::string& shaderName = mat->getShaderName();
-    uint32_t shaderHash = std::hash<std::string>{}(shaderName);
+    assert(mat && "Material pointer cannot be null");
+    
+    uint64_t shaderHash = mat->getHash();
 
     auto it = _pipelineStates.find(shaderHash);
     if (it != _pipelineStates.end()) {
@@ -187,6 +203,25 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
     it->second.init(mat, _contexts[0].getPixelFormat(), _contexts[0].getDepthPixelFormat());
 
     return material_handle(shaderHash);
+}
+
+mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
+{
+    assert(msh && "Mesh pointer cannot be null");
+    
+    uint64_t meshHash = msh->getHash();
+
+    auto it = _meshes.find(meshHash);
+    if (it != _meshes.end()) {
+        return mesh_handle(it->first);
+    }
+
+    _meshes.emplace(meshHash, {});
+
+    it = _meshes.find(meshHash);
+    it->second.init(_deviceHandle, msh);
+
+    return mesh_handle(meshHash);
 }
 
 render_object_handle m_dynamic_rhi::createUniformBuffer(render_object* obj)
@@ -211,10 +246,10 @@ void m_dynamic_rhi::createDevice()
 
 void m_dynamic_rhi::createObjectUniformBuffers()
 {
-    size_t objectAlignedSize = (sizeof(object_uniform_buffer) * g_maxObjectBufferCount + 255) & ~255;
+    size_t size = sizeof(object_uniform_buffer) * g_maxObjectBufferCount;
     for (int i = 0; i < g_framesInFlight; ++i)
     {
-        _objectUniformBuffers[i] = [_deviceHandle newBufferWithLength:objectAlignedSize options:MTLResourceStorageModeShared];
+        _objectUniformBuffers[i].init(_deviceHandle, size);
     }
 
     std::printf("Frame & Object uniform buffers created successfully\n");

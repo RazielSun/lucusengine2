@@ -272,8 +272,8 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
                 vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipeline());
                 if (psoIt->second.isUniformBufferUsed())
                 {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 0, 1, ctx.uniformbuffers.get(ctx.currentFrame), 0, nullptr);
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), 1, 1, buffer.get(ctx.currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), (uint32_t)shader_binding::frame, 1, ctx.uniformbuffers.get(ctx.currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), (uint32_t)shader_binding::object, 1, buffer.get(ctx.currentFrame), 0, nullptr);
                 }
             } else {
                 std::cerr << "Invalid material handle: " << material_id.get() << std::endl;

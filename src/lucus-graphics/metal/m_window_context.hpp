@@ -3,6 +3,7 @@
 #include "m_pch.hpp"
 
 #include "render_types.hpp"
+#include "m_buffer.hpp"
 
 namespace lucus
 {
@@ -22,7 +23,7 @@ namespace lucus
 
         dispatch_semaphore_t frameSemaphore;
 
-        id<MTLBuffer> uniformbuffers;
+        m_buffer uniformbuffers;
 
         void init(id<MTLDevice> device, window* window);
 
