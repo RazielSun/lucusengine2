@@ -23,8 +23,14 @@ void engine::run(int argc, char** argv)
     bind_math_module();
     bind_graphics_module();
 
-    if (!script_manager::instance().build_module("main.as", "Entry")) {
-        throw std::runtime_error("Failed to build main.as script");
+    std::string run_script = commandline_args::instance().getArgument("script");
+    if (run_script.empty())
+    {
+        run_script = "main.as";
+    }
+
+    if (!script_manager::instance().build_module(run_script, "Entry")) {
+        throw std::runtime_error("Failed to build " + run_script + " script");
     }
 
     if (!script_manager::instance().run_func("Entry", "void main()")) {
@@ -39,6 +45,9 @@ void engine::run(int argc, char** argv)
     auto mainWindow = window_manager::instance().getWindow(handle);
     using clock = std::chrono::steady_clock;
     auto prevFrameTime = clock::now();
+    const std::string ticks_arg = commandline_args::instance().getArgument("ticks");
+    const int max_ticks = ticks_arg.empty() ? 0 : std::max(0, std::stoi(ticks_arg));
+    int tick_count = 0;
 
     while (mainWindow && !mainWindow->shouldClose())
     {
@@ -55,6 +64,14 @@ void engine::run(int argc, char** argv)
         mainWindow->tick();
 
         renderer::instance().tick(dt);
+
+        if (max_ticks > 0)
+        {
+            tick_count++;
+            if (tick_count >= max_ticks) {
+                mainWindow->close();
+            }
+        }
     }
     
     renderer::instance().cleanup();

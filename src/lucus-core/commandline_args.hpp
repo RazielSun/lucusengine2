@@ -12,6 +12,9 @@ namespace lucus
         void init(int argc, char** argv);
         const std::vector<std::string>& args() const { return _args; }
 
+        std::string getArgument(const std::string& name) const;
+
+
     private:
         std::vector<std::string> _args;
     };

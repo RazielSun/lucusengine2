@@ -25,7 +25,12 @@ window::~window()
     glfwTerminate();
 }
 
-bool window::shouldClose()
+void window::close()
+{
+    glfwSetWindowShouldClose(_window, GLFW_TRUE);
+}
+
+bool window::shouldClose() const
 {
     return glfwWindowShouldClose(_window);
 }

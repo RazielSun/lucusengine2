@@ -1,0 +1,7 @@
+tests/cube_gpu_test.as
+tests/cube_load_test.as
+tests/cube_test.as
+tests/scene_load_test.as
+tests/triangle_gpu_test.as
+tests/triangle_test.as
+tests/two_windows_test.as

@@ -15,6 +15,10 @@ echo
 echo "Create Content symlink..."
 ln -sfn "$ROOT/content" "$ROOT/bin/content"
 
+# echo
+# echo "Running tests..."
+# "$(dirname "$0")/run_tests.sh"
+
 echo
 echo "Running app..."
 ./bin/app

@@ -20,7 +20,8 @@ namespace lucus
         int framebuffer_width() const { return _framebufferWidth; }
         int framebuffer_height() const { return _framebufferHeight; }
         
-        bool shouldClose();
+        void close();
+        bool shouldClose() const;
         void tick();
 
         GLFWwindow* getGLFWwindow();
