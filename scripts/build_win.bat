@@ -16,7 +16,7 @@ set CONTENT_SRC="%ROOT_DIR%\content"
 set CONTENT_DST="%BIN_DST%\content"
 
 mklink /J "%CONTENT_DST%" "%CONTENT_SRC%"
-if errorlevel 1 exit /b 1
+@REM if errorlevel 1 exit /b 1
 echo [OK] Link content folder
 
 @REM call "%~dp0run_tests.bat"

@@ -40,5 +40,7 @@ namespace lucus
 
         int _framebufferWidth;
         int _framebufferHeight;
+
+        static int g_windows_count;
     };
 } // namespace lucus
