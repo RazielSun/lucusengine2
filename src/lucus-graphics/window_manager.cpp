@@ -2,8 +2,33 @@
 
 #include "script_manager.hpp"
 #include "renderer.hpp"
+#include "glfw_include.hpp"
 
 using namespace lucus;
+
+window_manager::window_manager()
+{
+    if (glfwInit() != GLFW_TRUE)
+    {
+        const char* error_description = nullptr;
+        const int error_code = glfwGetError(&error_description);
+        std::string message = "Failed to initialize GLFW (error " + std::to_string(error_code);
+        if (error_description)
+        {
+            message += ": ";
+            message += error_description;
+        }
+        message += ")";
+        throw std::runtime_error(message);
+    }
+}
+
+window_manager::~window_manager()
+{
+    _windows.clear();
+    _mainWindow.invalidate();
+    glfwTerminate();
+}
 
 void window_manager::createWindow(int width, int height, const std::string& title)
 {

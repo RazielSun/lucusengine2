@@ -12,6 +12,9 @@ namespace lucus
     class window_manager : public singleton<window_manager>
     {
     public:
+        window_manager();
+        ~window_manager();
+
         void createWindow(int width, int height, const std::string& title);
 
         window_handle getMainWindow() const;
