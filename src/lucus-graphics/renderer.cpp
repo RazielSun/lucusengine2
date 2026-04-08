@@ -30,13 +30,15 @@ void renderer::tick(float dt)
 {
     for (const auto& context : _dynamicRHI->getWindowContexts())
     {
-        command_buffer cmd;
-        updateFrameUniformBuffer(context, cmd.frame_ubo);
-        processObjects(cmd);
+        if (_currentScene)
+        {
+            command_buffer cmd;
+            processScene(_currentScene.get(), context, cmd);
 
-        _dynamicRHI->beginFrame(context);
-        _dynamicRHI->submit(context, cmd);
-        _dynamicRHI->endFrame(context);
+            _dynamicRHI->beginFrame(context);
+            _dynamicRHI->submit(context, cmd);
+            _dynamicRHI->endFrame(context);
+        }
     }
 }
 
@@ -45,36 +47,21 @@ void renderer::cleanup()
     _dynamicRHI.reset();
 }
 
-render_object* renderer::emplaceRenderObject()
+void renderer::processScene(const scene* scn, const window_context_handle& ctx_handle, command_buffer& cmd)
 {
-    render_object* renderObject = new render_object();
-    _renderObjects.push_back(intrusive_ptr<render_object>(renderObject));
-    return renderObject;
-}
+    assert(scn);
 
-void renderer::updateFrameUniformBuffer(const window_context_handle& ctx_handle, frame_uniform_buffer& ubo)
-{
-    if (_camera)
+    updateFrameUniformBuffer(scn->getCamera(), ctx_handle, cmd.frame_ubo);
+
+    for (const auto& obj_ptr : scn->objects())
     {
-        // ubo.model = glm::mat4(1.0f); // TEST ONLY
-        ubo.view = _camera->getViewMatrix();
-
-        float aspectRatio = _dynamicRHI->getWindowContextAspectRatio(ctx_handle);
-        ubo.proj = _camera->getProjectionMatrix(aspectRatio);
-    }
-}
-
-void renderer::processObjects(command_buffer& cmd)
-{
-    for (const auto& renderObject : _renderObjects)
-    {
-        if (!renderObject)
+        if (!obj_ptr)
         {
             std::printf("Warning: Null render object found in renderer's render object list.\n");
             continue;
         }
 
-        render_object* obj = renderObject.get();
+        render_object* obj = obj_ptr.get();
         mesh* meshInst = obj->getMesh();
         if (!meshInst) {
             std::printf("Warning: Render object has no mesh assigned.\n");
@@ -108,5 +95,16 @@ void renderer::processObjects(command_buffer& cmd)
         }
 
         cmd.render_list.push_back(instance);
+    }
+}
+
+void renderer::updateFrameUniformBuffer(const camera* cmr, const window_context_handle& ctx_handle, frame_uniform_buffer& ubo)
+{
+    if (cmr)
+    {
+        ubo.view = cmr->getViewMatrix();
+
+        float aspectRatio = _dynamicRHI->getWindowContextAspectRatio(ctx_handle);
+        ubo.proj = cmr->getProjectionMatrix(aspectRatio);
     }
 }

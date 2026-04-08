@@ -5,14 +5,12 @@
 #include "singleton.hpp"
 
 #include "render_types.hpp"
-#include "intrusive_ptr.hpp"
-
-#include "render_object.hpp"
-#include "camera.hpp"
+#include "scene.hpp"
 
 namespace lucus
 {
     class dynamic_rhi;
+    class camera;
 
     class renderer : public singleton<renderer>
     {
@@ -22,19 +20,15 @@ namespace lucus
         void tick(float dt);
         void cleanup();
 
-        render_object* emplaceRenderObject();
+        void setCurrentScene(scene* scn) { _currentScene.reset(scn); }
 
-        void setCamera(camera* cam) { _camera.reset(cam); }
-    
     protected:
-        void updateFrameUniformBuffer(const window_context_handle& ctx_handle, frame_uniform_buffer& ubo);
-        void processObjects(command_buffer& cmd);
+        void processScene(const scene* scn, const window_context_handle& ctx_handle, command_buffer& cmd);
+        void updateFrameUniformBuffer(const camera* cmr, const window_context_handle& ctx_handle, frame_uniform_buffer& ubo);
 
     private:
         std::shared_ptr<dynamic_rhi> _dynamicRHI;
 
-        std::vector<intrusive_ptr<render_object>> _renderObjects;
-
-        intrusive_ptr<camera> _camera;
+        intrusive_ptr<scene> _currentScene;
     };
 }

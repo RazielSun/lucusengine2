@@ -10,10 +10,8 @@ namespace lucus
     class mesh : public object
     {
         public:
-            static mesh* create_nodata_factory(int drawCount = 0);
-            static mesh* create_gltf_factory(const std::string& fileName);
-            static mesh* create_cube_factory();
-            static mesh* create_triangle_factory();
+            static mesh* create_factory(const std::string& filePath = std::string(), int drawCount = 0);
+            
 
             const mesh_handle& getHandle() const { return _mesh_handle; }
             void setHandle(const mesh_handle& handle) { _mesh_handle = handle; }
@@ -38,4 +36,7 @@ namespace lucus
             // transient
             mesh_handle _mesh_handle;
     };
+
+    mesh* create_cube_factory();
+    mesh* create_triangle_factory();
 }

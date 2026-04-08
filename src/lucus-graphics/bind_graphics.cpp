@@ -6,6 +6,9 @@
 #include "renderer.hpp"
 #include "render_object.hpp"
 #include "camera.hpp"
+#include "scene.hpp"
+
+#include "gltf_utils.hpp"
 
 #include "bind_math.hpp"
 
@@ -21,19 +24,7 @@ namespace utils
     constexpr const char* material_class_name = "Material";
     constexpr const char* render_object_class_name = "RenderObject";
     constexpr const char* camera_class_name = "Camera";
-}
-
-namespace wrappers
-{
-    lucus::mesh* mesh_cube_factory_wrapper()
-    {
-        return lucus::mesh::create_cube_factory();
-    }
-
-    lucus::mesh* mesh_triangle_factory_wrapper()
-    {
-        return lucus::mesh::create_triangle_factory();
-    }
+    constexpr const char* scene_class_name = "Scene";
 }
 
 namespace lucus
@@ -42,6 +33,7 @@ namespace lucus
     void bind_material_class();
     void bind_render_object_class();
     void bind_camera_class();
+    void bind_scene_class();
 
     void bind_window_manager_class_and_object();
     void bind_renderer_class_and_object();
@@ -55,6 +47,7 @@ void lucus::bind_graphics_module()
     bind_material_class();
     bind_render_object_class();
     bind_camera_class();
+    bind_scene_class();
 
     bind_renderer_class_and_object();
 }
@@ -90,19 +83,11 @@ void lucus::bind_renderer_class_and_object()
 
     r = engine->RegisterObjectType(renderer_class_name, 0, asOBJ_REF | asOBJ_NOCOUNT); assert(r >= 0);
 
-    std::string method_emplace = std::string(render_object_class_name) + "@ EmplaceRenderObject()";
+    std::string method_set_current_scene = std::string("void SetCurrentScene(") + scene_class_name + "@)";
     r = engine->RegisterObjectMethod(
         renderer_class_name,
-        method_emplace.c_str(),
-        asMETHOD(renderer, emplaceRenderObject),
-        asCALL_THISCALL
-    ); assert(r >= 0);
-
-    std::string method_set_camera = std::string("void SetCamera(") + camera_class_name + "@)";
-    r = engine->RegisterObjectMethod(
-        renderer_class_name,
-        method_set_camera.c_str(),
-        asMETHOD(renderer, setCamera),
+        method_set_current_scene.c_str(),
+        asMETHOD(renderer, setCurrentScene),
         asCALL_THISCALL
     ); assert(r >= 0);
 
@@ -120,21 +105,12 @@ void lucus::bind_mesh_class()
 
     r = engine->RegisterObjectType(mesh_class_name, 0, asOBJ_REF); assert(r >= 0);
 
-    std::string method_nodata_factory = std::string(mesh_class_name) + "@ f(int)";
+    std::string method_factory = std::string(mesh_class_name) + "@ f(const string &in, int)";
     r = engine->RegisterObjectBehaviour(
         mesh_class_name,
         asBEHAVE_FACTORY,
-        method_nodata_factory.c_str(),
-        asFUNCTION(mesh::create_nodata_factory),
-        asCALL_CDECL
-    ); assert(r >= 0);
-
-    std::string method_gltf_factory = std::string(mesh_class_name) + "@ f(const string &in)";
-    r = engine->RegisterObjectBehaviour(
-        mesh_class_name,
-        asBEHAVE_FACTORY,
-        method_gltf_factory.c_str(),
-        asFUNCTION(mesh::create_gltf_factory),
+        method_factory.c_str(),
+        asFUNCTION(mesh::create_factory),
         asCALL_CDECL
     ); assert(r >= 0);
 
@@ -149,14 +125,22 @@ void lucus::bind_mesh_class()
     ); assert(r >= 0);
 
     r = engine->SetDefaultNamespace(mesh_class_name); assert(r >= 0);
+    std::string create_cube = std::string(mesh_class_name) + std::string("@ cube()");
     r = engine->RegisterGlobalFunction(
-        "Mesh@ cube()",
-        asFUNCTION(wrappers::mesh_cube_factory_wrapper),
+        create_cube.c_str(),
+        asFUNCTION(create_cube_factory),
         asCALL_CDECL
     ); assert(r >= 0);
+    std::string create_triangle = std::string(mesh_class_name) + std::string("@ triangle()");
     r = engine->RegisterGlobalFunction(
-        "Mesh@ triangle()",
-        asFUNCTION(wrappers::mesh_triangle_factory_wrapper),
+        create_triangle.c_str(),
+        asFUNCTION(create_triangle_factory),
+        asCALL_CDECL
+    ); assert(r >= 0);
+    std::string load_mesh = std::string(mesh_class_name) + std::string("@ load(const string &in)");
+    r = engine->RegisterGlobalFunction(
+        load_mesh.c_str(),
+        asFUNCTION(load_mesh_gltf),
         asCALL_CDECL
     ); assert(r >= 0);
     r = engine->SetDefaultNamespace(""); assert(r >= 0);
@@ -310,4 +294,59 @@ void lucus::bind_camera_class()
         asMETHOD(camera, setRotationEuler),
         asCALL_THISCALL
     ); assert(r >= 0);
+}
+
+void lucus::bind_scene_class()
+{
+    asIScriptEngine* engine = script_manager::instance().get_engine();
+
+    int r = 0;
+
+    using namespace utils;
+
+    r = engine->RegisterObjectType(scene_class_name, 0, asOBJ_REF); assert(r >= 0);
+
+    std::string method_create_factory = std::string(scene_class_name) + "@ f()";
+    r = engine->RegisterObjectBehaviour(
+        scene_class_name,
+        asBEHAVE_FACTORY,
+        method_create_factory.c_str(),
+        asFUNCTION(scene::create_factory),
+        asCALL_CDECL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        scene_class_name, asBEHAVE_ADDREF, "void f()",
+        asMETHOD(scene, addRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        scene_class_name, asBEHAVE_RELEASE, "void f()",
+        asMETHOD(scene, releaseRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_new_object = std::string(render_object_class_name) + "@ NewObject()";
+    r = engine->RegisterObjectMethod(
+        scene_class_name,
+        method_new_object.c_str(),
+        asMETHOD(scene, newObject),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_camera = std::string("void SetCamera(") + camera_class_name + "@)";
+    r = engine->RegisterObjectMethod(
+        scene_class_name,
+        method_set_camera.c_str(),
+        asMETHOD(scene, setCamera),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->SetDefaultNamespace(scene_class_name); assert(r >= 0);
+    std::string load_scene = std::string(scene_class_name) + std::string("@ load(const string &in)");
+    r = engine->RegisterGlobalFunction(
+        load_scene.c_str(),
+        asFUNCTION(load_scene_gltf),
+        asCALL_CDECL
+    ); assert(r >= 0);
+    r = engine->SetDefaultNamespace(""); assert(r >= 0);
 }
