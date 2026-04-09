@@ -7,11 +7,16 @@
 
 namespace lucus
 {
+    class mesh;
+    class texture;
+    class material;
+
     struct vk_commandbuffer_pool
     {
         void init(VkDevice device, uint32_t queueFamilyIndex);
         void cleanup();
-
+        
+        VkCommandPool get() { return _commandPool; }
         VkCommandBuffer& getCommandBuffer(uint32_t index);
         
         protected:
@@ -83,11 +88,9 @@ namespace lucus
         void init(VkDevice device);
         void cleanup();
 
-        private:
-            VkDevice _device;
+    private:
+        VkDevice _device;
     };
-
-    class mesh;
 
     struct vk_mesh
     {
@@ -99,6 +102,40 @@ namespace lucus
         vk_buffer indexBuffer;
 
         void init(VkDevice device, VkPhysicalDevice gpu, mesh* msh);
+        void cleanup();
+    };
+
+    struct vk_texture
+    {
+        VkBuffer stgBuffer;
+        VkDeviceMemory stgBufferMemory;
+        VkImage texImage;
+        VkDeviceMemory texImageMemory;
+        VkImageView texImageView;
+        VkSampler texSampler;
+        VkDescriptorSet texDescriptorSet;
+        VkDeviceSize texSize;
+        VkExtent2D texExtent;
+
+        void init(VkDevice device, VkPhysicalDevice gpu, texture* tex);
+        void free_staging();
+        void cleanup();
+
+    private:
+        VkDevice _device;
+    };
+
+    struct vk_material
+    {
+        uint64_t psoHandle;
+        bool bUniformBufferUsed { false };
+        bool bTexturesUsed { false };
+
+        VkDescriptorSet texDescriptorSet;
+
+        void initDescriptor(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
+        void addTexture(VkDevice device, uint32_t index, const vk_texture& tex);
+        
         void cleanup();
     };
 }

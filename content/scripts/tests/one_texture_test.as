@@ -1,6 +1,6 @@
 void main()
 {
-    g_window_manager.CreateWindow(1280, 720, "Lucus Engine 2");
+    g_window_manager.CreateWindow(1280, 720, "Lucus Engine 2 - One Texture Test");
 
     Scene@ scene = Scene();
     g_renderer.SetCurrentScene(scene);
@@ -12,7 +12,6 @@ void main()
     Mesh@ cube = Mesh::load("content/assets/geometry/cube.gltf");
 
     Material@ cube_mat = Material("simple_texture");
-    // Material@ cube_mat = Material("simple");
     cube_mat.SetUseUniformBuffers(true);
     cube_mat.SetUseVertexIndexBuffers(true);
 

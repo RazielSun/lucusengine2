@@ -1,5 +1,7 @@
 #include "vk_utils.hpp"
 
+#include "gltf_utils.hpp"
+
 using namespace lucus;
 
 void lucus::utils::createBuffer(VkDevice device, VkPhysicalDevice gpu, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
@@ -47,18 +49,23 @@ void lucus::utils::createImage(VkDevice device, VkPhysicalDevice gpu, VkExtent2D
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageInfo.usage = usage;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    vkCreateImage(device, &imageInfo, nullptr, &image);
+    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image!");
+    }
 
     VkMemoryRequirements memReq;
     vkGetImageMemoryRequirements(device, image, &memReq);
 
-    VkMemoryAllocateInfo alloc{};
-    alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc.allocationSize = memReq.size;
-    alloc.memoryTypeIndex = utils::findMemoryType(gpu, memReq.memoryTypeBits, properties);
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReq.size;
+    allocInfo.memoryTypeIndex = utils::findMemoryType(gpu, memReq.memoryTypeBits, properties);
 
-    vkAllocateMemory(device, &alloc, nullptr, &memory);
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate image memory!");
+    }
     vkBindImageMemory(device, image, memory, 0);
 }
 
@@ -82,6 +89,31 @@ void lucus::utils::createImageView(VkDevice device, VkImage image, VkFormat form
     if (vkCreateImageView(device, &viewInfo, nullptr, &view) != VK_SUCCESS) {
         throw std::runtime_error("failed to create image views!");
     }
+}
+
+void lucus::utils::createTextureImage(const std::string& fileName, VkDevice device, VkPhysicalDevice gpu, VkBuffer& stgBuffer, VkDeviceMemory& stgBufferMemory, VkImage& texImage, VkDeviceMemory& texImageMemory, VkDeviceSize& texSize, VkExtent2D& texExtent)
+{
+    using namespace lucus::utils;
+
+    int texWidth, texHeight, texChannels;
+    void* tex_ptr = load_texture(fileName, texWidth, texHeight, texChannels);
+
+    texSize = texWidth * texHeight * 4;
+    texExtent = VkExtent2D{
+        .width = static_cast<uint32_t>(texWidth),
+        .height = static_cast<uint32_t>(texHeight)
+    };
+
+    createBuffer(device, gpu, texSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stgBuffer, stgBufferMemory);
+
+    void* data;
+    vkMapMemory(device, stgBufferMemory, 0, texSize, 0, &data);
+    memcpy(data, tex_ptr, static_cast<size_t>(texSize));
+    vkUnmapMemory(device, stgBufferMemory);
+
+    free_texture(tex_ptr);
+
+    createImage(device, gpu, texExtent, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texImage, texImageMemory);
 }
 
 uint32_t lucus::utils::findMemoryType(VkPhysicalDevice gpu, uint32_t typeFilter, VkMemoryPropertyFlags properties)

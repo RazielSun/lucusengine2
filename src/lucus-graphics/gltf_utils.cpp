@@ -10,6 +10,9 @@
 #define TINYGLTF3_ENABLE_STB_IMAGE
 #include "tiny_gltf_v3.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 namespace utils
 {
     const char* severity_to_string(tg3_severity severity)
@@ -171,6 +174,67 @@ namespace utils
             default:
                 return 0.0f;
         }
+    }
+
+    bool read_tex_coords(const tg3_model& model, const tg3_primitive& primitive, std::vector<lucus::vertex>& outVertices)
+    {
+        const int32_t texCoordAccessorIndex = find_attribute_accessor_index(primitive, "TEXCOORD_0");
+        if (texCoordAccessorIndex < 0)
+        {
+            return true;
+        }
+
+        const tg3_accessor* accessor = get_accessor(model, texCoordAccessorIndex);
+        if (!accessor)
+        {
+            std::printf("mesh::create_gltf_factory: invalid TEXCOORD_0 accessor.\n");
+            return false;
+        }
+
+        if (accessor->type != TG3_TYPE_VEC2)
+        {
+            std::printf("mesh::create_gltf_factory: TEXCOORD_0 accessor must be VEC2.\n");
+            return false;
+        }
+
+        if (accessor->component_type != TG3_COMPONENT_TYPE_FLOAT &&
+            accessor->component_type != TG3_COMPONENT_TYPE_UNSIGNED_BYTE &&
+            accessor->component_type != TG3_COMPONENT_TYPE_UNSIGNED_SHORT)
+        {
+            std::printf("mesh::create_gltf_factory: unsupported TEXCOORD_0 component type %d.\n", accessor->component_type);
+            return false;
+        }
+
+        if (accessor->count != outVertices.size())
+        {
+            std::printf("mesh::create_gltf_factory: TEXCOORD_0 count does not match POSITION count.\n");
+            return false;
+        }
+
+        int32_t stride = 0;
+        const uint8_t* data = get_accessor_data(model, *accessor, stride);
+        if (!data)
+        {
+            std::printf("mesh::create_gltf_factory: failed to access TEXCOORD_0 buffer data.\n");
+            return false;
+        }
+
+        const int32_t componentSize = tg3_component_size(accessor->component_type);
+        if (componentSize <= 0)
+        {
+            std::printf("mesh::create_gltf_factory: invalid TEXCOORD_0 component size.\n");
+            return false;
+        }
+
+        for (uint64_t i = 0; i < accessor->count; ++i)
+        {
+            const uint8_t* vertexData = data + (i * stride);
+            outVertices[static_cast<size_t>(i)].texCoords = glm::vec2(
+                read_color_component(vertexData + (componentSize * 0), accessor->component_type, accessor->normalized),
+                read_color_component(vertexData + (componentSize * 1), accessor->component_type, accessor->normalized));
+        }
+
+        return true;
     }
 
     bool read_vertex_colors(const tg3_model& model, const tg3_primitive& primitive, std::vector<lucus::vertex>& outVertices)
@@ -446,6 +510,11 @@ namespace utils
             return nullptr;
         }
 
+        if (!read_tex_coords(model, primitive, vertices))
+        {
+            return nullptr;
+        }
+
         std::vector<uint32_t> indices;
         if (!read_indices(model, primitive, indices))
         {
@@ -508,6 +577,11 @@ lucus::mesh* lucus::load_mesh_gltf(const std::string& fileName)
     }
 
     if (!read_vertex_colors(*model.get(), primitive, vertices))
+    {
+        return nullptr;
+    }
+
+    if (!read_tex_coords(*model.get(), primitive, vertices))
     {
         return nullptr;
     }
@@ -674,4 +748,28 @@ lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
     }
 
     return loadedScene;
+}
+
+void* lucus::load_texture(const std::string& fileName, int& texWidth, int& texHeight, int& texChannels)
+{
+    const std::string filePath = filesystem::instance().get_path(fileName);
+
+    // TODO: 
+    auto imageLoadType = STBI_rgb_alpha;
+
+    stbi_uc* pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, imageLoadType);
+    if (!pixels) {
+        throw std::runtime_error("failed to load texture image!");
+    }
+
+    return reinterpret_cast<void*>(pixels);
+}
+
+void lucus::free_texture(void* texture_ptr)
+{
+    stbi_uc* pixels = reinterpret_cast<stbi_uc*>(texture_ptr);
+    if (!pixels) {
+        throw std::runtime_error("failed to free texture image!");
+    }
+    stbi_image_free(pixels);
 }

@@ -8,13 +8,17 @@ namespace lucus
 {
     constexpr uint32_t g_framesInFlight{ 2 };
     constexpr uint32_t g_swapchainImageCount{ 3 };
-    constexpr uint32_t g_maxObjectBufferCount{ 32 }; // TODO: Make this dynamic or configurable
+    // TODO: Make this dynamic or configurable
+    constexpr uint32_t g_maxObjectBufferCount{ 32 };
+    constexpr uint32_t g_maxTexturesCount{ 32 };
+    constexpr uint32_t g_maxSamplersCount{ 32 };
 
     enum class shader_binding : uint8_t
     {
         frame = 0,
         object = 1,
-        vertex = 2,
+        material = 2,
+        vertex = 3,
     };
 
     struct resource_handle
@@ -58,16 +62,22 @@ namespace lucus
         explicit window_context_handle(int idx) : resource_handle(idx) {}
     };
 
-    struct material_handle : public hash_handle
-    {
-        material_handle() : hash_handle() {}
-        explicit material_handle(uint64_t idx) : hash_handle(idx) {}
-    };
-
     struct mesh_handle : public hash_handle
     {
         mesh_handle() : hash_handle() {}
         explicit mesh_handle(uint64_t idx) : hash_handle(idx) {}
+    };
+
+    struct texture_handle : public hash_handle
+    {
+        texture_handle() : hash_handle() {}
+        explicit texture_handle(uint64_t idx) : hash_handle(idx) {}
+    };
+
+    struct material_handle : public resource_handle
+    {
+        material_handle() : resource_handle() {}
+        explicit material_handle(uint32_t idx) : resource_handle(idx) {}
     };
 
     struct render_object_handle : public resource_handle
@@ -105,6 +115,7 @@ namespace lucus
     struct vertex
     {
         glm::vec3 position{0.0f};
+        glm::vec2 texCoords{0.0f};
         glm::vec3 color{1.0f};
     };
 }

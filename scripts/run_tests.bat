@@ -12,7 +12,7 @@ set "APP=%ROOT_DIR%\bin\app.exe"
 if defined TICKS (
     set "TEST_TICKS=%TICKS%"
 ) else (
-    set "TEST_TICKS=5"
+    set "TEST_TICKS=10"
 )
 
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"

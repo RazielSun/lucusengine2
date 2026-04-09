@@ -14,12 +14,14 @@ struct ObjectUniforms
 
 struct VSInput {
     float3 position : POSITION;
+    float2 texCoords0 : TEXCOORD0;
     float3 color : COLOR;
 };
 
 struct VSOutput
 {
     float4 position : SV_Position;
+    float2 texCoords0 : TEXCOORD0;
     float3 color : COLOR0;
 };
 

@@ -43,9 +43,13 @@ void m_pipeline_state::init(material* mat, MTLPixelFormat colorFormat, MTLPixelF
         vertexDescriptor.attributes[0].offset = offsetof(vertex, position);
         vertexDescriptor.attributes[0].bufferIndex = bufferIndex;
 
-        vertexDescriptor.attributes[1].format = MTLVertexFormatFloat3;
-        vertexDescriptor.attributes[1].offset = offsetof(vertex, color);
+        vertexDescriptor.attributes[1].format = MTLVertexFormatFloat2;
+        vertexDescriptor.attributes[1].offset = offsetof(vertex, texCoords);
         vertexDescriptor.attributes[1].bufferIndex = bufferIndex;
+
+        vertexDescriptor.attributes[2].format = MTLVertexFormatFloat3;
+        vertexDescriptor.attributes[2].offset = offsetof(vertex, color);
+        vertexDescriptor.attributes[2].bufferIndex = bufferIndex;
 
         vertexDescriptor.layouts[bufferIndex].stride = sizeof(vertex);
 

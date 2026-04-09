@@ -3,6 +3,7 @@
 #include "script_manager.hpp"
 
 #include "window_manager.hpp"
+#include "texture_manager.hpp"
 #include "renderer.hpp"
 #include "render_object.hpp"
 #include "camera.hpp"
@@ -20,7 +21,11 @@ namespace utils
     constexpr const char* renderer_class_name = "RendererClass";
     constexpr const char* renderer_global_name = "g_renderer";
 
+    constexpr const char* texture_manager_class_name = "TextureManagerClass";
+    constexpr const char* texture_manager_global_name = "g_texture_manager";
+
     constexpr const char* mesh_class_name = "Mesh";
+    constexpr const char* texture_class_name = "Texture";
     constexpr const char* material_class_name = "Material";
     constexpr const char* render_object_class_name = "RenderObject";
     constexpr const char* camera_class_name = "Camera";
@@ -30,6 +35,7 @@ namespace utils
 namespace lucus
 {
     void bind_mesh_class();
+    void bind_texture_class();
     void bind_material_class();
     void bind_render_object_class();
     void bind_camera_class();
@@ -37,6 +43,7 @@ namespace lucus
 
     void bind_window_manager_class_and_object();
     void bind_renderer_class_and_object();
+    void bind_texture_manager_class_and_object();
 }
 
 void lucus::bind_graphics_module()
@@ -44,12 +51,14 @@ void lucus::bind_graphics_module()
     bind_window_manager_class_and_object();
 
     bind_mesh_class();
+    bind_texture_class();
     bind_material_class();
     bind_render_object_class();
     bind_camera_class();
     bind_scene_class();
 
     bind_renderer_class_and_object();
+    // bind_texture_manager_class_and_object();
 }
 
 void lucus::bind_window_manager_class_and_object()
@@ -193,6 +202,14 @@ void lucus::bind_material_class()
         material_class_name,
         "void SetUseVertexIndexBuffers(bool)",
         asMETHOD(material, setUseVertexIndexBuffers),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_texture = std::string("void SetTexture(") + texture_class_name + "@, int)";
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        method_set_texture.c_str(),
+        asMETHOD(material, setTexture),
         asCALL_THISCALL
     ); assert(r >= 0);
 }
@@ -349,4 +366,56 @@ void lucus::bind_scene_class()
         asCALL_CDECL
     ); assert(r >= 0);
     r = engine->SetDefaultNamespace(""); assert(r >= 0);
+}
+
+void lucus::bind_texture_class()
+{
+    asIScriptEngine* engine = script_manager::instance().get_engine();
+
+    int r = 0;
+
+    using namespace utils;
+
+    r = engine->RegisterObjectType(texture_class_name, 0, asOBJ_REF); assert(r >= 0);
+
+    std::string method_factory = std::string(texture_class_name) + "@ f(const string &in)";
+    r = engine->RegisterObjectBehaviour(
+        texture_class_name,
+        asBEHAVE_FACTORY,
+        method_factory.c_str(),
+        asFUNCTION(texture::create_factory),
+        asCALL_CDECL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        texture_class_name, asBEHAVE_ADDREF, "void f()",
+        asMETHOD(mesh, addRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        texture_class_name, asBEHAVE_RELEASE, "void f()",
+        asMETHOD(mesh, releaseRef), asCALL_THISCALL
+    ); assert(r >= 0);
+}
+
+void lucus::bind_texture_manager_class_and_object()
+{
+    asIScriptEngine* engine = script_manager::instance().get_engine();
+
+    int r = 0;
+
+    using namespace utils;
+
+    r = engine->RegisterObjectType(texture_manager_class_name, 0, asOBJ_REF | asOBJ_NOCOUNT); assert(r >= 0);
+
+    // std::string method_set_current_scene = std::string("void SetCurrentScene(") + scene_class_name + "@)";
+    // r = engine->RegisterObjectMethod(
+    //     renderer_class_name,
+    //     method_set_current_scene.c_str(),
+    //     asMETHOD(renderer, setCurrentScene),
+    //     asCALL_THISCALL
+    // ); assert(r >= 0);
+
+    std::string property = std::string(texture_manager_class_name) + " " + texture_manager_global_name;
+    r = engine->RegisterGlobalProperty(property.c_str(), &texture_manager::instance()); assert(r >= 0);
 }

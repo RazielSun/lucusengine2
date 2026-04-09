@@ -9,6 +9,16 @@ material* material::create_factory(const std::string& shaderName)
     return mat;
 }
 
+void material::setTexture(texture* tex, uint32_t index)
+{
+    assert(tex);
+
+    std::vector<intrusive_ptr<texture>>::iterator it;
+
+    it = _textures.begin() + index;
+    _textures.insert(it, intrusive_ptr<texture>(tex));
+}
+
 uint64_t material::getHash() const
 {
     const uint64_t shaderHash = static_cast<uint64_t>(std::hash<std::string>{}(_shaderName));

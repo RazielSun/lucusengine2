@@ -31,6 +31,7 @@ namespace lucus
 
             virtual material_handle createMaterial(material* mat) override;
             virtual mesh_handle createMesh(mesh* msh) override;
+            virtual texture_handle loadTexture(texture* tex) override;
             virtual render_object_handle createUniformBuffer(render_object* obj) override;
 
         protected:
@@ -42,6 +43,13 @@ namespace lucus
             void createDescriptorSetLayouts();
 
             void wait_idle();
+
+            VkCommandBuffer beginSingleTimeCommands();
+            void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
+            void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+            void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+            void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 
         private:
             VkInstance _instance;
@@ -61,13 +69,18 @@ namespace lucus
             VkQueue _graphicsQueue;
 
             //
+            std::vector<vk_material> _materials;
             std::unordered_map<uint64_t, vk_pipeline_state> _pipelineStates;
 
             //
             std::unordered_map<uint64_t, vk_mesh> _meshes;
 
+            //
+            std::unordered_map<uint64_t, vk_texture> _textures;
+
             VkDescriptorSetLayout _frameDescriptorSetLayout{ VK_NULL_HANDLE };
             VkDescriptorSetLayout _objectDescriptorSetLayout{ VK_NULL_HANDLE };
+            VkDescriptorSetLayout _texturesDescriptorSetLayout{ VK_NULL_HANDLE };
             VkDescriptorPool _descriptorPool{ VK_NULL_HANDLE };
 
             std::vector<vk_uniform_buffer> _objectUniformBuffers;

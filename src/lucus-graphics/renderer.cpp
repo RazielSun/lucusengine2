@@ -4,6 +4,8 @@
 #include "window.hpp"
 #include "window_manager.hpp"
 
+#include "texture_manager.hpp"
+
 #include "dynamic_rhi.hpp"
 
 using namespace lucus;
@@ -28,6 +30,22 @@ void renderer::init(window_handle handle)
 
 void renderer::tick(float dt)
 {
+    const bool bNeedLoadTextures = texture_manager::instance().hasPendingTextures();
+    if (bNeedLoadTextures)
+    {
+        for (auto& tex_ptr : texture_manager::instance().getPendingTextures())
+        {
+            texture_handle tex_handle = _dynamicRHI->loadTexture(tex_ptr.get());
+            if (tex_handle.is_valid())
+            {
+                tex_ptr->setHandle(tex_handle);
+                texture_manager::instance().textureLoaded(tex_ptr.get());
+            }
+        }
+
+        texture_manager::instance().resetPendingTextures();
+    }
+
     for (const auto& context : _dynamicRHI->getWindowContexts())
     {
         if (_currentScene)

@@ -68,6 +68,7 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
+    // TODO: move from here?
     if (mat->isUseVertexIndexBuffers())
     {
         // We are using vertex/index buffers, so we need to provide the binding and attribute descriptions
@@ -76,7 +77,7 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
         bindingDescription.stride = sizeof(vertex);
         bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-        std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
@@ -85,8 +86,13 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
 
         attributeDescriptions[1].binding = 0;
         attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(vertex, color);
+        attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(vertex, texCoords);
+
+        attributeDescriptions[2].binding = 0;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[2].offset = offsetof(vertex, color);
 
         vertexInputInfo.vertexBindingDescriptionCount = 1;
         vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
@@ -224,7 +230,6 @@ void vk_pipeline_state::createPipelineLayout(uint32_t layoutCount, VkDescriptorS
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
     if (layouts != nullptr) {
-        _useUniformBuffers = true;
         pipelineLayoutInfo.setLayoutCount = layoutCount;
         pipelineLayoutInfo.pSetLayouts = layouts;
     } else {

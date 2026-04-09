@@ -9,6 +9,7 @@ namespace lucus
     class window;
     class material;
     class mesh;
+    class texture;
     class render_object;
 
     std::shared_ptr<class dynamic_rhi> create_dynamic_rhi();
@@ -31,6 +32,7 @@ namespace lucus
 
         virtual material_handle createMaterial(material* mat) = 0;
         virtual mesh_handle createMesh(mesh* msh) = 0;
+        virtual texture_handle loadTexture(texture* tex) = 0;
         virtual render_object_handle createUniformBuffer(render_object* obj) = 0;
     };
 }

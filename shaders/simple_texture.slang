@@ -20,9 +20,15 @@ VSOutput vsMain(VSInput input)
     return o;
 }
 
+[[vk::binding(0, 2)]]
+Texture2D gAlbedo : register(t0);
+[[vk::binding(1, 2)]]
+SamplerState gSampler : register(s0);
+
 [shader("fragment")]
 float4 psMain(VSOutput input) : SV_Target0
 {
-    float4 color = float4(input.color, 1.0f);
+    float4 color = gAlbedo.Sample(gSampler, input.texCoords0);
+    color.rgb *= input.color;
     return color;
 }

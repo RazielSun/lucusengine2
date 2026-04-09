@@ -1,5 +1,13 @@
 # LUCUS ENGINE 2
-An educational project.
+An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not for production.
+
+## Project structure
+- src/ — main code of engine
+- shaders/ — GPU shaders (SLANG language)
+- cmake/ - build
+- scripts/ - bash/bat utilities for building, compiling, running
+- content/scripts/ - AngelScript code for engine (main and tests)
+- third-party/ - third-party dependencies for different platforms
 
 ## Dependencies
 
@@ -61,6 +69,20 @@ Or run the scripted test runners:
 
 ```bash
 ./scripts/run_tests.sh
+```
+
+By default, `scripts/run_tests.sh` will discover all `*.as` files under
+`bin/content/scripts/tests` and run them as `tests/...`.
+If you still want an explicit list, set `TEST_LIST_FILE`:
+
+```bash
+TEST_LIST_FILE=./scripts/tests.list ./scripts/run_tests.sh
+```
+
+To run tests from a different folder, set `TEST_DIR`:
+
+```bash
+TEST_DIR=./bin/content/scripts/tests ./scripts/run_tests.sh
 ```
 
 ```bat

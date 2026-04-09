@@ -9,7 +9,7 @@ void main()
     camera.SetPosition(Vec3(0.f, 0.f, 5.f));
     scene.SetCamera(camera);
 
-    Mesh@ cube = Mesh::load("content/assets/cube.gltf");
+    Mesh@ cube = Mesh::load("content/assets/geometry/cube.gltf");
 
     Material@ cube_mat = Material("simple");
     cube_mat.SetUseUniformBuffers(true);

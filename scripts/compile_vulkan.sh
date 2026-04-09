@@ -12,8 +12,24 @@ echo "Compiling shaders..."
 
 SRC_DIR="shaders"
 OUT_DIR="bin/shaders"
+COMMON_DIR="$SRC_DIR/common"
 
 mkdir -p "$OUT_DIR"
+
+needs_rebuild() {
+    local src_file="$1"
+    local out_file="$2"
+
+    if [ ! -f "$out_file" ] || [ "$src_file" -nt "$out_file" ]; then
+        return 0
+    fi
+
+    if [ -d "$COMMON_DIR" ] && [ -n "$(find "$COMMON_DIR" -type f -newer "$out_file" -print -quit)" ]; then
+        return 0
+    fi
+
+    return 1
+}
 
 find "$SRC_DIR" -type f -name "*.slang" ! -path "*/common/*" | while read -r file; do
 
@@ -25,12 +41,12 @@ find "$SRC_DIR" -type f -name "*.slang" ! -path "*/common/*" | while read -r fil
 
     mkdir -p "$(dirname "$out_vs")"
 
-    if [ ! -f "$out_vs" ] || [ "$file" -nt "$out_vs" ]; then
+    if needs_rebuild "$file" "$out_vs"; then
         echo "Compiling $file to $out_vs"
         slangc "$file" -entry vsMain -profile vs_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_vs" -I "$SRC_DIR"
     fi
 
-    if [ ! -f "$out_ps" ] || [ "$file" -nt "$out_ps" ]; then
+    if needs_rebuild "$file" "$out_ps"; then
         echo "Compiling $file to $out_ps"
         slangc "$file" -entry psMain -profile ps_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_ps" -I "$SRC_DIR"
     fi

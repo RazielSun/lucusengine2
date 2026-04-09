@@ -2,6 +2,7 @@
 
 #include "vk_utils.hpp"
 #include "mesh.hpp"
+#include "texture.hpp"
 
 using namespace lucus;
 
@@ -261,4 +262,110 @@ void vk_mesh::cleanup()
 {
     vertexBuffer.cleanup();
     indexBuffer.cleanup();
+}
+
+void vk_texture::init(VkDevice device, VkPhysicalDevice gpu, texture* tex)
+{
+    assert(tex);
+    assert(device);
+    assert(gpu);
+
+    _device = device;
+
+    utils::createTextureImage(tex->getFileName(), device, gpu, stgBuffer, stgBufferMemory, texImage, texImageMemory, texSize, texExtent);
+    utils::createImageView(device, texImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, texImageView);
+
+    VkSamplerCreateInfo samplerCreateInfo{};
+    samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.anisotropyEnable = VK_FALSE;
+    samplerCreateInfo.maxAnisotropy = 1.0f;
+    samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerCreateInfo.compareEnable = VK_FALSE;
+    samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.mipLodBias = 0.0f;
+    samplerCreateInfo.minLod = 0.0f;
+    samplerCreateInfo.maxLod = 0.0f;
+
+    if (vkCreateSampler(device, &samplerCreateInfo, nullptr, &texSampler) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
+}
+
+void vk_texture::free_staging()
+{
+    vkDestroyBuffer(_device, stgBuffer, nullptr);
+    vkFreeMemory(_device, stgBufferMemory, nullptr);
+}
+
+void vk_texture::cleanup()
+{
+    vkDestroySampler(_device, texSampler, nullptr);
+    vkDestroyImageView(_device, texImageView, nullptr);
+    vkDestroyImage(_device, texImage, nullptr);
+    vkFreeMemory(_device, texImageMemory, nullptr);
+}
+
+void vk_material::initDescriptor(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool)
+{
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout;
+
+    if (vkAllocateDescriptorSets(device, &allocInfo, &texDescriptorSet) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets!");
+    }
+
+    std::printf("Material initDescriptor called successfully\n");
+}
+
+void vk_material::addTexture(VkDevice device, uint32_t index, const vk_texture& tex)
+{
+    // TODO: check for index
+
+    std::array<VkWriteDescriptorSet, 2> write{};
+
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imageInfo.imageView = tex.texImageView;
+
+    VkDescriptorImageInfo samplerInfo{};
+    samplerInfo.sampler = tex.texSampler;
+
+    // TEXTURE
+    write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write[0].dstSet = texDescriptorSet;
+    write[0].dstBinding = index + 0;
+    write[0].dstArrayElement = index;
+    write[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    write[0].descriptorCount = 1;
+    write[0].pImageInfo = &imageInfo;
+
+    // SAMPLER
+    write[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write[1].dstSet = texDescriptorSet;
+    write[1].dstBinding = index + 1;
+    write[1].dstArrayElement = index;
+    write[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    write[1].descriptorCount = 1;
+    write[1].pImageInfo = &samplerInfo;
+
+    std::printf("Material addTexture called successfully\n");
+
+    vkUpdateDescriptorSets(device, static_cast<uint32_t>(write.size()), write.data(), 0, nullptr);
+
+    std::printf("Material updateDescriptor called successfully\n");
+}
+
+void vk_material::cleanup()
+{
+    //
 }

@@ -5,6 +5,7 @@
 
 #include "material.hpp"
 #include "mesh.hpp"
+#include "texture.hpp"
 #include "vk_pipeline_state.hpp"
 
 #include "glfw_include.hpp"
@@ -28,11 +29,24 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     vkDestroyDescriptorPool(_deviceHandle, _descriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(_deviceHandle, _frameDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(_deviceHandle, _objectDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(_deviceHandle, _texturesDescriptorSetLayout, nullptr);
+
+    for (auto& mat : _materials)
+    {
+        mat.cleanup();
+    }
+    _materials.clear();
 
     for (auto& buffer : _objectUniformBuffers) {
         buffer.cleanup();
     }
     _objectUniformBuffers.clear();
+
+    for (auto& tex : _textures)
+    {
+        tex.second.cleanup();
+    }
+    _textures.clear();
 
     for (auto& mesh : _meshes) {
         mesh.second.cleanup();
@@ -267,13 +281,20 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
         {
-            auto psoIt = _pipelineStates.find(material_id.get());
-            if (psoIt != _pipelineStates.end()) {
-                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipeline());
-                if (psoIt->second.isUniformBufferUsed())
+            const auto& vkmat = _materials[material_id.as_index()];
+            auto psoIt = _pipelineStates.find(vkmat.psoHandle);
+            if (psoIt != _pipelineStates.end())
+            {
+                vk_pipeline_state& vkpso = psoIt->second;
+                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipeline());
+                if (vkmat.bUniformBufferUsed)
                 {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), (uint32_t)shader_binding::frame, 1, ctx.uniformbuffers.get(ctx.currentFrame), 0, nullptr);
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, psoIt->second.getPipelineLayout(), (uint32_t)shader_binding::object, 1, buffer.get(ctx.currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipelineLayout(), (uint32_t)shader_binding::frame, 1, ctx.uniformbuffers.get(ctx.currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipelineLayout(), (uint32_t)shader_binding::object, 1, buffer.get(ctx.currentFrame), 0, nullptr);
+                }
+                if (vkmat.bTexturesUsed)
+                {
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipelineLayout(), (uint32_t)shader_binding::material, 1, &vkmat.texDescriptorSet, 0, nullptr);
                 }
             } else {
                 std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
@@ -363,15 +384,22 @@ void vk_dynamic_rhi::createCommandBufferPool()
 
 void vk_dynamic_rhi::createDescriptorPool()
 {
-    uint32_t totalCount = static_cast<uint32_t>(g_framesInFlight) * (1 + g_maxObjectBufferCount); // 1 for frame UBO + maxObjectCount for object UBOs
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = totalCount;
+    // 1 for frame UBO + maxObjectCount for object UBOs
+    VkDescriptorPoolSize poolSizes[] = {
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(g_framesInFlight) * (1 + g_maxObjectBufferCount) },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, g_maxTexturesCount },
+        { VK_DESCRIPTOR_TYPE_SAMPLER,       g_maxSamplersCount },
+    };
+
+    uint32_t totalCount = 0;
+    for (auto& size : poolSizes) {
+        totalCount += size.descriptorCount;
+    }
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = std::size(poolSizes);
+    poolInfo.pPoolSizes = poolSizes;
     poolInfo.maxSets = totalCount;
     
     if (vkCreateDescriptorPool(_deviceHandle, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
@@ -432,40 +460,110 @@ void vk_dynamic_rhi::createDescriptorSetLayouts()
 
         std::printf("Object Descriptor set layout created successfully\n");
     }
+
+    {
+        constexpr uint32_t bindingCount = 2;
+        std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
+
+        bindings[0] = VkDescriptorSetLayoutBinding
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = nullptr
+        };
+        bindings[1] = VkDescriptorSetLayoutBinding
+        {
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = nullptr
+        };
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        layoutInfo.pBindings = bindings.data();
+
+        if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_texturesDescriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
+        }
+
+        std::printf("Texture Descriptor set layout created successfully\n");
+    }
 }
 
 material_handle vk_dynamic_rhi::createMaterial(material* mat)
 {
-    assert(mat != nullptr);
+    assert(mat);
+
     uint64_t shaderHash = mat->getHash();
 
+    // TODO: need refactor to material and pso
+    uint64_t psoHandle = 0;
     auto it = _pipelineStates.find(shaderHash);
     if (it != _pipelineStates.end()) {
-        return material_handle(it->first);
+        psoHandle = it->first;
     }
 
-    _pipelineStates.emplace(shaderHash, _deviceHandle);
-
-    it = _pipelineStates.find(shaderHash);
-
-    auto& renderPass = _contexts[0].renderPass; // HACK: using first context's render pass for now
-    
-    if (mat->isUseUniformBuffers())
+    if (psoHandle == 0)
     {
-        std::array<VkDescriptorSetLayout, 2> layouts = {
-            _frameDescriptorSetLayout,
-            _objectDescriptorSetLayout
-        };
-        it->second.init(mat, renderPass.renderPass, static_cast<uint32_t>(layouts.size()), layouts.data());
+        _pipelineStates.emplace(shaderHash, _deviceHandle);
+        it = _pipelineStates.find(shaderHash);
+        vk_pipeline_state& pso = it->second;
+
+        std::vector<VkDescriptorSetLayout> layouts;
+        layouts.reserve(3);
+
+        if (mat->isUseUniformBuffers())
+        {
+            layouts.push_back(_frameDescriptorSetLayout);
+            layouts.push_back(_objectDescriptorSetLayout);
+        }
+
+        if (mat->getTexturesCount() > 0)
+        {
+            layouts.push_back(_texturesDescriptorSetLayout);
+            
+        }
+
+        auto& renderPass = _contexts[0].renderPass; // HACK: using first context's render pass for now
+
+        pso.init(mat, renderPass.renderPass, static_cast<uint32_t>(layouts.size()), layouts.data());
+
+        std::printf("PSO %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
+
+        psoHandle = shaderHash;
     }
-    else
+
+    _materials.push_back(vk_material());
+
+    vk_material& vkmat = _materials.back();
+    vkmat.psoHandle = psoHandle;
+    vkmat.bUniformBufferUsed = mat->isUseUniformBuffers();
+    if (mat->getTexturesCount() > 0)
     {
-        it->second.init(mat, renderPass.renderPass);
+        vkmat.bTexturesUsed = true;
+        vkmat.initDescriptor(_deviceHandle, _texturesDescriptorSetLayout, _descriptorPool);
+
+        uint32_t i = 0;
+        for (const auto& tex : mat->getTextures())
+        {
+            auto vktexIt = _textures.find(tex->getHash());
+            if (vktexIt != _textures.end())
+            {
+                vkmat.addTexture(_deviceHandle, i * 2, vktexIt->second);
+            }
+            i++;
+        }
     }
 
-    std::printf("Material %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
+    uint32_t matIndex = static_cast<uint32_t>(_materials.size());
+    std::printf("Material %d created successfully\n", matIndex);
 
-    return material_handle(shaderHash);
+    return material_handle(matIndex);
 }
 
 mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
@@ -489,6 +587,34 @@ mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
+texture_handle vk_dynamic_rhi::loadTexture(texture* tex)
+{
+    assert(tex != nullptr);
+    uint64_t texHash = tex->getHash();
+
+    auto it = _textures.find(texHash);
+    if (it != _textures.end()) {
+        return texture_handle(it->first);
+    }
+
+    _textures.emplace(texHash, vk_texture());
+
+    it = _textures.find(texHash);
+
+    vk_texture& vktex = it->second;
+    vktex.init(_deviceHandle, _device->getGPU(), tex);
+
+    transitionImageLayout(vktex.texImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(vktex.stgBuffer, vktex.texImage, vktex.texExtent.width, vktex.texExtent.height);
+    transitionImageLayout(vktex.texImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    vktex.free_staging();
+    
+    std::printf("Texture %llu loaded successfully\n", static_cast<unsigned long long>(texHash));
+
+    return texture_handle(texHash);
+}
+
 render_object_handle vk_dynamic_rhi::createUniformBuffer(render_object* obj)
 {
     _objectUniformBuffers.emplace_back();
@@ -503,4 +629,133 @@ render_object_handle vk_dynamic_rhi::createUniformBuffer(render_object* obj)
 void vk_dynamic_rhi::wait_idle()
 {
     vkDeviceWaitIdle(_deviceHandle);
+}
+
+VkCommandBuffer vk_dynamic_rhi::beginSingleTimeCommands()
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = _commandbuffer_pool.get();
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(_deviceHandle, &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    return commandBuffer;
+}
+
+void vk_dynamic_rhi::endSingleTimeCommands(VkCommandBuffer commandBuffer)
+{
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vkQueueSubmit(_graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(_graphicsQueue);
+
+    vkFreeCommandBuffers(_deviceHandle, _commandbuffer_pool.get(), 1, &commandBuffer);
+}
+
+void vk_dynamic_rhi::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+{
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+    endSingleTimeCommands(commandBuffer);
+}
+
+void vk_dynamic_rhi::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+{
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = 0; // TODO
+    barrier.dstAccessMask = 0; // TODO
+
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        sourceStage, destinationStage,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+
+    endSingleTimeCommands(commandBuffer);
+}
+
+void vk_dynamic_rhi::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+{
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {
+        width,
+        height,
+        1
+    };
+
+    vkCmdCopyBufferToImage(
+        commandBuffer,
+        buffer,
+        image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region
+    );
+
+    endSingleTimeCommands(commandBuffer);
 }
