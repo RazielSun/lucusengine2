@@ -205,6 +205,13 @@ void lucus::bind_material_class()
         asCALL_THISCALL
     ); assert(r >= 0);
 
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        "void SetTexturesCount(int)",
+        asMETHOD(material, setTexturesCount),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
     std::string method_set_texture = std::string("void SetTexture(") + texture_class_name + "@, int)";
     r = engine->RegisterObjectMethod(
         material_class_name,

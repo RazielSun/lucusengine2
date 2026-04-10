@@ -21,7 +21,7 @@ namespace lucus
         
         protected:
 
-            void createRootSignature(uint32_t layoutCount = 0);
+            void createRootSignature(uint32_t layoutCount = 0, uint32_t texturesCount = 0);
 
         private:
             Com<ID3D12Device> _device;

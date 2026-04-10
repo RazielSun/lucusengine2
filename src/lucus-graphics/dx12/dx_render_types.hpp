@@ -7,6 +7,10 @@
 
 namespace lucus
 {
+    class mesh;
+    class texture;
+    class material;
+
     struct dx_commandbuffer_pool
     {
         public:
@@ -22,14 +26,8 @@ namespace lucus
         D3D12_RECT scissor{};
     };
 
-    class mesh;
-
-    struct dx_mesh
+    struct dx_mesh : public rhi_mesh
     {
-        bool bHasVertexData{false};
-        uint32_t vertexCount{0};
-        uint32_t indexCount{0};
-
         dx_buffer vertexBuffer;
         dx_buffer indexBuffer;
 
@@ -37,6 +35,40 @@ namespace lucus
         D3D12_INDEX_BUFFER_VIEW ibView{};
 
         void init(Com<ID3D12Device> device, mesh* msh);
+        void cleanup();
+    };
+
+    struct dx_texture
+    {
+        ComPtr<ID3D12Resource> stgBuffer;
+        ComPtr<ID3D12Resource> texResource;
+        Com<ID3D12DescriptorHeap> srvHeap;
+        Com<ID3D12DescriptorHeap> samplerHeap;
+
+        UINT bytesPerPixel;
+        UINT64 width;
+        UINT64 height;
+        UINT64 texSize;
+
+        void* tex_ptr;
+
+        void init(Com<ID3D12Device> device, texture* tex);
+        void free_staging();
+        void cleanup();
+    };
+
+    struct dx_texture_bind
+    {
+        Com<ID3D12DescriptorHeap> srvHeap;
+        Com<ID3D12DescriptorHeap> samplerHeap;
+        UINT slot;
+    };
+
+    struct dx_material : public rhi_material
+    {
+        std::vector<dx_texture_bind> tex_binds;
+
+        void init(Com<ID3D12Device> device, material* mat);
         void cleanup();
     };
 }

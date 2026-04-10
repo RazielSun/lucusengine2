@@ -98,7 +98,8 @@ void lucus::utils::createTextureImage(const std::string& fileName, VkDevice devi
     int texWidth, texHeight, texChannels;
     void* tex_ptr = load_texture(fileName, texWidth, texHeight, texChannels);
 
-    texSize = texWidth * texHeight * 4;
+    int bytesPerPixel = 4; // TODO
+    texSize = texWidth * texHeight * bytesPerPixel;
     texExtent = VkExtent2D{
         .width = static_cast<uint32_t>(texWidth),
         .height = static_cast<uint32_t>(texHeight)

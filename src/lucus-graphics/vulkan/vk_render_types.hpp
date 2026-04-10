@@ -92,12 +92,8 @@ namespace lucus
         VkDevice _device;
     };
 
-    struct vk_mesh
+    struct vk_mesh : public rhi_mesh
     {
-        bool bHasVertexData{false};
-        uint32_t vertexCount{0};
-        uint32_t indexCount{0};
-
         vk_buffer vertexBuffer;
         vk_buffer indexBuffer;
 

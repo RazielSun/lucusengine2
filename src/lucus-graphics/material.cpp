@@ -24,6 +24,7 @@ uint64_t material::getHash() const
     const uint64_t shaderHash = static_cast<uint64_t>(std::hash<std::string>{}(_shaderName));
     const uint64_t uniformBufferHash = static_cast<uint64_t>(_useUniformBuffers);
     const uint64_t vertexIndexBufferHash = static_cast<uint64_t>(_useVertexIndexBuffers);
+    const uint64_t texturesCountHash = static_cast<uint64_t>(_useTexturesCount);
 
-    return shaderHash ^ (uniformBufferHash << 1) ^ (vertexIndexBufferHash << 2);
+    return shaderHash ^ (uniformBufferHash << 1) ^ (vertexIndexBufferHash << 2) ^ (texturesCountHash << 3);
 }

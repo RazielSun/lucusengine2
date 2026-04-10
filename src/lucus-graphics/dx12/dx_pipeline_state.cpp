@@ -36,7 +36,8 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
     pso.PS.BytecodeLength = ps.size();
 
     uint32_t layoutCount = mat->isUseUniformBuffers() ? 2 : 0;
-    createRootSignature(layoutCount);
+    uint32_t texturesCount = mat->getTexturesCount();
+    createRootSignature(layoutCount, texturesCount);
     pso.pRootSignature = _rootSignature.Get();
 
     D3D12_RASTERIZER_DESC rasterizer{};
@@ -108,41 +109,61 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
     std::printf("ID3D12PipelineState created successfully\n");
 }
 
-void dx_pipeline_state::createRootSignature(uint32_t layoutCount)
+void dx_pipeline_state::createRootSignature(uint32_t layoutCount, uint32_t texturesCount)
 {
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc{};
     desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
     desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
+    // Texture & Sampler ?
+    CD3DX12_DESCRIPTOR_RANGE ranges[2];
+    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0); // s0
+
+    std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
     if (layoutCount > 0)
     {
-        CD3DX12_ROOT_PARAMETER1 rootParameters[2];
-
-        rootParameters[0].InitAsConstantBufferView(
+        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
+        rootParameters.back().InitAsConstantBufferView(
             0, // b0
             0, // register space
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_VERTEX);
-
-        rootParameters[1].InitAsConstantBufferView(
+        
+        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
+        rootParameters.back().InitAsConstantBufferView(
             1, // b1
             0, // register space
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_VERTEX);
-        
-        desc.Desc_1_1.NumParameters = 2;
-        desc.Desc_1_1.pParameters = rootParameters;
-    }
-    else
-    {
-        desc.Desc_1_1.NumParameters = 0;
-        desc.Desc_1_1.pParameters = nullptr;
     }
     
-    // TODO
+    if (texturesCount > 0)
+    {
+        // TODO: More textures
+        
+        // texture (SRV table)
+        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
+        rootParameters.back().InitAsDescriptorTable(
+            1,
+            &ranges[0],
+            D3D12_SHADER_VISIBILITY_PIXEL);
+
+        // sampler table
+        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
+        rootParameters.back().InitAsDescriptorTable(
+            1,
+            &ranges[1],
+            D3D12_SHADER_VISIBILITY_PIXEL);
+    }
+
+    desc.Desc_1_1.NumParameters = static_cast<uint32_t>(rootParameters.size());
+    desc.Desc_1_1.pParameters = rootParameters.data();
+
+    // Static samplers ?
     desc.Desc_1_1.NumStaticSamplers = 0;
     desc.Desc_1_1.pStaticSamplers = nullptr;
-
+    
     Com<ID3DBlob> signature;
     Com<ID3DBlob> error;
 

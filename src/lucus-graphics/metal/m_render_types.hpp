@@ -11,12 +11,8 @@ namespace lucus
     class material;
     class texture;
     
-    struct m_mesh
+    struct m_mesh : public rhi_mesh
     {
-        bool bHasVertexData{false};
-        uint32_t vertexCount{0};
-        uint32_t indexCount{0};
-
         m_buffer vertexBuffer;
         m_buffer indexBuffer;
 

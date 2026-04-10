@@ -25,8 +25,9 @@ namespace lucus
         bool isUseVertexIndexBuffers() const { return _useVertexIndexBuffers; }
         void setUseVertexIndexBuffers(bool useVertexIndexBuffers) { _useVertexIndexBuffers = useVertexIndexBuffers; }
 
+        uint32_t getTexturesCount() const { return _useTexturesCount; }
+        void setTexturesCount(uint32_t count) { _useTexturesCount = count; }
         void setTexture(texture* tex, uint32_t index = 0);
-        uint32_t getTexturesCount() const { return static_cast<uint32_t>(_textures.size()); }
         const std::vector<intrusive_ptr<texture>>& getTextures() const { return _textures; }
 
         uint64_t getHash() const;
@@ -39,6 +40,7 @@ namespace lucus
         std::string _shaderName;
         bool _useUniformBuffers{false};
         bool _useVertexIndexBuffers{false};
+        uint32_t _useTexturesCount{0};
 
         std::vector<intrusive_ptr<texture>> _textures;
 

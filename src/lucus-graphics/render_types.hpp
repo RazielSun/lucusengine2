@@ -125,4 +125,11 @@ namespace lucus
         bool bUniformBufferUsed { false };
         bool bTexturesUsed { false };
     };
+
+    struct rhi_mesh
+    {
+        bool bHasVertexData{false};
+        uint32_t vertexCount{0};
+        uint32_t indexCount{0};
+    };
 }

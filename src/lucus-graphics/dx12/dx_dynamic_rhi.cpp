@@ -43,6 +43,7 @@ void dx_dynamic_rhi::init()
 {
     createInstance();
     createDevice();
+    initTextureCmdResources();
 }
 
 window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& handle) 
@@ -152,15 +153,38 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
         {
-            auto psoIt = _pipelineStates.find(material_id.get());
+            dx_material& dxmat = _materials[material_id.as_index()];
+            auto psoIt = _pipelineStates.find(dxmat.psoHandle);
             if (psoIt != _pipelineStates.end())
             {
-                ctx.commandBuffer->SetGraphicsRootSignature(psoIt->second.getRootSignature().Get());
-                ctx.commandBuffer->SetPipelineState(psoIt->second.getPipeline().Get());
-                if (psoIt->second.isUniformBufferUsed())
+                dx_pipeline_state& pso = psoIt->second;
+                ctx.commandBuffer->SetGraphicsRootSignature(pso.getRootSignature().Get());
+                ctx.commandBuffer->SetPipelineState(pso.getPipeline().Get());
+                if (dxmat.bUniformBufferUsed)
                 {
                     ctx.commandBuffer->SetGraphicsRootConstantBufferView((uint32_t)shader_binding::frame, ctx.uniformbuffers.get(bufferIndex)->GetGPUVirtualAddress());
                     ctx.commandBuffer->SetGraphicsRootConstantBufferView((uint32_t)shader_binding::object, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
+                }
+                if (dxmat.bTexturesUsed)
+                {
+                    const UINT srvDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                    const UINT samplerDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+
+                    for (auto& tex_bind : dxmat.texture_binds)
+                    {
+                        ID3D12DescriptorHeap* heaps[] = { tex_bind.srvHeap.Get(), tex_bind.samplerHeap.Get() };
+                        ctx.commandBuffer->SetDescriptorHeaps(2, heaps);
+                        
+                        D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = dxmat.srvHeap->GetGPUDescriptorHandleForHeapStart();
+                        srvHandle.ptr += static_cast<UINT64>(tex_bind.slot) * srvDescriptorSize;
+
+                        D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = dxmat.samplerHeap->GetGPUDescriptorHandleForHeapStart();
+                        samplerHandle.ptr += static_cast<UINT64>(tex_bind.slot) * samplerDescriptorSize;
+
+                        const uint32_t rootIndex = static_cast<uint32_t>(shader_binding::material) + tex_bind.slot * 2;
+                        ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 0, srvHandle);
+                        ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 1, samplerHandle);
+                    }
                 }
             }
             else
@@ -244,22 +268,53 @@ material_handle dx_dynamic_rhi::createMaterial(material* mat)
 
     uint64_t shaderHash = mat->getHash();
 
+    uint64_t psoHandle = 0;
     auto it = _pipelineStates.find(shaderHash);
     if (it != _pipelineStates.end()) {
-        return material_handle(it->first);
+        psoHandle = it->first;
     }
 
-    dx_pipeline_state pipeline_state(_deviceHandle);
-    _pipelineStates.emplace(shaderHash, pipeline_state);
+    if (psoHandle == 0)
+    {
+        _pipelineStates.emplace(shaderHash, dx_pipeline_state(_deviceHandle));
 
-    it = _pipelineStates.find(shaderHash);
-    
-    // TODO: depth format should be determined by window context or material properties, not hardcoded
-    it->second.init(mat, _contexts[0].mDepthFormat);
+        it = _pipelineStates.find(shaderHash);
+        dx_pipeline_state& pso = it->second;
+        
+        // TODO: depth format should be determined by window context or material properties, not hardcoded
+        pso.init(mat, _contexts[0].mDepthFormat);
 
-    std::printf("Material %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
+        std::printf("PSO %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
 
-    return material_handle(shaderHash);
+        psoHandle = shaderHash;
+    }
+
+    _materials.push_back(dx_material());
+
+    dx_material& dxmat = _materials.back();
+    dxmat.psoHandle = psoHandle;
+    dxmat.bUniformBufferUsed = mat->isUseUniformBuffers();
+    if (mat->getTexturesCount() > 0)
+    {
+        dxmat.bTexturesUsed = true;
+
+        uint32_t i = 0;
+        for (const auto& tex : mat->getTextures())
+        {
+            auto dxtexIt = _textures.find(tex->getHash());
+            if (dxtexIt != _textures.end())
+            {
+                dx_texture& dxtex = dxtexIt->second;
+                dxmat.texture_binds.push_back({dxtex.srvHeap, dxtex.samplerHeap, i});
+            }
+            i++;
+        }
+    }
+
+    uint32_t matIndex = static_cast<uint32_t>(_materials.size());
+    std::printf("Material %d created successfully\n", matIndex);
+
+    return material_handle(matIndex);
 }
 
 mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
@@ -281,6 +336,30 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
     std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
 
     return mesh_handle(meshHash);
+}
+
+texture_handle dx_dynamic_rhi::loadTexture(texture* tex)
+{
+    assert(tex != nullptr);
+    uint64_t texHash = tex->getHash();
+
+    auto it = _textures.find(texHash);
+    if (it != _textures.end()) {
+        return texture_handle(it->first);
+    }
+
+    _textures.emplace(texHash, dx_texture());
+
+    it = _textures.find(texHash);
+    dx_texture& dxtex = it->second;
+
+    dxtex.init(_deviceHandle, tex);
+
+    uploadTextureToGpu(dxtex);
+    
+    std::printf("Texture %llu loaded successfully\n", static_cast<unsigned long long>(texHash));
+
+    return texture_handle(texHash);
 }
 
 render_object_handle dx_dynamic_rhi::createUniformBuffer(render_object* obj)
@@ -414,3 +493,78 @@ void dx_dynamic_rhi::createDevice()
 //     WaitForSingleObject((HANDLE)_fenceEvent, INFINITE);
 //     ++_fenceValues[_currentFrame];
 // }
+
+void dx_dynamic_rhi::initTextureCmdResources()
+{
+    // Create synchronization objects.
+
+    ThrowIfFailed(_deviceHandle->CreateFence(_texFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_texFence)), "Failed Create TexFence");
+	_texFenceValue++;
+
+	_texFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (_texFenceEvent == nullptr)
+	{
+		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), " Failed Create Tex Fence Event");
+	}
+
+    ThrowIfFailed(_deviceHandle->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(_texCmdAllocator.ReleaseAndGetAddressOf())), "Failed Create Tex Command Allocator");
+
+    // Create command list for recording graphics commands
+	ThrowIfFailed(_deviceHandle->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, _texCmdAllocator.Get(), nullptr, IID_PPV_ARGS(_texCmdBuffer.ReleaseAndGetAddressOf())),
+        "Failed Create Tex Command List"
+    );
+	ThrowIfFailed(_texCmdBuffer->Close(), "Failed Close Tex Command List");
+	_texCmdBuffer->SetName(L"Tex Command List");
+
+    std::printf("Texture Command Buffer Resources created successfully\n");
+}
+
+void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
+{
+    ThrowIfFailed(_texCmdAllocator->Reset(), "Failed Reset Tex Command Allocator");
+    ThrowIfFailed(_texCmdBuffer->Reset(_texCmdAllocator.Get(), nullptr), "Failed Reset Tex Command Buffer");
+    
+    // --- Copy buffer → texture ---
+    D3D12_SUBRESOURCE_DATA subresource{};
+    subresource.pData = tex.tex_ptr;
+    subresource.RowPitch = tex.width * tex.bytesPerPixel;
+    subresource.SlicePitch = subresource.RowPitch * tex.height;
+
+    UpdateSubresources(
+        _texCmdBuffer,
+        tex.texResource,
+        tex.stgBuffer,
+        0,
+        0,
+        1,
+        &subresource
+    );
+
+    // --- Barrier: COPY → SHADER READ ---
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            tex.texResource,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+        );
+
+    _texCmdBuffer->ResourceBarrier(1, &barrier);
+
+    // --- Submit ---
+    _texCmdBuffer->Close();
+
+    ID3D12CommandList* lists[] = { _texCmdBuffer };
+    _commandQueue->ExecuteCommandLists(1, lists);
+
+    // --- Fence wait (sync) ---
+    _texFenceValue++;
+    _commandQueue->Signal(_texFence, _texFenceValue);
+
+    if (_texFence->GetCompletedValue() < _texFenceValue)
+    {
+        _texFence->SetEventOnCompletion(_texFenceValue, _texFenceEvent);
+        WaitForSingleObject(_texFenceEvent, INFINITE);
+    }
+
+    // --- Cleanup ---
+    tex.free_staging();
+}

@@ -29,6 +29,7 @@ namespace lucus
 
             virtual material_handle createMaterial(material* mat) override;
             virtual mesh_handle createMesh(mesh* msh) override;
+            virtual texture_handle loadTexture(texture* tex) override;
             virtual render_object_handle createUniformBuffer(render_object* obj) override;
 
         protected:
@@ -36,6 +37,8 @@ namespace lucus
             void createDevice();
 
             // void wait_idle();
+            void initTextureCmdResources();
+            void uploadTextureToGpu(dx_texture& tex);
 
         private:
             Com<IDXGIFactory4> _DXGIFactory;
@@ -49,10 +52,19 @@ namespace lucus
             std::vector<window_context_handle> _contextHandles;
 
             //
+            std::vector<dx_material> _materials;
             std::unordered_map<uint64_t, dx_pipeline_state> _pipelineStates;
 
             //
             std::unordered_map<uint64_t, dx_mesh> _meshes;
+
+            //
+            std::unordered_map<uint64_t, dx_texture> _textures;
+            Com<ID3D12CommandAllocator> _texCmdAllocator;
+            Com<ID3D12GraphicsCommandList> _texCmdBuffer;
+            Com<ID3D12Fence> _texFence;
+            uint64_t _texFenceValue{0};
+            void* _texFenceEvent = nullptr;
 
             //
             std::vector<dx_uniform_buffer> _objectUniformBuffers;
