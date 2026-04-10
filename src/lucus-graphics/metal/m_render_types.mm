@@ -67,7 +67,7 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
                                                 mipmapped:NO];
     texDesc.usage = MTLTextureUsageShaderRead;
 
-    texture = [device newTextureWithDescriptor:texDesc];
+    mtexture = [device newTextureWithDescriptor:texDesc];
 
     // MTLRegion region = {{0, 0, 0},{ width, height, 1 }};
 
