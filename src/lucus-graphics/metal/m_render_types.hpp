@@ -8,6 +8,8 @@
 namespace lucus
 {
     class mesh;
+    class material;
+    class texture;
     
     struct m_mesh
     {
@@ -19,6 +21,37 @@ namespace lucus
         m_buffer indexBuffer;
 
         void init(id<MTLDevice> device, mesh* msh);
+        void cleanup();
+    };
+
+    struct m_texture
+    {
+        id<MTLBuffer> stgBuffer;
+        id<MTLTexture> texture;
+        id<MTLSamplerState> sampler;
+
+        NSUInteger width;
+        NSUInteger height;
+        NSUInteger texSize;
+        NSUInteger bytesPerPixel;
+        NSUInteger bytesPerRow;
+
+        void init(id<MTLDevice> device, texture* tex);
+        void cleanup();
+    };
+
+    struct m_texture_bind
+    {
+        id<MTLTexture> texture;
+        id<MTLSamplerState> sampler;
+        NSUInteger slot;
+    };
+
+    struct m_material : public rhi_material
+    {
+        std::vector<m_texture_bind> texture_binds;
+
+        void init(id<MTLDevice> device, material* mat);
         void cleanup();
     };
 }

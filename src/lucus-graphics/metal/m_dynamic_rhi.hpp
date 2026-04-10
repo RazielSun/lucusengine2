@@ -29,12 +29,15 @@ namespace lucus
 
             virtual material_handle createMaterial(material* mat) override;
             virtual mesh_handle createMesh(mesh* msh) override;
+            virtual texture_handle loadTexture(texture* tex) override;
             virtual render_object_handle createUniformBuffer(render_object* obj) override;
         
         protected:
             void createDevice();
 
             void createObjectUniformBuffers();
+
+            void uploadTextureToGpu(m_texture& tex);
 
         private:
             std::unique_ptr<m_device> _device;
@@ -44,10 +47,14 @@ namespace lucus
             std::vector<window_context_handle> _contextHandles;
 
             //
+            std::vector<m_material> _materials;
             std::unordered_map<uint64_t, m_pipeline_state> _pipelineStates;
 
             //
             std::unordered_map<uint64_t, m_mesh> _meshes;
+
+            //
+            std::unordered_map<uint64_t, m_texture> _textures;
 
             std::array<m_buffer, g_framesInFlight> _objectUniformBuffers;
     };

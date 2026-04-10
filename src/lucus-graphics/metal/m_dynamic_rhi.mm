@@ -4,6 +4,7 @@
 
 #include "material.hpp"
 #include "mesh.hpp"
+#include "texture.hpp"
 
 namespace lucus
 {
@@ -21,6 +22,18 @@ m_dynamic_rhi::m_dynamic_rhi()
 
 m_dynamic_rhi::~m_dynamic_rhi()
 {
+    for (auto& mat : _materials)
+    {
+        mat.cleanup();
+    }
+    _materials.clear();
+
+    for (auto& tex : _textures)
+    {
+        tex.cleanup();
+    }
+    _textures.clear();
+
     _deviceHandle = nil;
     _device.reset();
 }
@@ -127,15 +140,25 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
         const auto& material_id = renderInstance.material;
         if (material_id.is_valid())
         {
-            auto psoIt = _pipelineStates.find(material_id.get());
+            m_material& mmat = _materials[material_id.as_index()];
+            auto psoIt = _pipelineStates.find(mmat.psoHandle);
             if (psoIt != _pipelineStates.end())
             {
-                [pass setRenderPipelineState:psoIt->second.getPipeline()];
-                [pass setDepthStencilState:psoIt->second.getDepthStencilState()];
-                if (psoIt->second.isUniformBufferUsed())
+                m_pipeline_state& pso = psoIt->second;
+                [pass setRenderPipelineState:pso.getPipeline()];
+                [pass setDepthStencilState:pso.getDepthStencilState()];
+                if (mmat.bUniformBufferUsed)
                 {
                     [pass setVertexBuffer:ctx.uniformbuffers.get() offset:frameUniformOffset atIndex:(NSUInteger)shader_binding::frame];
                     [pass setVertexBuffer:_objectUniformBuffers[ctx.currentBufferIndex].get() offset:objectUniformOffset atIndex:(NSUInteger)shader_binding::object];
+                }
+                if (mmat.bTexturesUsed)
+                {
+                    for (auto& tex_bind : mmat.texture_binds)
+                    {
+                        [pass setFragmentTexture:tex_bind.texture atIndex:tex_bind.slot];
+                        [pass setFragmentSamplerState:tex_bind.sampler atIndex:tex_bind.slot];
+                    }
                 }
             }
             else
@@ -191,21 +214,53 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
     
     uint64_t shaderHash = mat->getHash();
 
+    uint64_t psoHash = 0;
     auto it = _pipelineStates.find(shaderHash);
     if (it != _pipelineStates.end()) {
-        return material_handle(it->first);
+        psoHash = it->first;
     }
 
-    _pipelineStates.emplace(shaderHash, _deviceHandle);
+    if (psoHash == 0)
+    {
+        _pipelineStates.emplace(shaderHash, _deviceHandle);
+        it = _pipelineStates.find(shaderHash);
+        m_pipeline_state& pso = it->second;
 
-    it = _pipelineStates.find(shaderHash);
+        // TODO: remove hardcoded pixel format
+        pso.init(mat, _contexts[0].getPixelFormat(), _contexts[0].getDepthPixelFormat());
 
-    // TODO: !    
-    it->second.init(mat, _contexts[0].getPixelFormat(), _contexts[0].getDepthPixelFormat());
+        std::printf("PSO %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
 
-    std::printf("Material %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
+        psoHash = shaderHash;
+    }
 
-    return material_handle(shaderHash);
+    _materials.push_back(m_material());
+
+    m_material& mmat = _materials.back();
+    mmat.psoHandle = psoHash;
+    // mmat.init(_deviceHandle, mat);
+    mmat.bUniformBufferUsed = mat->isUseUniformBuffers();
+    if (mat->getTexturesCount() > 0)
+    {
+        mmat.bTexturesUsed = true;
+        mmat.texture_binds.reserve(mat->getTexturesCount());
+        int i = 0;
+        for (const auto& tex : mat->getTextures())
+        {
+            auto mtexIt = _textures.find(tex->getHash());
+            if (mtexIt != _textures.end())
+            {
+                m_texture& mtex = mtexIt->second;
+                mmat.push_back({mtex.texture, mtex.sampler, i});
+                i++;
+            }
+        }
+    }
+
+    uint32_t matIndex = static_cast<uint32_t>(_materials.size());
+    std::printf("Material %d created successfully\n", matIndex);
+
+    return material_handle(matIndex);
 }
 
 mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
@@ -227,6 +282,30 @@ mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
     std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
 
     return mesh_handle(meshHash);
+}
+
+texture_handle m_dynamic_rhi::loadTexture(texture* tex)
+{
+    assert(tex);
+    uint64_t texHash = tex->getHash();
+
+    auto it = _textures.find(texHash);
+    if (it != _textures.end()) {
+        return texture_handle(it->first);
+    }
+
+    _textures.emplace(texHash, m_texture());
+    it = _textures.find(texHash);
+    m_texture& mtex = it->second;
+
+    mtex.init(_deviceHandle, tex);
+
+    uploadTextureToGpu(mtex);
+    // vktex.free_staging();
+    
+    std::printf("Texture %llu loaded successfully\n", static_cast<unsigned long long>(texHash));
+
+    return texture_handle(texHash);
 }
 
 render_object_handle m_dynamic_rhi::createUniformBuffer(render_object* obj)
@@ -258,4 +337,26 @@ void m_dynamic_rhi::createObjectUniformBuffers()
     }
 
     std::printf("Frame & Object uniform buffers created successfully\n");
+}
+
+void m_dynamic_rhi::uploadTextureToGpu(m_texture& tex)
+{
+    id<MTLCommandBuffer> currentBuffer = [_device->getCommandPool() commandBuffer];
+
+    id<MTLBlitCommandEncoder> blit = [currentBuffer blitCommandEncoder];
+
+    [blit copyFromBuffer:tex.stgBuffer
+        sourceOffset:0
+    sourceBytesPerRow:tex.bytesPerRow
+    sourceBytesPerImage:tex.texSize
+            sourceSize:MTLSizeMake(tex.width, tex.height, 1)
+            toTexture:tex.texture
+    destinationSlice:0
+    destinationLevel:0
+    destinationOrigin:MTLOriginMake(0,0,0)];
+
+    [blit endEncoding];
+
+    [currentBuffer commit];
+    [currentBuffer waitUntilCompleted];
 }

@@ -125,12 +125,8 @@ namespace lucus
         VkDevice _device;
     };
 
-    struct vk_material
+    struct vk_material : public rhi_material
     {
-        uint64_t psoHandle;
-        bool bUniformBufferUsed { false };
-        bool bTexturesUsed { false };
-
         VkDescriptorSet texDescriptorSet;
 
         void initDescriptor(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);

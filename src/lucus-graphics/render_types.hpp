@@ -118,4 +118,11 @@ namespace lucus
         glm::vec2 texCoords{0.0f};
         glm::vec3 color{1.0f};
     };
+
+    struct rhi_material
+    {
+        uint64_t psoHandle;
+        bool bUniformBufferUsed { false };
+        bool bTexturesUsed { false };
+    };
 }
