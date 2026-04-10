@@ -30,7 +30,7 @@ m_dynamic_rhi::~m_dynamic_rhi()
 
     for (auto& tex : _textures)
     {
-        tex.cleanup();
+        tex.second.cleanup();
     }
     _textures.clear();
 
@@ -156,7 +156,7 @@ void m_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comman
                 {
                     for (auto& tex_bind : mmat.texture_binds)
                     {
-                        [pass setFragmentTexture:tex_bind.texture atIndex:tex_bind.slot];
+                        [pass setFragmentTexture:tex_bind.mtexture atIndex:tex_bind.slot];
                         [pass setFragmentSamplerState:tex_bind.sampler atIndex:tex_bind.slot];
                     }
                 }
@@ -251,7 +251,7 @@ material_handle m_dynamic_rhi::createMaterial(material* mat)
             if (mtexIt != _textures.end())
             {
                 m_texture& mtex = mtexIt->second;
-                mmat.push_back({mtex.texture, mtex.sampler, i});
+                mmat.texture_binds.push_back({mtex.mtexture, mtex.sampler, (NSUInteger)i});
                 i++;
             }
         }
@@ -350,7 +350,7 @@ void m_dynamic_rhi::uploadTextureToGpu(m_texture& tex)
     sourceBytesPerRow:tex.bytesPerRow
     sourceBytesPerImage:tex.texSize
             sourceSize:MTLSizeMake(tex.width, tex.height, 1)
-            toTexture:tex.texture
+            toTexture:tex.mtexture
     destinationSlice:0
     destinationLevel:0
     destinationOrigin:MTLOriginMake(0,0,0)];
@@ -359,4 +359,6 @@ void m_dynamic_rhi::uploadTextureToGpu(m_texture& tex)
 
     [currentBuffer commit];
     [currentBuffer waitUntilCompleted];
+
+    std::printf("Texture uploaded successfully\n");
 }

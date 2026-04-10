@@ -27,7 +27,7 @@ namespace lucus
     struct m_texture
     {
         id<MTLBuffer> stgBuffer;
-        id<MTLTexture> texture;
+        id<MTLTexture> mtexture;
         id<MTLSamplerState> sampler;
 
         NSUInteger width;
@@ -42,7 +42,7 @@ namespace lucus
 
     struct m_texture_bind
     {
-        id<MTLTexture> texture;
+        id<MTLTexture> mtexture;
         id<MTLSamplerState> sampler;
         NSUInteger slot;
     };

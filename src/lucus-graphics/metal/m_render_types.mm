@@ -51,6 +51,7 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
 
     width = texWidth;
     height = texHeight;
+    bytesPerPixel = 4; // TODO
     texSize = width * height * bytesPerPixel;
     bytesPerRow = width * bytesPerPixel;
 
