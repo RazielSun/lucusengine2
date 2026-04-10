@@ -175,10 +175,10 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
                         ID3D12DescriptorHeap* heaps[] = { tex_bind.srvHeap.Get(), tex_bind.samplerHeap.Get() };
                         ctx.commandBuffer->SetDescriptorHeaps(2, heaps);
                         
-                        D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = dxmat.srvHeap->GetGPUDescriptorHandleForHeapStart();
+                        D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = tex_bind.srvHeap->GetGPUDescriptorHandleForHeapStart();
                         srvHandle.ptr += static_cast<UINT64>(tex_bind.slot) * srvDescriptorSize;
 
-                        D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = dxmat.samplerHeap->GetGPUDescriptorHandleForHeapStart();
+                        D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = tex_bind.samplerHeap->GetGPUDescriptorHandleForHeapStart();
                         samplerHandle.ptr += static_cast<UINT64>(tex_bind.slot) * samplerDescriptorSize;
 
                         const uint32_t rootIndex = static_cast<uint32_t>(shader_binding::material) + tex_bind.slot * 2;
@@ -525,18 +525,28 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
     ThrowIfFailed(_texCmdBuffer->Reset(_texCmdAllocator.Get(), nullptr), "Failed Reset Tex Command Buffer");
     
     // --- Copy buffer → texture ---
+
+    UINT64 requiredSize;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT layouts[1];
+    UINT numRows[1];
+    UINT64 rowSizes[1];
+
     D3D12_SUBRESOURCE_DATA subresource{};
     subresource.pData = tex.tex_ptr;
     subresource.RowPitch = tex.width * tex.bytesPerPixel;
     subresource.SlicePitch = subresource.RowPitch * tex.height;
 
     UpdateSubresources(
-        _texCmdBuffer,
-        tex.texResource,
-        tex.stgBuffer,
+        _texCmdBuffer.Get(),
+        tex.texResource.Get(),
+        tex.stgBuffer.Get(),
         0,
         0,
         1,
+        requiredSize,
+        layouts,
+        numRows,
+        rowSizes,
         &subresource
     );
 

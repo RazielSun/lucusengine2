@@ -103,11 +103,11 @@ void dx_texture::init(Com<ID3D12Device> device, texture* tex)
     UINT64 uploadSize = GetRequiredIntermediateSize(texResource.Get(), 0, 1);
 
     CD3DX12_HEAP_PROPERTIES stgHeapProps(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC::Buffer stgSize(uploadSize);
+    CD3DX12_RESOURCE_DESC stgSizeDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
     ThrowIfFailed(device->CreateCommittedResource(
         &stgHeapProps,
         D3D12_HEAP_FLAG_NONE,
-        &stgSize,
+        &stgSizeDesc,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&stgBuffer)

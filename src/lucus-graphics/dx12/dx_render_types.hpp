@@ -40,8 +40,8 @@ namespace lucus
 
     struct dx_texture
     {
-        ComPtr<ID3D12Resource> stgBuffer;
-        ComPtr<ID3D12Resource> texResource;
+        Com<ID3D12Resource> stgBuffer;
+        Com<ID3D12Resource> texResource;
         Com<ID3D12DescriptorHeap> srvHeap;
         Com<ID3D12DescriptorHeap> samplerHeap;
 
@@ -66,7 +66,7 @@ namespace lucus
 
     struct dx_material : public rhi_material
     {
-        std::vector<dx_texture_bind> tex_binds;
+        std::vector<dx_texture_bind> texture_binds;
 
         void init(Com<ID3D12Device> device, material* mat);
         void cleanup();
