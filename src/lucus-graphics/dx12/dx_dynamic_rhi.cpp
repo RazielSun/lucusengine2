@@ -525,12 +525,6 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
     ThrowIfFailed(_texCmdBuffer->Reset(_texCmdAllocator.Get(), nullptr), "Failed Reset Tex Command Buffer");
     
     // --- Copy buffer → texture ---
-
-    UINT64 requiredSize;
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT layouts[1];
-    UINT numRows[1];
-    UINT64 rowSizes[1];
-
     D3D12_SUBRESOURCE_DATA subresource{};
     subresource.pData = tex.tex_ptr;
     subresource.RowPitch = tex.width * tex.bytesPerPixel;
@@ -543,16 +537,12 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
         0,
         0,
         1,
-        requiredSize,
-        layouts,
-        numRows,
-        rowSizes,
         &subresource
     );
 
     // --- Barrier: COPY → SHADER READ ---
     D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            tex.texResource,
+            tex.texResource.Get(),
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
         );
@@ -562,12 +552,12 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
     // --- Submit ---
     _texCmdBuffer->Close();
 
-    ID3D12CommandList* lists[] = { _texCmdBuffer };
+    ID3D12CommandList* lists[] = { _texCmdBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, lists);
 
     // --- Fence wait (sync) ---
     _texFenceValue++;
-    _commandQueue->Signal(_texFence, _texFenceValue);
+    _commandQueue->Signal(_texFence.Get(), _texFenceValue);
 
     if (_texFence->GetCompletedValue() < _texFenceValue)
     {

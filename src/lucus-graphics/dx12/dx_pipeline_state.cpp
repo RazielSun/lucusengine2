@@ -116,9 +116,22 @@ void dx_pipeline_state::createRootSignature(uint32_t layoutCount, uint32_t textu
     desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
     // Texture & Sampler ?
-    CD3DX12_DESCRIPTOR_RANGE ranges[2];
-    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
-    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0); // s0
+    CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+    ranges[0].Init(
+        D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+        1,
+        0, // t0
+        0,
+        D3D12_DESCRIPTOR_RANGE_FLAG_NONE
+    );
+
+    ranges[1].Init(
+        D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+        1,
+        0, // s0
+        0,
+        D3D12_DESCRIPTOR_RANGE_FLAG_NONE
+    );
 
     std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
     if (layoutCount > 0)
