@@ -42,8 +42,6 @@ void m_mesh::cleanup()
 
 void m_texture::init(id<MTLDevice> device, texture* tex)
 {
-    using namespace lucus::utils;
-
     assert(tex);
 
     int texWidth, texHeight, texChannels;
