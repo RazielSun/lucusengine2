@@ -630,7 +630,8 @@ lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
     scene* loadedScene = scene::create_factory();
 
     material* sharedMaterial = material::create_factory("simple");
-    sharedMaterial->setUseUniformBuffers(true);
+    sharedMaterial->setUseFrameUniformBuffer(true);
+    sharedMaterial->setUseObjectUniformBuffer(true);
     sharedMaterial->setUseVertexIndexBuffers(true);
 
     std::vector<std::vector<mesh*>> meshCache(static_cast<size_t>(sourceModel.meshes_count));

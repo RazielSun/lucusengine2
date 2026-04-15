@@ -193,8 +193,15 @@ void lucus::bind_material_class()
 
     r = engine->RegisterObjectMethod(
         material_class_name,
-        "void SetUseUniformBuffers(bool)",
-        asMETHOD(material, setUseUniformBuffers),
+        "void SetUseFrameUniformBuffer(bool)",
+        asMETHOD(material, setUseFrameUniformBuffer),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        "void SetUseObjectUniformBuffer(bool)",
+        asMETHOD(material, setUseObjectUniformBuffer),
         asCALL_THISCALL
     ); assert(r >= 0);
 
@@ -205,18 +212,11 @@ void lucus::bind_material_class()
         asCALL_THISCALL
     ); assert(r >= 0);
 
-    r = engine->RegisterObjectMethod(
-        material_class_name,
-        "void SetTexturesCount(int)",
-        asMETHOD(material, setTexturesCount),
-        asCALL_THISCALL
-    ); assert(r >= 0);
-
     std::string method_set_texture = std::string("void SetTexture(") + texture_class_name + "@, int)";
     r = engine->RegisterObjectMethod(
         material_class_name,
         method_set_texture.c_str(),
-        asMETHOD(material, setTexture),
+        asMETHOD(material, addTexture),
         asCALL_THISCALL
     ); assert(r >= 0);
 }

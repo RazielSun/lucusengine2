@@ -2,89 +2,68 @@
 
 #include "pch.hpp"
 
+#include "core_types.hpp"
 #include "math_types.hpp"
 
 namespace lucus
 {
-    constexpr uint32_t g_framesInFlight{ 2 };
-    constexpr uint32_t g_swapchainImageCount{ 3 };
+    // 2 and 3 are special for understanding that these are different constants
+    constexpr u32 g_framesInFlight{ 2 };
+    constexpr u32 g_swapchainImageCount{ 3 };
     // TODO: Make this dynamic or configurable
-    constexpr uint32_t g_maxObjectBufferCount{ 32 };
-    constexpr uint32_t g_maxTexturesCount{ 32 };
-    constexpr uint32_t g_maxSamplersCount{ 32 };
+    constexpr u32 g_maxObjectBufferCount{ 32 };
+    constexpr u32 g_maxTexturesCount{ 32 };
+    constexpr u32 g_maxSamplersCount{ 32 };
 
-    enum class shader_binding : uint8_t
+    enum class uniform_buffer_type : u8
     {
-        frame = 0,
-        object = 1,
-        material = 2,
-        vertex = 3,
+        FRAME = 0,
+        OBJECT = 1,
     };
 
     struct resource_handle
     {
         resource_handle() : index(0) {}
-        explicit resource_handle(uint32_t idx) : index(idx) {}
+        explicit resource_handle(u32 idx) : index(idx) {}
         
-        uint32_t get() const { return index; }
-        uint32_t as_index() const { return index - 1; }
+        u32 get() const { return index; }
+        u32 as_index() const { return index - 1; }
         bool is_valid() const { return index > 0; }
 
         void invalidate() { index = 0; }
 
     protected:
-        uint32_t index;
+        u32 index;
     };
 
-    struct hash_handle
-    {
-        hash_handle() : index(0) {}
-        explicit hash_handle(uint64_t idx) : index(idx) {}
+    #define CUSTOM_RESOURCE_HANDLE(T) \
+        struct T : public resource_handle \
+        { \
+            T() : resource_handle() {} \
+            explicit T(u32 idx) : resource_handle(idx) {} \
+        };
+
+    // TODO: remove this, change to resource_handle
+    // struct hash_handle
+    // {
+    //     hash_handle() : index(0) {}
+    //     explicit hash_handle(uint64_t idx) : index(idx) {}
         
-        uint64_t get() const { return index; }
-        bool is_valid() const { return index > 0; }
+    //     uint64_t get() const { return index; }
+    //     bool is_valid() const { return index > 0; }
 
-        void invalidate() { index = 0; }
+    //     void invalidate() { index = 0; }
 
-    protected:
-        uint64_t index;
-    };
+    // protected:
+    //     uint64_t index;
+    // };
 
-    struct window_handle : public resource_handle
-    {
-        window_handle() : resource_handle() {}
-        explicit window_handle(int idx) : resource_handle(idx) {}
-    };
-
-    struct window_context_handle : public resource_handle
-    {
-        window_context_handle() : resource_handle() {}
-        explicit window_context_handle(int idx) : resource_handle(idx) {}
-    };
-
-    struct mesh_handle : public hash_handle
-    {
-        mesh_handle() : hash_handle() {}
-        explicit mesh_handle(uint64_t idx) : hash_handle(idx) {}
-    };
-
-    struct texture_handle : public hash_handle
-    {
-        texture_handle() : hash_handle() {}
-        explicit texture_handle(uint64_t idx) : hash_handle(idx) {}
-    };
-
-    struct material_handle : public resource_handle
-    {
-        material_handle() : resource_handle() {}
-        explicit material_handle(uint32_t idx) : resource_handle(idx) {}
-    };
-
-    struct render_object_handle : public resource_handle
-    {
-        render_object_handle() : resource_handle() {}
-        explicit render_object_handle(int idx) : resource_handle(idx) {}
-    };
+    CUSTOM_RESOURCE_HANDLE(window_handle);
+    CUSTOM_RESOURCE_HANDLE(window_context_handle);
+    CUSTOM_RESOURCE_HANDLE(mesh_handle);
+    CUSTOM_RESOURCE_HANDLE(texture_handle);
+    CUSTOM_RESOURCE_HANDLE(pipeline_state_handle);
+    CUSTOM_RESOURCE_HANDLE(uniform_buffer_handle);
 
     struct frame_uniform_buffer
     {
@@ -97,20 +76,21 @@ namespace lucus
         alignas(16) glm::mat4 model;
     };
 
-    struct render_instance
-    {
-        render_object_handle object;
-        object_uniform_buffer object_data;
+    // struct render_instance
+    // {
+    //     render_object_handle object;
+    //     object_uniform_buffer object_data;
 
-        mesh_handle mesh;
-        material_handle material;
-    };
+    //     mesh_handle mesh;
+    //     material_handle material;
+    // };
 
-    struct command_buffer
-    {
-        frame_uniform_buffer frame_ubo;
-        std::vector<render_instance> render_list;
-    };
+    // // TODO: replace with gpu_command_buffer
+    // struct command_buffer
+    // {
+    //     frame_uniform_buffer frame_ubo;
+    //     std::vector<render_instance> render_list;
+    // };
 
     struct vertex
     {
@@ -119,17 +99,9 @@ namespace lucus
         glm::vec3 color{1.0f};
     };
 
-    struct rhi_material
+    struct gpu_mesh
     {
-        uint64_t psoHandle;
-        bool bUniformBufferUsed { false };
-        bool bTexturesUsed { false };
-    };
-
-    struct rhi_mesh
-    {
-        bool bHasVertexData{false};
-        uint32_t vertexCount{0};
-        uint32_t indexCount{0};
+        u32 vertexCount{0};
+        u32 indexCount{0};
     };
 }

@@ -9,16 +9,18 @@ namespace lucus
 {
     class texture : public object
     {
+        friend class renderer;
+
     public:
         static texture* create_factory(const std::string& fileName);
 
-
         const std::string& getFileName() const { return _fileName; }
-        
+
+        u32 getHash() const;
+    
+    protected:
         const texture_handle& getHandle() const { return _texture_handle; }
         void setHandle(const texture_handle& handle) { _texture_handle = handle; }
-
-        uint64_t getHash() const;
 
     private:
         std::string _fileName;

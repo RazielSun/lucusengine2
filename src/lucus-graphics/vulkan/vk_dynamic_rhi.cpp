@@ -3,6 +3,7 @@
 #include "engine_info.hpp"
 #include "window_manager.hpp"
 
+#include "command_buffer.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "texture.hpp"
@@ -27,20 +28,19 @@ vk_dynamic_rhi::vk_dynamic_rhi()
 vk_dynamic_rhi::~vk_dynamic_rhi()
 {
     vkDestroyDescriptorPool(_deviceHandle, _descriptorPool, nullptr);
-    vkDestroyDescriptorSetLayout(_deviceHandle, _frameDescriptorSetLayout, nullptr);
-    vkDestroyDescriptorSetLayout(_deviceHandle, _objectDescriptorSetLayout, nullptr);
+    // vkDestroyDescriptorSetLayout(_deviceHandle, _frameDescriptorSetLayout, nullptr);
+    // vkDestroyDescriptorSetLayout(_deviceHandle, _objectDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(_deviceHandle, _texturesDescriptorSetLayout, nullptr);
 
-    for (auto& mat : _materials)
+    for (auto& ubDesc : _ubDescriptorSetLayouts)
     {
-        mat.cleanup();
+        vkDestroyDescriptorSetLayout(_deviceHandle, ubDesc.second, nullptr);
     }
-    _materials.clear();
 
-    for (auto& buffer : _objectUniformBuffers) {
+    for (auto& buffer : _uniformBuffers) {
         buffer.cleanup();
     }
-    _objectUniformBuffers.clear();
+    _uniformBuffers.clear();
 
     for (auto& tex : _textures)
     {
@@ -62,6 +62,8 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     }
     _contexts.clear();
     _contextHandles.clear();
+
+    mainRenderPass.cleanup();
 
     _device.reset();
 
@@ -189,13 +191,17 @@ window_context_handle vk_dynamic_rhi::createWindowContext(const window_handle& h
 		throw std::runtime_error("Invalid window handle provided to vk_swapchain::init");
 	}
 
-    vk_window_context context;
+    auto& context = _contexts.emplace_back();
     context.init(_instance, _device->getGPU(), _deviceHandle, window);
-    context.uniformbuffers.init(_deviceHandle, _device->getGPU(), _frameDescriptorSetLayout, _descriptorPool, sizeof(frame_uniform_buffer));
 
-    _contexts.push_back(context);
+    if (!mainRenderPass.bInitialized)
+    {
+        mainRenderPass.init(_deviceHandle, context.colorFormat, context.depthFormat);
+    }
 
-    window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
+    context.init_framebuffers(mainRenderPass);
+
+    window_context_handle out_handle(static_cast<u32>(_contexts.size()));
     _contextHandles.push_back(out_handle);
 
     return out_handle;
@@ -206,36 +212,32 @@ const std::vector<window_context_handle>& vk_dynamic_rhi::getWindowContexts() co
     return _contextHandles;
 }
 
-float vk_dynamic_rhi::getWindowContextAspectRatio(const window_context_handle& handle) const
+void vk_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handle, u32& width, u32& height) const
+{
+    width = 0, height = 0;
+    if (!ctx_handle.is_valid()) {
+        return;
+    }
+
+    const auto& ctx = _contexts[ctx_handle.as_index()];
+    width = ctx.swapChain.extent.width;
+    height = ctx.swapChain.extent.height;
+}
+
+void vk_dynamic_rhi::execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd)
 {
     if (!handle.is_valid()) {
-        return 1.0f;
-    }
-
-    const auto& ctx = _contexts[handle.as_index()];
-    return static_cast<float>(ctx.swapChain.extent.width) / static_cast<float>(ctx.swapChain.extent.height);
-}
-
-void vk_dynamic_rhi::beginFrame(const window_context_handle& ctx_handle)
-{
-    if (!ctx_handle.is_valid()) {
         return;
     }
 
-    auto& ctx = _contexts[ctx_handle.as_index()];
-    ctx.wait_frame();
-}
+    vk_window_context& ctx = _contexts[handle.as_index()];
 
-void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const command_buffer& cmd)
-{
-    if (!ctx_handle.is_valid()) {
-        return;
-    }
+    u32 currentFrame = frameIndex % g_framesInFlight;
 
-    vk_window_context& ctx = _contexts[ctx_handle.as_index()];
+    // here is wait fences & semaphores
+    ctx.wait_frame(currentFrame);
 
-    VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(ctx.currentFrame);
-
+    VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(currentFrame);
     vkResetCommandBuffer(cmdBuffer, 0);
 
     VkCommandBufferBeginInfo beginInfo{};
@@ -247,88 +249,130 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = ctx.renderPass.renderPass;
-    renderPassInfo.framebuffer = ctx.framebuffers.frameBuffers[ctx.currentImageIndex].framebuffer;
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = ctx.swapChain.extent;
-
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
-
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
-
-    vkCmdBeginRenderPass(cmdBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    vkCmdSetViewport(cmdBuffer, 0, 1, &ctx.viewport.viewport);
-    vkCmdSetScissor(cmdBuffer, 0, 1, &ctx.viewport.scissor);
-
-    // HACK: clip space Y for Vulkan
-    auto frame_ubo = cmd.frame_ubo;
-    frame_ubo.proj[1][1] *= -1;
-    ctx.uniformbuffers.write(ctx.currentFrame, &frame_ubo, sizeof(frame_ubo));
-
-    for (const auto& renderInstance : cmd.render_list)
+    for (u32 i = 0; i < cmd.commandCount; ++i)
     {
-        const auto& object_id = renderInstance.object;
-        vk_uniform_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
-
-        buffer.write(ctx.currentFrame, &renderInstance.object_data, sizeof(renderInstance.object_data));
-
-        const auto& material_id = renderInstance.material;
-        if (material_id.is_valid())
+        const u8 *data = cmd.data.data() + i * COMMAND_FIXED_SIZE;
+        const gpu_command_base* gpu_cmd = reinterpret_cast<const gpu_command_base*>(data);
+        switch (gpu_cmd->type)
         {
-            const auto& vkmat = _materials[material_id.as_index()];
-            auto psoIt = _pipelineStates.find(vkmat.psoHandle);
-            if (psoIt != _pipelineStates.end())
-            {
-                vk_pipeline_state& vkpso = psoIt->second;
-                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipeline());
-                if (vkmat.bUniformBufferUsed)
+            case gpu_command_type::RENDER_PASS_BEGIN:
                 {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipelineLayout(), (uint32_t)shader_binding::frame, 1, ctx.uniformbuffers.get(ctx.currentFrame), 0, nullptr);
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipelineLayout(), (uint32_t)shader_binding::object, 1, buffer.get(ctx.currentFrame), 0, nullptr);
-                }
-                if (vkmat.bTexturesUsed)
-                {
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vkpso.getPipelineLayout(), (uint32_t)shader_binding::material, 1, &vkmat.texDescriptorSet, 0, nullptr);
-                }
-            } else {
-                std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
-            }
-        }
+                    const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
 
-        const auto& mesh_id = renderInstance.mesh;
-        if (mesh_id.is_valid())
-        {
-            auto meshIt = _meshes.find(mesh_id.get());
-            if (meshIt != _meshes.end())
-            {
-                auto& gpuMesh = meshIt->second;
-                if (gpuMesh.bHasVertexData)
+                    VkRenderPassBeginInfo renderPassInfo{};
+                    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                    renderPassInfo.renderPass = mainRenderPass.renderPass;
+                    renderPassInfo.framebuffer = ctx.framebuffers.frameBuffers[ctx.currentImageIndex].framebuffer;
+                    renderPassInfo.renderArea.offset = { rb_cmd->offset_x, rb_cmd->offset_y };
+                    renderPassInfo.renderArea.extent = { rb_cmd->extent_x, rb_cmd->extent_y };
+
+                    std::array<VkClearValue, 2> clearValues{};
+                    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+                    clearValues[1].depthStencil = {1.0f, 0};
+
+                    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+                    renderPassInfo.pClearValues = clearValues.data();
+
+                    vkCmdBeginRenderPass(cmdBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+                }
+                break;
+            case gpu_command_type::RENDER_PASS_END:
                 {
+                    vkCmdEndRenderPass(cmdBuffer);
+                }
+                break;
+            case gpu_command_type::SET_VIEWPORT:
+                {
+                    const auto* vp_cmd = reinterpret_cast<const gpu_set_viewport_command*>(data);
+
+                    VkViewport viewport{};
+                    viewport.x = float(vp_cmd->x);
+                    viewport.y = float(vp_cmd->y + vp_cmd->height);
+                    viewport.width = float(vp_cmd->width);
+                    viewport.height = -float(vp_cmd->height); // Vulkan Flip Y
+                    viewport.minDepth = vp_cmd->minDepth;
+                    viewport.maxDepth = vp_cmd->maxDepth;
+
+                    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+                }
+                break;
+            case gpu_command_type::SET_SCISSOR:
+                {
+                    const auto* sc_cmd = reinterpret_cast<const gpu_set_scissor_command*>(data);
+
+                    VkRect2D scissor{};
+                    scissor.offset = { sc_cmd->offset_x, sc_cmd->offset_y };
+                    scissor.extent = { sc_cmd->extent_x, sc_cmd->extent_y };
+
+                    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+                }
+                break;
+            case gpu_command_type::BIND_PIPELINE:
+                {
+                    const auto* bp_cmd = reinterpret_cast<const gpu_bind_pipeline_command*>(data);
+                    auto found = _pipelineStates.find(bp_cmd->pso_handle.get());
+                    vk_pipeline_state& pso = found->second;
+                    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipeline());
+                }
+                break;
+            case gpu_command_type::BIND_UNIFORM_BUFFER:
+                {
+                    const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
+                    auto found = _pipelineStates.find(bu_cmd->pso_handle.get());
+                    vk_pipeline_state& pso = found->second;
+                    vk_uniform_buffer& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bu_cmd->position, 1, ub.get(currentFrame), 0, nullptr);
+                }
+                break;
+            case gpu_command_type::BIND_TEXTURE:
+                {
+                    const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
+                    auto found = _pipelineStates.find(bt_cmd->pso_handle.get());
+                    vk_pipeline_state& pso = found->second;
+                    auto found_tex = _textures.find(bt_cmd->tex_handle.get());
+                    vk_texture& tex = found_tex->second; // TODO: descriptor set to texture
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bt_cmd->position, 1, &tex.texDescriptorSet, 0, nullptr);
+                }
+                break;
+            case gpu_command_type::BIND_VERTEX_BUFFER:
+                {
+                    const auto* bv_cmd = reinterpret_cast<const gpu_bind_vertex_command*>(data);
+                    auto found = _meshes.find(bv_cmd->msh_handle.get());
+                    assert(found != _meshes.end());
+                    auto& gpuMesh = found->second;
                     VkBuffer vertexBuffers[] = { gpuMesh.vertexBuffer.get() };
                     VkDeviceSize offsets[] = { 0 };
                     vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
                 }
-
-                if (gpuMesh.indexCount > 0)
+                break;
+            case gpu_command_type::BIND_INDEX_BUFFER:
                 {
+                    const auto* bi_cmd = reinterpret_cast<const gpu_bind_index_command*>(data);
+                    auto found = _meshes.find(bi_cmd->msh_handle.get());
+                    assert(found != _meshes.end());
+                    auto& gpuMesh = found->second;
                     vkCmdBindIndexBuffer(cmdBuffer, gpuMesh.indexBuffer.get(), 0, VK_INDEX_TYPE_UINT32);
-                    vkCmdDrawIndexed(cmdBuffer, gpuMesh.indexCount, 1, 0, 0, 0);
                 }
-                else if (gpuMesh.vertexCount > 0)
+                break;
+            case gpu_command_type::DRAW_INDEXED:
                 {
-                    vkCmdDraw(cmdBuffer, gpuMesh.vertexCount, 1, 0, 0);
+                    const auto* di_cmd = reinterpret_cast<const gpu_draw_indexed_command*>(data);
+                    vkCmdDrawIndexed(cmdBuffer, di_cmd->indexCount, 1, 0, 0, 0);
                 }
-            }
+                break;
+            case gpu_command_type::DRAW_VERTEX:
+                {
+                    const auto* dv_cmd = reinterpret_cast<const gpu_draw_vertex_command*>(data);
+                    vkCmdDraw(cmdBuffer, dv_cmd->vertexCount, 1, 0, 0);
+                }
+                break;
+            default:
+                {
+                    std::printf("execute cmd doesn't handled %d\n", (u32)gpu_cmd->type);
+                }
+                break;
         }
     }
-
-    vkCmdEndRenderPass(cmdBuffer);
 
     if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
@@ -338,22 +382,22 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
 	VkSubmitInfo submitInfo{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &ctx.frames[ctx.currentFrame].imageAvailable,
+		.pWaitSemaphores = &ctx.frames[currentFrame].imageAvailable,
 		.pWaitDstStageMask = &waitPipelineStage,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &cmdBuffer,
 		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &ctx.frames[ctx.currentFrame].renderFinished
+		.pSignalSemaphores = &ctx.frames[currentFrame].renderFinished
 	};
     
-	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, ctx.frames[ctx.currentFrame].fence) != VK_SUCCESS) {
+	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, ctx.frames[currentFrame].fence) != VK_SUCCESS) {
 		throw std::runtime_error("failed to submit draw command buffer!");
 	}
 
 	VkPresentInfoKHR presentInfo{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &ctx.frames[ctx.currentFrame].renderFinished,
+        .pWaitSemaphores = &ctx.frames[currentFrame].renderFinished,
         .swapchainCount = 1,
         .pSwapchains = &ctx.swapChain.swapChain,
         .pImageIndices = &ctx.currentImageIndex,
@@ -362,19 +406,8 @@ void vk_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
 
     // vkQueuePresentKHR(_presentQueue, &presentInfo);
     vkQueuePresentKHR(_graphicsQueue, &presentInfo);
-}
 
-void vk_dynamic_rhi::endFrame(const window_context_handle& ctx_handle)
-{
-    if (!ctx_handle.is_valid()) {
-        return;
-    }
-
-    vk_window_context& ctx = _contexts[ctx_handle.as_index()];
-
-    ctx.currentFrame = (ctx.currentFrame + 1) % g_framesInFlight;
-
-    wait_idle();
+    vkDeviceWaitIdle(_deviceHandle);
 }
 
 void vk_dynamic_rhi::createCommandBufferPool()
@@ -411,55 +444,55 @@ void vk_dynamic_rhi::createDescriptorPool()
 
 void vk_dynamic_rhi::createDescriptorSetLayouts()
 {
-    {
-        constexpr uint32_t bindingCount = 1;
-        std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
+    // {
+    //     constexpr uint32_t bindingCount = 1;
+    //     std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
 
-        bindings[0] = VkDescriptorSetLayoutBinding
-        {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = nullptr
-        };
+    //     bindings[0] = VkDescriptorSetLayoutBinding
+    //     {
+    //         .binding = 0,
+    //         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    //         .descriptorCount = 1,
+    //         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    //         .pImmutableSamplers = nullptr
+    //     };
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-        layoutInfo.pBindings = bindings.data();
+    //     VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    //     layoutInfo.pBindings = bindings.data();
 
-        if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_frameDescriptorSetLayout) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create descriptor set layout!");
-        }
+    //     if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_frameDescriptorSetLayout) != VK_SUCCESS) {
+    //         throw std::runtime_error("failed to create descriptor set layout!");
+    //     }
 
-        std::printf("Frame Descriptor set layout created successfully\n");
-    }
+    //     std::printf("Frame Descriptor set layout created successfully\n");
+    // }
     
-    {
-        constexpr uint32_t bindingCount = 1;
-        std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
+    // {
+    //     constexpr uint32_t bindingCount = 1;
+    //     std::array<VkDescriptorSetLayoutBinding, bindingCount> bindings{};
 
-        bindings[0] = VkDescriptorSetLayoutBinding
-        {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = nullptr
-        };
+    //     bindings[0] = VkDescriptorSetLayoutBinding
+    //     {
+    //         .binding = 0,
+    //         .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    //         .descriptorCount = 1,
+    //         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    //         .pImmutableSamplers = nullptr
+    //     };
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-        layoutInfo.pBindings = bindings.data();
+    //     VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    //     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    //     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    //     layoutInfo.pBindings = bindings.data();
 
-        if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_objectDescriptorSetLayout) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create descriptor set layout!");
-        }
+    //     if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &_objectDescriptorSetLayout) != VK_SUCCESS) {
+    //         throw std::runtime_error("failed to create descriptor set layout!");
+    //     }
 
-        std::printf("Object Descriptor set layout created successfully\n");
-    }
+    //     std::printf("Object Descriptor set layout created successfully\n");
+    // }
 
     {
         constexpr uint32_t bindingCount = 2;
@@ -495,94 +528,98 @@ void vk_dynamic_rhi::createDescriptorSetLayouts()
     }
 }
 
-material_handle vk_dynamic_rhi::createMaterial(material* mat)
+pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat)
 {
     assert(mat);
 
-    uint64_t shaderHash = mat->getHash();
-
-    // TODO: need refactor to material and pso
-    uint64_t psoHandle = 0;
-    auto it = _pipelineStates.find(shaderHash);
+    pipeline_state_handle pso_handle = pipeline_state_handle(mat->getHash());
+    auto it = _pipelineStates.find(pso_handle.get());
     if (it != _pipelineStates.end()) {
-        psoHandle = it->first;
+        return pso_handle;
     }
 
-    if (psoHandle == 0)
     {
-        _pipelineStates.emplace(shaderHash, _deviceHandle);
-        it = _pipelineStates.find(shaderHash);
-        vk_pipeline_state& pso = it->second;
+        auto pair = _pipelineStates.emplace(pso_handle.get(), _deviceHandle);
+        assert(pair.second);
 
-        std::vector<VkDescriptorSetLayout> layouts;
-        layouts.reserve(3);
+        vk_pipeline_state& pso = pair.first->second;
 
-        if (mat->isUseUniformBuffers())
+        vk_pipeline_state_desc init_desc;
+        init_desc.renderPass = mainRenderPass.renderPass; // TODO: refactor render pass logic
+
+        init_desc.layouts.reserve(3);
+        if (mat->useFrameUniformBuffer())
         {
-            layouts.push_back(_frameDescriptorSetLayout);
-            layouts.push_back(_objectDescriptorSetLayout);
+            init_desc.layouts.push_back(_ubDescriptorSetLayouts.find(uniform_buffer_type::FRAME)->second);
+        }
+
+        if (mat->useObjectUniformBuffer())
+        {
+            init_desc.layouts.push_back(_ubDescriptorSetLayouts.find(uniform_buffer_type::OBJECT)->second);
         }
 
         if (mat->getTexturesCount() > 0)
         {
-            layouts.push_back(_texturesDescriptorSetLayout);
-            
+            // TODO:
+            init_desc.layouts.push_back(_texturesDescriptorSetLayout);
         }
 
-        auto& renderPass = _contexts[0].renderPass; // HACK: using first context's render pass for now
-
-        pso.init(mat, renderPass.renderPass, static_cast<uint32_t>(layouts.size()), layouts.data());
-
-        std::printf("PSO %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
-
-        psoHandle = shaderHash;
-    }
-
-    _materials.push_back(vk_material());
-
-    vk_material& vkmat = _materials.back();
-    vkmat.psoHandle = psoHandle;
-    vkmat.bUniformBufferUsed = mat->isUseUniformBuffers();
-    if (mat->getTexturesCount() > 0)
-    {
-        vkmat.bTexturesUsed = true;
-        vkmat.initDescriptor(_deviceHandle, _texturesDescriptorSetLayout, _descriptorPool);
-
-        uint32_t i = 0;
-        for (const auto& tex : mat->getTextures())
+        if (mat->useVertexIndexBuffers())
         {
-            auto vktexIt = _textures.find(tex->getHash());
-            if (vktexIt != _textures.end())
-            {
-                vkmat.addTexture(_deviceHandle, i * 2, vktexIt->second);
-            }
-            i++;
+            init_desc.bindingDesc = VkVertexInputBindingDescription {
+                .binding = 0,
+                .stride = sizeof(vertex),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+            };
+
+            init_desc.attributes.emplace_back() = VkVertexInputAttributeDescription{
+                .location = 0,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, position),
+            };
+
+            init_desc.attributes.emplace_back() = VkVertexInputAttributeDescription{
+                .location = 1,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32_SFLOAT,
+                .offset = offsetof(vertex, texCoords),
+            };
+
+            init_desc.attributes.emplace_back() = VkVertexInputAttributeDescription{
+                .location = 2,
+                .binding = 0,
+                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = offsetof(vertex, color),
+            };
         }
+
+        const std::string& shaderName = mat->getShaderName();
+        pso.init(shaderName, init_desc);
+
+        std::printf("PSO %u created successfully\n", pso_handle.get());
     }
 
-    uint32_t matIndex = static_cast<uint32_t>(_materials.size());
-    std::printf("Material %d created successfully\n", matIndex);
-
-    return material_handle(matIndex);
+    return pso_handle;
 }
 
 mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
 {
     assert(msh != nullptr);
-    uint64_t meshHash = msh->getHash();
+    u32 meshHash = msh->getHash();
 
     auto it = _meshes.find(meshHash);
     if (it != _meshes.end()) {
         return mesh_handle(it->first);
     }
 
-    _meshes.emplace(meshHash, vk_mesh());
+    auto pair = _meshes.emplace(meshHash, vk_mesh());
+    assert(pair.second);
 
-    it = _meshes.find(meshHash);
+    vk_mesh& vkmsh = pair.first->second;
+    vkmsh.init(_deviceHandle, _device->getGPU(), msh);
 
-    it->second.init(_deviceHandle, _device->getGPU(), msh);
-
-    std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
+    std::printf("Mesh %u created successfully\n", meshHash);
 
     return mesh_handle(meshHash);
 }
@@ -590,19 +627,18 @@ mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
 texture_handle vk_dynamic_rhi::loadTexture(texture* tex)
 {
     assert(tex != nullptr);
-    uint64_t texHash = tex->getHash();
+    u32 texHash = tex->getHash();
 
     auto it = _textures.find(texHash);
     if (it != _textures.end()) {
         return texture_handle(it->first);
     }
 
-    _textures.emplace(texHash, vk_texture());
+    auto pair = _textures.emplace(texHash, vk_texture());
+    assert(pair.second);
 
-    it = _textures.find(texHash);
-
-    vk_texture& vktex = it->second;
-    vktex.init(_deviceHandle, _device->getGPU(), tex);
+    vk_texture& vktex = pair.first->second;
+    vktex.init(tex, _deviceHandle, _device->getGPU(), _texturesDescriptorSetLayout, _descriptorPool);
 
     transitionImageLayout(vktex.texImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     copyBufferToImage(vktex.stgBuffer, vktex.texImage, vktex.texExtent.width, vktex.texExtent.height);
@@ -610,20 +646,79 @@ texture_handle vk_dynamic_rhi::loadTexture(texture* tex)
 
     vktex.free_staging();
     
-    std::printf("Texture %llu loaded successfully\n", static_cast<unsigned long long>(texHash));
+    std::printf("Texture %u loaded successfully\n", texHash);
 
     return texture_handle(texHash);
 }
 
-render_object_handle vk_dynamic_rhi::createUniformBuffer(render_object* obj)
+uniform_buffer_handle vk_dynamic_rhi::createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize)
 {
-    _objectUniformBuffers.emplace_back();
-    vk_uniform_buffer& buffer = _objectUniformBuffers.back();
-    buffer.init(_deviceHandle, _device->getGPU(), _objectDescriptorSetLayout, _descriptorPool, sizeof(object_uniform_buffer));
+    VkDescriptorSetLayout descriptorSetLayout { VK_NULL_HANDLE };
 
-    std::printf("Uniform buffer for object %p created successfully\n", obj);
+    auto found = _ubDescriptorSetLayouts.find(ub_type);
+    if (found != _ubDescriptorSetLayouts.end())
+    {
+        descriptorSetLayout = found->second;
+    }
+    else
+    {
+        auto result = _ubDescriptorSetLayouts.emplace(ub_type, VkDescriptorSetLayout());
+        if (result.second)
+        {
+            auto& it = result.first;
 
-    return render_object_handle(static_cast<uint32_t>(_objectUniformBuffers.size()));
+            std::array<VkDescriptorSetLayoutBinding, 1> bindings{};
+            bindings[0] = VkDescriptorSetLayoutBinding
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .pImmutableSamplers = nullptr
+            };
+
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = static_cast<u32>(bindings.size());
+            layoutInfo.pBindings = bindings.data();
+
+            if (vkCreateDescriptorSetLayout(_deviceHandle, &layoutInfo, nullptr, &it->second) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create descriptor set layout!");
+            }
+
+            std::printf("UB Descriptor set layout created successfully\n");
+
+            descriptorSetLayout = it->second;
+        }
+    }
+
+    if (descriptorSetLayout == VK_NULL_HANDLE)
+    {
+        throw std::runtime_error("failed to  description set for uniform buffer!");
+    }
+
+    vk_uniform_buffer& buffer = _uniformBuffers.emplace_back();
+    
+    buffer.init(_deviceHandle, _device->getGPU(), descriptorSetLayout, _descriptorPool, bufferSize);
+
+    uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));
+    std::printf("Uniform buffer %d [Type: %d] created successfully\n", ub_handle.get(), (u32)ub_type);
+
+    return ub_handle;
+}
+
+void vk_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr)
+{
+    // std::printf("getUniformBufferMemory %d [Ctx: %d]\n", ub_handle.get(), ctx_handle.get());
+    if (!ub_handle.is_valid())
+    {
+        throw std::runtime_error("failed to get uniform buffer memory! ub is null!");
+    }
+
+    vk_uniform_buffer& buffer = _uniformBuffers[ub_handle.as_index()];
+
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    memory_ptr = buffer.getMappedData(currentFrame);
 }
 
 void vk_dynamic_rhi::wait_idle()

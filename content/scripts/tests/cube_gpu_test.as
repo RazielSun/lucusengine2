@@ -12,7 +12,8 @@ void main()
     Mesh@ cube = Mesh("", 36); // gpu hardcoded cube
 
     Material@ cube_mat = Material("cube"); // gpu hardcoded cube
-    cube_mat.SetUseUniformBuffers(true);
+    cube_mat.SetUseFrameUniformBuffer(true);
+    cube_mat.SetUseObjectUniformBuffer(true);
 
     RenderObject@ cube_obj1 = scene.NewObject();
     cube_obj1.SetPosition(Vec3(-0.8f, 0.2f, 0.f));

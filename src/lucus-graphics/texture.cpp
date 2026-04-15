@@ -13,8 +13,8 @@ texture* texture::create_factory(const std::string& fileName)
     return tex;
 }
 
-uint64_t texture::getHash() const
+u32 texture::getHash() const
 {
-    const uint64_t fileHash = static_cast<uint64_t>(std::hash<std::string>{}(_fileName));
+    const u32 fileHash = static_cast<u32>(std::hash<std::string>{}(_fileName));
     return fileHash;
 }

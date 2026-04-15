@@ -35,6 +35,7 @@ namespace lucus
 
     struct vk_render_pass
     {
+        bool bInitialized{false};
         VkFormat colorFormat{};
         VkFormat depthFormat{};
 
@@ -73,12 +74,6 @@ namespace lucus
             VkDevice _device;
     };
 
-    struct vk_viewport
-    {
-        VkViewport viewport{};
-        VkRect2D scissor{};
-    };
-
     struct vk_frame_sync
     {
         VkSemaphore imageAvailable {VK_NULL_HANDLE};
@@ -92,7 +87,7 @@ namespace lucus
         VkDevice _device;
     };
 
-    struct vk_mesh : public rhi_mesh
+    struct vk_mesh : public gpu_mesh
     {
         vk_buffer vertexBuffer;
         vk_buffer indexBuffer;
@@ -113,21 +108,11 @@ namespace lucus
         VkDeviceSize texSize;
         VkExtent2D texExtent;
 
-        void init(VkDevice device, VkPhysicalDevice gpu, texture* tex);
+        void init(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
         void free_staging();
         void cleanup();
 
     private:
         VkDevice _device;
-    };
-
-    struct vk_material : public rhi_material
-    {
-        VkDescriptorSet texDescriptorSet;
-
-        void initDescriptor(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
-        void addTexture(VkDevice device, uint32_t index, const vk_texture& tex);
-        
-        void cleanup();
     };
 }

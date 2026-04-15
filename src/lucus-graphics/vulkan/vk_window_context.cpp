@@ -35,6 +35,7 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
 
     _instance = instance;
     _device = device;
+	_gpu = gpu;
 
     VkResult result = glfwCreateWindowSurface(instance, window->getGLFWwindow(), nullptr, &surface);
     if (result != VK_SUCCESS) {
@@ -44,38 +45,27 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
     initSurface(gpu, window);
     swapChain.init(gpu, device, surface, window);
 
-    // Setup the viewport and scissor rect to cover the whole framebuffer by default
-    viewport.viewport.x = 0.0f;
-    viewport.viewport.y = 0.0f;
-    viewport.viewport.width = static_cast<float>(swapChain.extent.width);
-    viewport.viewport.height = static_cast<float>(swapChain.extent.height);
-    viewport.viewport.minDepth = 0.0f;
-    viewport.viewport.maxDepth = 1.0f;
+	colorFormat = swapChain.colorFormat;
+	depthFormat = utils::findDepthFormat(gpu);
 
-    viewport.scissor.offset = {0, 0};
-    viewport.scissor.extent = swapChain.extent;
-
-    auto depthFormat = utils::findDepthFormat(gpu);
-
-    renderPass.init(device, swapChain.colorFormat, depthFormat);
-    framebuffers.init(device, gpu, renderPass.renderPass, swapChain, depthFormat);
-
-    for (auto& frame : frames) {
+	for (auto& frame : frames) {
         frame.init(device);
     }
 }
 
+void vk_window_context::init_framebuffers(const vk_render_pass& render_pass)
+{
+	framebuffers.init(_device, _gpu, render_pass.renderPass, swapChain, depthFormat);
+}
+
 void vk_window_context::cleanup()
 {
-	uniformbuffers.cleanup();
-
     for (auto& frame : frames) {
         frame.cleanup();
     }
 
     swapChain.cleanup();
     framebuffers.cleanup();
-    renderPass.cleanup();
 
     if (surface != VK_NULL_HANDLE) {
         vkDestroySurfaceKHR(_instance, surface, nullptr);
@@ -169,7 +159,7 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
     std::printf("VkSurfaceKHR created successfully\n");
 }
 
-void vk_window_context::wait_frame()
+void vk_window_context::wait_frame(u32 currentFrame)
 {
     vkWaitForFences(_device, 1, &frames[currentFrame].fence, VK_TRUE, UINT64_MAX);
     vkResetFences(_device, 1, &frames[currentFrame].fence);

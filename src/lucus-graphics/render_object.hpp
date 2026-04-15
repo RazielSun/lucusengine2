@@ -34,8 +34,9 @@ namespace lucus
             const glm::vec3& getScale() const { return _transform.scale; }
             void setScale(const glm::vec3& scale) { _transform.scale = scale; }
 
-            const render_object_handle& getHandle() const { return _handle; }
-            void setHandle(const render_object_handle& handle) { _handle = handle; }
+        protected:
+            const uniform_buffer_handle& getHandle() const { return _handle; }
+            void setHandle(const uniform_buffer_handle& handle) { _handle = handle; }
 
         private:
             intrusive_ptr<mesh> _mesh;
@@ -44,6 +45,6 @@ namespace lucus
             transform _transform;
 
             // transient
-            render_object_handle _handle;
+            uniform_buffer_handle _handle;
     };
 }

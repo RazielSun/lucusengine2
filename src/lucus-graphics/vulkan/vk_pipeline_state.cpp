@@ -20,11 +20,8 @@ vk_pipeline_state::~vk_pipeline_state()
     }
 }
 
-void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint32_t layoutCount, VkDescriptorSetLayout* layouts)
+void vk_pipeline_state::init(const std::string& shaderName, const vk_pipeline_state_desc& init_desc)
 {
-    assert(mat);
-    const std::string& shaderName = mat->getShaderName();
-
     VkShaderModule vertShaderModule = loadShader(shaderName + ".vert.spv");
     VkShaderModule fragShaderModule = loadShader(shaderName + ".frag.spv");
 
@@ -68,36 +65,12 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-    // TODO: move from here?
-    if (mat->isUseVertexIndexBuffers())
+    if ((u32)init_desc.attributes.size() > 0)
     {
-        // We are using vertex/index buffers, so we need to provide the binding and attribute descriptions
-        VkVertexInputBindingDescription bindingDescription{};
-        bindingDescription.binding = 0;
-        bindingDescription.stride = sizeof(vertex);
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[0].offset = offsetof(vertex, position);
-
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(vertex, texCoords);
-
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(vertex, color);
-
         vertexInputInfo.vertexBindingDescriptionCount = 1;
-        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+        vertexInputInfo.pVertexBindingDescriptions = &init_desc.bindingDesc;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<u32>(init_desc.attributes.size());
+        vertexInputInfo.pVertexAttributeDescriptions = init_desc.attributes.data();
     }
     else
     {
@@ -160,7 +133,7 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
     colorBlending.blendConstants[2] = 0.0f; // Optional
     colorBlending.blendConstants[3] = 0.0f; // Optional
 
-    createPipelineLayout(layoutCount, layouts);
+    createPipelineLayout((u32)init_desc.layouts.size(), init_desc.layouts.data());
 
     VkPipelineDepthStencilStateCreateInfo depthState{};
     depthState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -190,7 +163,7 @@ void vk_pipeline_state::init(const material* mat, VkRenderPass renderPass, uint3
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = _pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.renderPass = init_desc.renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
     pipelineInfo.basePipelineIndex = -1; // Optional
@@ -223,13 +196,13 @@ VkShaderModule vk_pipeline_state::loadShader(const std::string& filepath) const
     return shaderModule;
 }
 
-void vk_pipeline_state::createPipelineLayout(uint32_t layoutCount, VkDescriptorSetLayout* layouts)
+void vk_pipeline_state::createPipelineLayout(uint32_t layoutCount, const VkDescriptorSetLayout* layouts)
 {
     // Pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
-    if (layouts != nullptr) {
+    if (layoutCount > 0) {
         pipelineLayoutInfo.setLayoutCount = layoutCount;
         pipelineLayoutInfo.pSetLayouts = layouts;
     } else {

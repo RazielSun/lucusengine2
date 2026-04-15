@@ -14,7 +14,7 @@ void object::addRef()
 
 void object::releaseRef()
 {
-    uint32_t refCount = _refCount.fetch_sub(1, std::memory_order_acq_rel);
+    u32 refCount = _refCount.fetch_sub(1, std::memory_order_acq_rel);
     assert(refCount > 0);
     if (refCount == 1) {
         delete this;

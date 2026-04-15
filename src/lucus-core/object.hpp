@@ -2,6 +2,7 @@
 
 #include "pch.hpp"
 
+#include "core_types.hpp"
 #include "intrusive_ptr.hpp"
 
 namespace lucus {
@@ -20,7 +21,7 @@ namespace lucus {
         virtual ~object();
 
     private:
-        mutable std::atomic<uint32_t> _refCount{1};
+        mutable std::atomic<u32> _refCount{1};
     };
 
 }

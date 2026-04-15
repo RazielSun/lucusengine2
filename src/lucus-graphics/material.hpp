@@ -9,6 +9,12 @@
 
 namespace lucus
 {
+    struct texture_slot
+    {
+        intrusive_ptr<texture> texture;
+        u8 slot_index;
+    };
+
     class material : public object
     {
         friend class renderer;
@@ -19,32 +25,35 @@ namespace lucus
         void setShaderName(const std::string& shaderName) { _shaderName = shaderName; }
         const std::string& getShaderName() const { return _shaderName; }
 
-        bool isUseUniformBuffers() const { return _useUniformBuffers; }
-        void setUseUniformBuffers(bool useUniformBuffers) { _useUniformBuffers = useUniformBuffers; }
+        bool useFrameUniformBuffer() const { return _useFrameUniformBuffer; }
+        void setUseFrameUniformBuffer(bool useUniformBuffers) { _useFrameUniformBuffer = useUniformBuffers; }
 
-        bool isUseVertexIndexBuffers() const { return _useVertexIndexBuffers; }
+        bool useObjectUniformBuffer() const { return _useObjectUniformBuffer; }
+        void setUseObjectUniformBuffer(bool useUniformBuffers) { _useObjectUniformBuffer = useUniformBuffers; }
+
+        bool useVertexIndexBuffers() const { return _useVertexIndexBuffers; }
         void setUseVertexIndexBuffers(bool useVertexIndexBuffers) { _useVertexIndexBuffers = useVertexIndexBuffers; }
 
-        uint32_t getTexturesCount() const { return _useTexturesCount; }
-        void setTexturesCount(uint32_t count) { _useTexturesCount = count; }
-        void setTexture(texture* tex, uint32_t index = 0);
-        const std::vector<intrusive_ptr<texture>>& getTextures() const { return _textures; }
+        void addTexture(texture* tex, u8 slot_index = 0);
+        const std::vector<texture_slot>& getTextures() const { return _textures; }
+        u32 getTexturesCount() const { return _textures.size(); }
 
-        uint64_t getHash() const;
+        u32 getHash() const;
 
     protected:
-        const material_handle& getHandle() const { return _material_handle; }
-        void setHandle(const material_handle& handle) { _material_handle = handle; }
+        const pipeline_state_handle& getPSOHandle() const { return _pso_handle; }
+        void setPSOHandle(const pipeline_state_handle& handle) { _pso_handle = handle; }
 
     private:
         std::string _shaderName;
-        bool _useUniformBuffers{false};
-        bool _useVertexIndexBuffers{false};
-        uint32_t _useTexturesCount{0};
 
-        std::vector<intrusive_ptr<texture>> _textures;
+        bool _useFrameUniformBuffer{false};
+        bool _useObjectUniformBuffer{false};
+        bool _useVertexIndexBuffers{false};
+
+        std::vector<texture_slot> _textures;
 
         // transient
-        material_handle _material_handle;
+        pipeline_state_handle _pso_handle;
     };
 }

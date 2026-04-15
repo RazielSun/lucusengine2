@@ -13,9 +13,9 @@ void main()
 
     Material@ cube_mat = Material("simple_texture");
     // Material@ cube_mat = Material("simple");
-    cube_mat.SetUseUniformBuffers(true);
+    cube_mat.SetUseFrameUniformBuffer(true);
+    cube_mat.SetUseObjectUniformBuffer(true);
     cube_mat.SetUseVertexIndexBuffers(true);
-    cube_mat.SetTexturesCount(1);
 
     Texture@ tex = Texture("content/assets/textures/texture.jpg");
     cube_mat.SetTexture(tex, 0);

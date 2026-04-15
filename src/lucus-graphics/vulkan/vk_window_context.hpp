@@ -43,21 +43,20 @@ namespace lucus
         VkSurfaceKHR surface{ VK_NULL_HANDLE };
 
         vk_swapchain swapChain;
+        VkFormat colorFormat;
+        VkFormat depthFormat;
 
-        vk_render_pass renderPass;
         vk_framebuffer_list framebuffers;
 
-        vk_viewport viewport;
-        vk_uniform_buffer uniformbuffers;
-
         std::array<vk_frame_sync, g_framesInFlight> frames{};
-        uint32_t currentFrame = 0;
+        // uint32_t currentFrame = 0;
         uint32_t currentImageIndex = 0;
 
         void init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window);
+        void init_framebuffers(const vk_render_pass& render_pass);
         void cleanup();
 
-        void wait_frame();
+        void wait_frame(u32 currentFrame);
 
     protected:
         void initSurface(VkPhysicalDevice gpu, window* window);
@@ -65,5 +64,6 @@ namespace lucus
     private:
         VkInstance _instance;
         VkDevice _device;
+        VkPhysicalDevice _gpu;
     };
 }

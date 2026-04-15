@@ -19,6 +19,7 @@ namespace lucus
             VkBuffer get() const { return _buffer; }
             VkDeviceMemory getMemory() const { return _memory; }
             VkDeviceSize getSize() const { return _size; }
+            void* getMappedData() const { return _mapped; }
 
         private:
             VkDevice _device{ VK_NULL_HANDLE };
@@ -38,6 +39,7 @@ namespace lucus
             void write(uint32_t index, const void* data, size_t size);
 
             VkDescriptorSet* get(uint32_t index) { return &_descriptorSets[index]; }
+            void* getMappedData(uint32_t index) const { return _buffers[index].getMappedData(); }
 
         protected:
             void createDescriptorSets(VkDeviceSize bufferSize);

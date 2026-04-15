@@ -9,22 +9,28 @@ material* material::create_factory(const std::string& shaderName)
     return mat;
 }
 
-void material::setTexture(texture* tex, uint32_t index)
+void material::addTexture(texture* tex, u8 slot_index)
 {
     assert(tex);
 
-    std::vector<intrusive_ptr<texture>>::iterator it;
+    _textures.push_back(texture_slot());
 
-    it = _textures.begin() + index;
-    _textures.insert(it, intrusive_ptr<texture>(tex));
+    texture_slot& ts = _textures.back();
+    ts.texture = intrusive_ptr<texture>(tex);
+    ts.slot_index = slot_index;
 }
 
-uint64_t material::getHash() const
+u32 material::getHash() const
 {
-    const uint64_t shaderHash = static_cast<uint64_t>(std::hash<std::string>{}(_shaderName));
-    const uint64_t uniformBufferHash = static_cast<uint64_t>(_useUniformBuffers);
-    const uint64_t vertexIndexBufferHash = static_cast<uint64_t>(_useVertexIndexBuffers);
-    const uint64_t texturesCountHash = static_cast<uint64_t>(_useTexturesCount);
+    const u32 shaderHash = static_cast<u32>(std::hash<std::string>{}(_shaderName));
+    const u32 frameUniformBufferHash = static_cast<u32>(_useFrameUniformBuffer);
+    const u32 objectUniformBufferHash = static_cast<u32>(_useObjectUniformBuffer);
+    const u32 vertexIndexBufferHash = static_cast<u32>(_useVertexIndexBuffers);
+    const u32 texturesCountHash = getTexturesCount();
 
-    return shaderHash ^ (uniformBufferHash << 1) ^ (vertexIndexBufferHash << 2) ^ (texturesCountHash << 3);
+    return shaderHash ^
+        (frameUniformBufferHash << 1) ^
+        (objectUniformBufferHash << 2) ^
+        (vertexIndexBufferHash << 3) ^
+        (texturesCountHash << 5);
 }

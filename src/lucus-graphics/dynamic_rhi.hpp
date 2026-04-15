@@ -2,6 +2,7 @@
 
 #include "pch.hpp"
 
+#include "core_types.hpp"
 #include "render_types.hpp"
 
 namespace lucus
@@ -11,6 +12,7 @@ namespace lucus
     class mesh;
     class texture;
     class render_object;
+    struct gpu_command_buffer;
 
     std::shared_ptr<class dynamic_rhi> create_dynamic_rhi();
 
@@ -24,15 +26,15 @@ namespace lucus
 
         virtual window_context_handle createWindowContext(const window_handle& handle) = 0;
         virtual const std::vector<window_context_handle>& getWindowContexts() const = 0;
-        virtual float getWindowContextAspectRatio(const window_context_handle& handle) const = 0;
+        virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const = 0;
 
-        virtual void beginFrame(const window_context_handle& handle) = 0;
-        virtual void submit(const window_context_handle& handle, const command_buffer& cmd) = 0;
-        virtual void endFrame(const window_context_handle& handle) = 0;
-
-        virtual material_handle createMaterial(material* mat) = 0;
+        virtual pipeline_state_handle createPSO(material* mat) = 0;
         virtual mesh_handle createMesh(mesh* msh) = 0;
         virtual texture_handle loadTexture(texture* tex) = 0;
-        virtual render_object_handle createUniformBuffer(render_object* obj) = 0;
+
+        virtual uniform_buffer_handle createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize) = 0;
+        virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) = 0;
+
+        virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) = 0;
     };
 }

@@ -12,7 +12,8 @@ void main()
     Mesh@ cube = Mesh::load("content/assets/geometry/cube.gltf");
 
     Material@ cube_mat = Material("simple_texture");
-    cube_mat.SetUseUniformBuffers(true);
+    cube_mat.SetUseFrameUniformBuffer(true);
+    cube_mat.SetUseObjectUniformBuffer(true);
     cube_mat.SetUseVertexIndexBuffers(true);
 
     Texture@ tex = Texture("content/assets/textures/texture.jpg");

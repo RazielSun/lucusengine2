@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 
 #include "render_types.hpp"
+#include "command_buffer.hpp"
 #include "window.hpp"
 #include "window_manager.hpp"
 
@@ -9,6 +10,8 @@
 #include "dynamic_rhi.hpp"
 
 using namespace lucus;
+
+u32 renderer::g_frameIndex{0};
 
 void renderer::init(window_handle handle)
 {
@@ -50,14 +53,12 @@ void renderer::tick(float dt)
     {
         if (_currentScene)
         {
-            command_buffer cmd;
+            gpu_command_buffer cmd;
             processScene(_currentScene.get(), context, cmd);
-
-            _dynamicRHI->beginFrame(context);
-            _dynamicRHI->submit(context, cmd);
-            _dynamicRHI->endFrame(context);
         }
     }
+
+    g_frameIndex++;
 }
 
 void renderer::cleanup()
@@ -65,11 +66,40 @@ void renderer::cleanup()
     _dynamicRHI.reset();
 }
 
-void renderer::processScene(const scene* scn, const window_context_handle& ctx_handle, command_buffer& cmd)
+void renderer::processScene(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
 {
     assert(scn);
 
-    updateFrameUniformBuffer(scn->getCamera(), ctx_handle, cmd.frame_ubo);
+    const camera* cam = scn->getCamera();
+    if (!cam)
+    {
+        // TODO: error
+        return;
+    }
+
+    u32 v_width, v_height;
+    _dynamicRHI->getWindowContextSize(ctx_handle, v_width, v_height);
+
+    if (v_width == 0 || v_height == 0)
+    {
+        // TODO: error
+        return;
+    }
+
+    cmd.emplaceCommand<gpu_render_pass_begin_command>(0, 0, v_width, v_height);
+
+    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height, 0.f, 1.f);
+    cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+
+    uniform_buffer_handle cam_handle = cam->getHandle();
+    if (!cam_handle.is_valid())
+    {
+        cam_handle = _dynamicRHI->createUniformBuffer(uniform_buffer_type::FRAME, sizeof(frame_uniform_buffer));
+        const_cast<camera*>(cam)->setHandle(cam_handle);
+    }
+
+    const float aspectRatio = static_cast<float>(v_width) / static_cast<float>(v_height);
+    updateFrameUniformBuffer(scn->getCamera(), aspectRatio);
 
     for (const auto& obj_ptr : scn->objects())
     {
@@ -80,49 +110,102 @@ void renderer::processScene(const scene* scn, const window_context_handle& ctx_h
         }
 
         render_object* obj = obj_ptr.get();
+        material* matInst = obj->getMaterial();
         mesh* meshInst = obj->getMesh();
-        if (!meshInst) {
-            std::printf("Warning: Render object has no mesh assigned.\n");
+        if (!obj || !matInst || !meshInst)
+        {
+            std::printf("Warning: Render object / Mesh / Material is not valid.\n");
             continue;
         }
 
-        material* materialInst = obj->getMaterial();
-        if (!materialInst) {
-            std::printf("Warning: Render object has no material assigned.\n");
-            continue;
+        uniform_buffer_handle obj_handle = obj->getHandle();
+        if (!obj_handle.is_valid()) {
+            obj_handle = _dynamicRHI->createUniformBuffer(uniform_buffer_type::OBJECT, sizeof(object_uniform_buffer));
+            obj->setHandle(obj_handle);
+        }
+
+        updateObjectUniformBuffer(obj);
+        
+        pipeline_state_handle pso_handle = matInst->getPSOHandle();
+        if (!pso_handle.is_valid()) {
+            pso_handle = _dynamicRHI->createPSO(matInst);
+            matInst->setPSOHandle(pso_handle);
         }
         
-        render_instance instance;
-        instance.object = obj->getHandle();
-        if (!instance.object.is_valid()) {
-            instance.object = _dynamicRHI->createUniformBuffer(obj);
-            obj->setHandle(instance.object);
-        }
-        instance.object_data.model = math::transform_to_mat4(obj->getTransform());
+        cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
-        instance.mesh = meshInst->getHandle();
-        if (!instance.mesh.is_valid()) {
-            instance.mesh = _dynamicRHI->createMesh(meshInst);
-            meshInst->setHandle(instance.mesh);
+        u8 binding = 0;
+        if (matInst->useFrameUniformBuffer())
+        {
+            cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, cam_handle, binding);
+            binding++;
         }
 
-        instance.material = materialInst->getHandle();
-        if (!instance.material.is_valid()) {
-            instance.material = _dynamicRHI->createMaterial(materialInst);
-            materialInst->setHandle(instance.material);
+        if (matInst->useObjectUniformBuffer())
+        {
+            cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, obj_handle, binding);
+            binding++;
         }
 
-        cmd.render_list.push_back(instance);
+        for (const auto& tex_slot : matInst->getTextures())
+        {
+            texture_handle tex_handle = tex_slot.texture->getHandle();
+            cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex_handle, binding); // TODO: use Slot0/1/2 ?
+            binding++;
+        }
+
+        mesh_handle msh_handle = meshInst->getHandle();
+        if (!msh_handle.is_valid()) {
+            msh_handle = _dynamicRHI->createMesh(meshInst);
+            meshInst->setHandle(msh_handle);
+        }
+
+        if (meshInst->hasVertices())
+        {
+            cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle);
+        }
+        
+        const u32 indexCount = meshInst->getIndexCount();
+        if (indexCount > 0)
+        {
+            cmd.emplaceCommand<gpu_bind_index_command>(msh_handle);
+            cmd.emplaceCommand<gpu_draw_indexed_command>(indexCount);
+        }
+        else
+        {
+            const u32 vertexCount = meshInst->getVertexCount();
+            cmd.emplaceCommand<gpu_draw_vertex_command>(vertexCount);
+        }
     }
+
+    cmd.emplaceCommand<gpu_render_pass_end_command>();
+
+    _dynamicRHI->execute(ctx_handle, g_frameIndex, cmd);
 }
 
-void renderer::updateFrameUniformBuffer(const camera* cmr, const window_context_handle& ctx_handle, frame_uniform_buffer& ubo)
+void renderer::updateFrameUniformBuffer(const camera* cmr, float aspectRatio)
 {
     if (cmr)
     {
-        ubo.view = cmr->getViewMatrix();
+        frame_uniform_buffer fub;
+        fub.view = cmr->getViewMatrix();
+        fub.proj = cmr->getProjectionMatrix(aspectRatio);
 
-        float aspectRatio = _dynamicRHI->getWindowContextAspectRatio(ctx_handle);
-        ubo.proj = cmr->getProjectionMatrix(aspectRatio);
+        void* buffer_memory;
+        _dynamicRHI->getUniformBufferMemory(cmr->getHandle(), g_frameIndex, buffer_memory);
+        std::memcpy(static_cast<u8*>(buffer_memory), &fub, sizeof(fub));
+    }
+}
+
+void renderer::updateObjectUniformBuffer(const render_object* obj)
+{
+    if (obj)
+    {
+        object_uniform_buffer oub;
+        oub.model = math::transform_to_mat4(obj->getTransform());
+
+        void* buffer_memory;
+        _dynamicRHI->getUniformBufferMemory(obj->getHandle(), g_frameIndex, buffer_memory);
+        std::memcpy(static_cast<u8*>(buffer_memory), &oub, sizeof(oub));
     }
 }

@@ -12,7 +12,8 @@ void main()
     Mesh@ cube = Mesh::load("content/assets/geometry/cube.gltf");
 
     Material@ cube_mat = Material("simple");
-    cube_mat.SetUseUniformBuffers(true);
+    cube_mat.SetUseFrameUniformBuffer(true);
+    cube_mat.SetUseObjectUniformBuffer(true);
     cube_mat.SetUseVertexIndexBuffers(true);
 
     RenderObject@ cube_obj1 = scene.NewObject();

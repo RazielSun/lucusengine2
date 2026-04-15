@@ -2,7 +2,6 @@
 
 #include "filesystem.hpp"
 
-
 using namespace lucus;
 
 mesh* mesh::create_factory(const std::string& filePath, int drawCount)
@@ -13,10 +12,10 @@ mesh* mesh::create_factory(const std::string& filePath, int drawCount)
     return m;
 }
 
-uint64_t mesh::getHash() const
+u32 mesh::getHash() const
 {
-    const uint64_t fileHash = static_cast<uint64_t>(std::hash<std::string>{}(_initialFilePath));
-    const uint64_t drawCountHash = static_cast<uint64_t>(_initialDrawCount);
+    const u32 fileHash = static_cast<u32>(std::hash<std::string>{}(_initialFilePath));
+    const u32 drawCountHash = static_cast<u32>(_initialDrawCount);
     return fileHash ^ (drawCountHash << 1);
 }
 
@@ -63,12 +62,12 @@ mesh* lucus::create_triangle_factory()
     std::vector<vertex> vertices;
     vertices.resize(3);
 
-    vertices[1].position = glm::vec3(0.0f, -0.5f, 0.0f);
     vertices[0].position = glm::vec3(0.5f, 0.5f, 0.0f);
+    vertices[1].position = glm::vec3(0.0f, -0.5f, 0.0f);
     vertices[2].position = glm::vec3(-0.5f, 0.5f, 0.0f);
 
-    vertices[1].color = glm::vec3(1.0f, 0.0f, 0.0f);
     vertices[0].color = glm::vec3(0.0f, 1.0f, 0.0f);
+    vertices[1].color = glm::vec3(1.0f, 0.0f, 0.0f);
     vertices[2].color = glm::vec3(0.0f, 0.0f, 1.0f);
 
     mesh* m = mesh::create_factory("", static_cast<int>(vertices.size()));
