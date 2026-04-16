@@ -36,10 +36,10 @@ namespace lucus
             void init(VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, VkDeviceSize bufferSize);
             void cleanup();
 
-            void write(uint32_t index, const void* data, size_t size);
+            void write(u32 index, const void* data, size_t size);
 
-            VkDescriptorSet* get(uint32_t index) { return &_descriptorSets[index]; }
-            void* getMappedData(uint32_t index) const { return _buffers[index].getMappedData(); }
+            VkDescriptorSet* get(u32 index) { return &_descriptorSets[index]; }
+            void* getMappedData(u32 index) const { return _buffers[index].getMappedData(); }
 
         protected:
             void createDescriptorSets(VkDeviceSize bufferSize);

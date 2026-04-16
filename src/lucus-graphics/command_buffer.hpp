@@ -19,7 +19,6 @@ namespace lucus
         BIND_UNIFORM_BUFFER,
         BIND_TEXTURE,
         BIND_VERTEX_BUFFER,
-        BIND_INDEX_BUFFER,
         DRAW_INDEXED,
         DRAW_VERTEX,
     };
@@ -70,7 +69,7 @@ namespace lucus
 
     struct gpu_render_pass_begin_command : public gpu_command_base
     {
-        gpu_render_pass_begin_command(u16 _ox, u16 _oy, u16 _ex, u16 _ey)
+        gpu_render_pass_begin_command(i32 _ox, i32 _oy, u32 _ex, u32 _ey)
         : gpu_command_base(gpu_command_type::RENDER_PASS_BEGIN)
         , offset_x(_ox)
         , offset_y(_oy)
@@ -78,10 +77,10 @@ namespace lucus
         , extent_y(_ey)
         {}
 
-        u16 offset_x;
-        u16 offset_y;
-        u16 extent_x;
-        u16 extent_y;
+        i32 offset_x;
+        i32 offset_y;
+        u32 extent_x;
+        u32 extent_y;
     };
 
     struct gpu_render_pass_end_command : public gpu_command_base
@@ -93,27 +92,23 @@ namespace lucus
 
     struct gpu_set_viewport_command : public gpu_command_base
     {
-        gpu_set_viewport_command(u16 _x, u16 _y, u16 _width, u16 _height, float _minDepth, float _maxDepth)
+        gpu_set_viewport_command(u32 _x, u32 _y, u32 _width, u32 _height)
         : gpu_command_base(gpu_command_type::SET_VIEWPORT)
         , x(_x)
         , y(_y)
         , width(_width)
         , height(_height)
-        , minDepth(_minDepth)
-        , maxDepth(_maxDepth)
         {}
 
-        u16 x;
-        u16 y;
-        u16 width;
-        u16 height;
-        float minDepth;
-        float maxDepth;
+        u32 x;
+        u32 y;
+        u32 width;
+        u32 height;
     };
 
     struct gpu_set_scissor_command : public gpu_command_base
     {
-        gpu_set_scissor_command(u16 _ox, u16 _oy, u16 _ex, u16 _ey)
+        gpu_set_scissor_command(i32 _ox, i32 _oy, u32 _ex, u32 _ey)
         : gpu_command_base(gpu_command_type::SET_SCISSOR)
         , offset_x(_ox)
         , offset_y(_oy)
@@ -121,10 +116,10 @@ namespace lucus
         , extent_y(_ey)
         {}
 
-        u16 offset_x;
-        u16 offset_y;
-        u16 extent_x;
-        u16 extent_y;
+        i32 offset_x;
+        i32 offset_y;
+        u32 extent_x;
+        u32 extent_y;
     };
 
     struct gpu_bind_pipeline_command : public gpu_command_base
@@ -154,16 +149,10 @@ namespace lucus
 
     struct gpu_bind_vertex_command : public gpu_command_base
     {
-        gpu_bind_vertex_command(mesh_handle _msh_handle) : gpu_command_base(gpu_command_type::BIND_VERTEX_BUFFER), msh_handle(_msh_handle) {}
+        gpu_bind_vertex_command(mesh_handle _msh_handle, u8 _position) : gpu_command_base(gpu_command_type::BIND_VERTEX_BUFFER), msh_handle(_msh_handle), position(_position) {}
 
         mesh_handle msh_handle;
-    };
-
-    struct gpu_bind_index_command : public gpu_command_base
-    {
-        gpu_bind_index_command(mesh_handle _msh_handle) : gpu_command_base(gpu_command_type::BIND_INDEX_BUFFER), msh_handle(_msh_handle) {}
-
-        mesh_handle msh_handle;
+        u8 position;
     };
 
     struct gpu_draw_vertex_command : public gpu_command_base
@@ -175,8 +164,9 @@ namespace lucus
 
     struct gpu_draw_indexed_command : public gpu_command_base
     {
-        gpu_draw_indexed_command(u32 count) : gpu_command_base(gpu_command_type::DRAW_INDEXED), indexCount(count) {}
+        gpu_draw_indexed_command(mesh_handle _msh_handle, u32 count) : gpu_command_base(gpu_command_type::DRAW_INDEXED), msh_handle(_msh_handle), indexCount(count) {}
 
+        mesh_handle msh_handle;
         u32 indexCount = 0;
     };
 }

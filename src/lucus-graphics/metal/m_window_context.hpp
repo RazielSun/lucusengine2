@@ -19,11 +19,11 @@ namespace lucus
         CGSize cachedDrawableSize{};
 
         id<CAMetalDrawable> currentDrawable = nil;
-        uint32_t currentBufferIndex{ 0 };
+        // uint32_t currentBufferIndex{ 0 };
 
         dispatch_semaphore_t frameSemaphore;
 
-        m_buffer uniformbuffers;
+        // m_buffer uniformbuffers;
 
         void init(id<MTLDevice> device, window* window);
 

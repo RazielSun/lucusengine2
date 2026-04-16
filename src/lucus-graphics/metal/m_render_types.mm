@@ -13,23 +13,20 @@ void m_mesh::init(id<MTLDevice> device, mesh* msh)
     assert(device);
     assert(msh);
 
-    vertexCount = msh->getDrawCount();
-
-    const auto vtxCount = msh->getVertices().size();
+    vertexCount = msh->getVertexCount();
     const auto idxCount = msh->getIndices().size();
 
-    bHasVertexData = vtxCount > 0;
-    if (bHasVertexData)
+    if (msh->hasVertices())
     {
         // TODO: Consider using a staging buffer for better performance, especially for large meshes
-        vertexBuffer.init(device, msh->getVertices().size() * sizeof(vertex));
-        vertexBuffer.write(msh->getVertices().data(), msh->getVertices().size() * sizeof(vertex));
+        vertexBuffer.init(device, sizeof(vertex), vertexCount);
+        vertexBuffer.write(msh->getVertices().data(), sizeof(vertex) * vertexCount);
 
         if (idxCount > 0)
         {
             indexCount = idxCount;
-            indexBuffer.init(device, idxCount * sizeof(uint32_t));
-            indexBuffer.write(msh->getIndices().data(), idxCount * sizeof(uint32_t));
+            indexBuffer.init(device, sizeof(u32), idxCount);
+            indexBuffer.write(msh->getIndices().data(), sizeof(u32) * idxCount);
         }
     }
 }
@@ -87,17 +84,12 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
     sampler = [device newSamplerStateWithDescriptor:smplDesc];
 }
 
+void m_texture::free_staging()
+{
+    stgBuffer = nil;
+}
+
 void m_texture::cleanup()
 {
     // TODO?
-}
-
-void m_material::init(id<MTLDevice> device, material* mat)
-{
-    //
-}
-
-void m_material::cleanup()
-{
-    //
 }

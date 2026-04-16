@@ -20,22 +20,21 @@ namespace lucus
             virtual void init() override;
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
-            virtual const std::vector<window_context_handle>& getWindowContexts() const override;
-            virtual float getWindowContextAspectRatio(const window_context_handle& handle) const override;
+            virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
 
-            virtual void beginFrame(const window_context_handle& handle) override;
-            virtual void submit(const window_context_handle& handle, const command_buffer& cmd) override;
-            virtual void endFrame(const window_context_handle& handle) override;
-
-            virtual material_handle createMaterial(material* mat) override;
+            virtual pipeline_state_handle createPSO(material* mat) override;
             virtual mesh_handle createMesh(mesh* msh) override;
             virtual texture_handle loadTexture(texture* tex) override;
-            virtual render_object_handle createUniformBuffer(render_object* obj) override;
+
+            virtual uniform_buffer_handle createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize) override;
+            virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
+
+            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;
         
         protected:
             void createDevice();
 
-            void createObjectUniformBuffers();
+            // void createObjectUniformBuffers();
 
             void uploadTextureToGpu(m_texture& tex);
 
@@ -44,18 +43,19 @@ namespace lucus
             id<MTLDevice> _deviceHandle;
 
             std::vector<m_window_context> _contexts;
-            std::vector<window_context_handle> _contextHandles;
 
             //
-            std::vector<m_material> _materials;
-            std::unordered_map<uint64_t, m_pipeline_state> _pipelineStates;
+            std::unordered_map<u32, m_pipeline_state> _pipelineStates;
 
             //
-            std::unordered_map<uint64_t, m_mesh> _meshes;
+            std::unordered_map<u32, m_mesh> _meshes;
 
             //
-            std::unordered_map<uint64_t, m_texture> _textures;
+            std::unordered_map<u32, m_texture> _textures;
 
-            std::array<m_buffer, g_framesInFlight> _objectUniformBuffers;
+            //
+            std::vector<m_buffer> _uniformBuffers;
+            
+            // std::array<m_buffer, g_framesInFlight> _objectUniformBuffers;
     };
 }

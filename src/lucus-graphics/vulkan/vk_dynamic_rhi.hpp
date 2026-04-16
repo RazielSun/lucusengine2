@@ -22,7 +22,6 @@ namespace lucus
             virtual void init() override;
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
-            virtual const std::vector<window_context_handle>& getWindowContexts() const override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
 
             virtual pipeline_state_handle createPSO(material* mat) override;
@@ -62,7 +61,6 @@ namespace lucus
             std::vector<const char*> _enabledInstanceExtensions;
 
             std::vector<vk_window_context> _contexts;
-            std::vector<window_context_handle> _contextHandles;
 
             // TODO: refactor me
             vk_render_pass mainRenderPass;

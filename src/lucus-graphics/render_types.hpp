@@ -21,6 +21,14 @@ namespace lucus
         OBJECT = 1,
     };
 
+    enum class shader_binding : u8
+    {
+        FRAME = 0,
+        OBJECT = 1,
+        MATERIAL = 2,
+        VERTEX = 3,
+    };
+
     struct resource_handle
     {
         resource_handle() : index(0) {}

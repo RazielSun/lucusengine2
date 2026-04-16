@@ -207,15 +207,12 @@ window_context_handle vk_dynamic_rhi::createWindowContext(const window_handle& h
     return out_handle;
 }
 
-const std::vector<window_context_handle>& vk_dynamic_rhi::getWindowContexts() const
-{
-    return _contextHandles;
-}
-
 void vk_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handle, u32& width, u32& height) const
 {
     width = 0, height = 0;
-    if (!ctx_handle.is_valid()) {
+    if (!ctx_handle.is_valid())
+    {
+        // TODO: error
         return;
     }
 
@@ -224,13 +221,13 @@ void vk_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handl
     height = ctx.swapChain.extent.height;
 }
 
-void vk_dynamic_rhi::execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd)
+void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
 {
-    if (!handle.is_valid()) {
+    if (!ctx_handle.is_valid()) {
         return;
     }
 
-    vk_window_context& ctx = _contexts[handle.as_index()];
+    vk_window_context& ctx = _contexts[ctx_handle.as_index()];
 
     u32 currentFrame = frameIndex % g_framesInFlight;
 
@@ -290,8 +287,8 @@ void vk_dynamic_rhi::execute(const window_context_handle& handle, u32 frameIndex
                     viewport.y = float(vp_cmd->y + vp_cmd->height);
                     viewport.width = float(vp_cmd->width);
                     viewport.height = -float(vp_cmd->height); // Vulkan Flip Y
-                    viewport.minDepth = vp_cmd->minDepth;
-                    viewport.maxDepth = vp_cmd->maxDepth;
+                    viewport.minDepth = 0.f;
+                    viewport.maxDepth = 1.f;
 
                     vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
                 }
@@ -345,18 +342,13 @@ void vk_dynamic_rhi::execute(const window_context_handle& handle, u32 frameIndex
                     vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
                 }
                 break;
-            case gpu_command_type::BIND_INDEX_BUFFER:
-                {
-                    const auto* bi_cmd = reinterpret_cast<const gpu_bind_index_command*>(data);
-                    auto found = _meshes.find(bi_cmd->msh_handle.get());
-                    assert(found != _meshes.end());
-                    auto& gpuMesh = found->second;
-                    vkCmdBindIndexBuffer(cmdBuffer, gpuMesh.indexBuffer.get(), 0, VK_INDEX_TYPE_UINT32);
-                }
-                break;
             case gpu_command_type::DRAW_INDEXED:
                 {
                     const auto* di_cmd = reinterpret_cast<const gpu_draw_indexed_command*>(data);
+                    auto found = _meshes.find(di_cmd->msh_handle.get());
+                    assert(found != _meshes.end());
+                    auto& gpuMesh = found->second;
+                    vkCmdBindIndexBuffer(cmdBuffer, gpuMesh.indexBuffer.get(), 0, VK_INDEX_TYPE_UINT32);
                     vkCmdDrawIndexed(cmdBuffer, di_cmd->indexCount, 1, 0, 0, 0);
                 }
                 break;
@@ -715,7 +707,7 @@ void vk_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_hand
         throw std::runtime_error("failed to get uniform buffer memory! ub is null!");
     }
 
-    vk_uniform_buffer& buffer = _uniformBuffers[ub_handle.as_index()];
+    auto& buffer = _uniformBuffers[ub_handle.as_index()];
 
     u32 currentFrame = frameIndex % g_framesInFlight;
     memory_ptr = buffer.getMappedData(currentFrame);

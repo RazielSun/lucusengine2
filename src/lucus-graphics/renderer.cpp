@@ -88,7 +88,7 @@ void renderer::processScene(const scene* scn, const window_context_handle& ctx_h
 
     cmd.emplaceCommand<gpu_render_pass_begin_command>(0, 0, v_width, v_height);
 
-    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height, 0.f, 1.f);
+    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
 
     uniform_buffer_handle cam_handle = cam->getHandle();
@@ -134,24 +134,20 @@ void renderer::processScene(const scene* scn, const window_context_handle& ctx_h
         
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
-        u8 binding = 0;
         if (matInst->useFrameUniformBuffer())
         {
-            cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, cam_handle, binding);
-            binding++;
+            cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, cam_handle, (u8)shader_binding::FRAME);
         }
 
         if (matInst->useObjectUniformBuffer())
         {
-            cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, obj_handle, binding);
-            binding++;
+            cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, obj_handle, (u8)shader_binding::OBJECT);
         }
 
         for (const auto& tex_slot : matInst->getTextures())
         {
             texture_handle tex_handle = tex_slot.texture->getHandle();
-            cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex_handle, binding); // TODO: use Slot0/1/2 ?
-            binding++;
+            cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex_handle, (u8)shader_binding::MATERIAL); // TODO: use Slot0/1/2 ?
         }
 
         mesh_handle msh_handle = meshInst->getHandle();
@@ -162,14 +158,13 @@ void renderer::processScene(const scene* scn, const window_context_handle& ctx_h
 
         if (meshInst->hasVertices())
         {
-            cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle);
+            cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle, (u8)shader_binding::VERTEX);
         }
         
         const u32 indexCount = meshInst->getIndexCount();
         if (indexCount > 0)
         {
-            cmd.emplaceCommand<gpu_bind_index_command>(msh_handle);
-            cmd.emplaceCommand<gpu_draw_indexed_command>(indexCount);
+            cmd.emplaceCommand<gpu_draw_indexed_command>(msh_handle, indexCount);
         }
         else
         {

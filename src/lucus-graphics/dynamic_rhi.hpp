@@ -25,7 +25,7 @@ namespace lucus
         virtual void init() = 0;
 
         virtual window_context_handle createWindowContext(const window_handle& handle) = 0;
-        virtual const std::vector<window_context_handle>& getWindowContexts() const = 0;
+        virtual const std::vector<window_context_handle>& getWindowContexts() const { return _contextHandles; }
         virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const = 0;
 
         virtual pipeline_state_handle createPSO(material* mat) = 0;
@@ -36,5 +36,8 @@ namespace lucus
         virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) = 0;
 
         virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) = 0;
+
+    protected:
+        std::vector<window_context_handle> _contextHandles;
     };
 }

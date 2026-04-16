@@ -11,7 +11,7 @@ namespace lucus
     class material;
     class texture;
     
-    struct m_mesh : public rhi_mesh
+    struct m_mesh : public gpu_mesh
     {
         m_buffer vertexBuffer;
         m_buffer indexBuffer;
@@ -33,21 +33,7 @@ namespace lucus
         NSUInteger bytesPerRow;
 
         void init(id<MTLDevice> device, texture* tex);
-        void cleanup();
-    };
-
-    struct m_texture_bind
-    {
-        id<MTLTexture> mtexture;
-        id<MTLSamplerState> sampler;
-        NSUInteger slot;
-    };
-
-    struct m_material : public rhi_material
-    {
-        std::vector<m_texture_bind> texture_binds;
-
-        void init(id<MTLDevice> device, material* mat);
+        void free_staging();
         void cleanup();
     };
 }
