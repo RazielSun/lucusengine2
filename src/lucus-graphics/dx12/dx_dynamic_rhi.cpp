@@ -2,6 +2,7 @@
 
 #include "window_manager.hpp"
 
+#include "command_buffer.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 
@@ -130,33 +131,42 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
 
+                    // Com<ID3D12GraphicsCommandList4> cmd4;
+                    // ctx.commandBuffer.As(&cmd4);
+
                     D3D12_CPU_DESCRIPTOR_HANDLE rtv = ctx.mRTVHeap->GetCPUDescriptorHandleForHeapStart();
                     rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
 
-                    D3D12_RENDER_PASS_RENDER_TARGET_DESC colorDesc = {};
-                    colorDesc.cpuDescriptor = rtv;
-                    colorDesc.BeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
-                    colorDesc.BeginningAccess.Clear.ClearValue.Color[0] = 0.f;
-                    colorDesc.BeginningAccess.Clear.ClearValue.Color[1] = 0.f;
-                    colorDesc.BeginningAccess.Clear.ClearValue.Color[2] = 0.f;
-                    colorDesc.BeginningAccess.Clear.ClearValue.Color[3] = 1.f;
-                    colorDesc.EndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
+                    // D3D12_RENDER_PASS_RENDER_TARGET_DESC colorDesc = {};
+                    // colorDesc.cpuDescriptor = rtv;
+                    // colorDesc.BeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
+                    // colorDesc.BeginningAccess.Clear.ClearValue.Color[0] = 0.f;
+                    // colorDesc.BeginningAccess.Clear.ClearValue.Color[1] = 0.f;
+                    // colorDesc.BeginningAccess.Clear.ClearValue.Color[2] = 0.f;
+                    // colorDesc.BeginningAccess.Clear.ClearValue.Color[3] = 1.f;
+                    // colorDesc.EndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
 
                     D3D12_CPU_DESCRIPTOR_HANDLE dsv = ctx.mDSVHeap->GetCPUDescriptorHandleForHeapStart();
                     dsv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mDSVDescriptorSize;
 
-                    D3D12_RENDER_PASS_DEPTH_STENCIL_DESC depthDesc = {};
-                    depthDesc.cpuDescriptor = dsv;
-                    depthDesc.DepthBeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
-                    depthDesc.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Depth = 1.0f;
-                    depthDesc.DepthEndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
+                    // D3D12_RENDER_PASS_DEPTH_STENCIL_DESC depthDesc = {};
+                    // depthDesc.cpuDescriptor = dsv;
+                    // depthDesc.DepthBeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
+                    // depthDesc.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Depth = 1.0f;
+                    // depthDesc.DepthEndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
 
-                    ctx.commandBuffer->BeginRenderPass(1, &colorDesc, &depthDesc,D3D12_RENDER_PASS_FLAG_NONE);
+                    // ctx.commandBuffer->BeginRenderPass(1, &colorDesc, &depthDesc,D3D12_RENDER_PASS_FLAG_NONE);
+
+                    const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+                    ctx.commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+                    ctx.commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
+                    ctx.commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
                 }
                 break;
             case gpu_command_type::RENDER_PASS_END:
                 {
-                    ctx.commandBuffer->EndRenderPass();
+                    // ctx.commandBuffer->EndRenderPass();
                 }
                 break;
             case gpu_command_type::SET_VIEWPORT:
@@ -309,7 +319,7 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
     }
 
     {
-        auto pair = _pipelineStates.emplace_back(pso_handle.get(), _deviceHandle);
+        auto pair = _pipelineStates.emplace(pso_handle.get(), _deviceHandle);
         assert(pair.second);
 
         dx_pipeline_state& pso = pair.first->second;
@@ -368,7 +378,7 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
                 D3D12_SHADER_VISIBILITY_PIXEL);
         }
 
-        if (mat->isUseVertexIndexBuffers())
+        if (mat->useVertexIndexBuffers())
         {
             init_desc.vertexLayouts.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(vertex, texCoords), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });

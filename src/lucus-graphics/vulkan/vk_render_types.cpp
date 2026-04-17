@@ -248,12 +248,12 @@ void vk_mesh::init(VkDevice device, VkPhysicalDevice gpu, mesh* msh)
             indexBuffer.init(
                 device,
                 gpu,
-                sizeof(uint32_t) * idxCount,
+                sizeof(u32) * idxCount,
                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
             indexBuffer.map();
-            indexBuffer.write(msh->getIndices().data(), sizeof(uint32_t) * idxCount);
+            indexBuffer.write(msh->getIndices().data(), sizeof(u32) * idxCount);
         }
     }
 }

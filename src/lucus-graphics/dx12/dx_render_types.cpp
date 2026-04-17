@@ -29,16 +29,13 @@ void dx_mesh::init(Com<ID3D12Device> device, mesh* msh)
 {
     assert(msh != nullptr);
 
-    vertexCount = msh->getDrawCount();
-
-    const auto vtxCount = msh->getVertices().size();
+    vertexCount = msh->getVertexCount();
     const auto idxCount = msh->getIndices().size();
 
-    bHasVertexData = vtxCount > 0;
-    if (bHasVertexData)
+    if (msh->hasVertices())
     {
         // TODO: Consider staging buffer for larger meshes
-        uint32_t vbSize = sizeof(vertex) * vtxCount;
+        u32 vbSize = sizeof(vertex) * vertexCount;
         vertexBuffer.init(device, vbSize);
         vertexBuffer.write(msh->getVertices().data(), vbSize);
 
@@ -49,7 +46,7 @@ void dx_mesh::init(Com<ID3D12Device> device, mesh* msh)
         if (idxCount > 0) {
             indexCount = idxCount;
 
-            uint32_t ibSize = sizeof(uint32_t) * idxCount;
+            u32 ibSize = sizeof(u32) * idxCount;
 
             indexBuffer.init(device, ibSize);
             indexBuffer.write(msh->getIndices().data(), ibSize);

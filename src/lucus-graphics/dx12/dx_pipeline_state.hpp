@@ -2,6 +2,8 @@
 
 #include "dx_pch.hpp"
 
+#include "core_types.hpp"
+
 namespace lucus
 {
     struct dx_pipeline_state_desc
