@@ -2,6 +2,8 @@
 
 #include "m_pch.hpp"
 
+#include "core_types.hpp"
+
 namespace lucus
 {
     class m_buffer

@@ -21,7 +21,7 @@ void m_buffer::write(const void* data, size_t size, size_t offset)
 {
     assert(_buffer);
     assert(data);
-    assert(size <= _buffer.length);
+    assert(size + offset <= _buffer.length);
 
     void* bufferPointer = _buffer.contents;
     if (!bufferPointer)
@@ -40,6 +40,7 @@ void* m_buffer::getMappedData(u32 index) const
         throw std::runtime_error("Failed to get buffer contents pointer");
     }
     const size_t offset = itemSize * index;
+    assert(itemSize + offset <= _buffer.length);
     u8* ptr = (u8*)bufferPointer + offset;
     return (void*)ptr;
 }

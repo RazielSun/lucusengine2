@@ -2,6 +2,7 @@
 
 #include "window_manager.hpp"
 
+#include "command_buffer.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "texture.hpp"
@@ -150,24 +151,17 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                 break;
             case gpu_command_type::SET_VIEWPORT:
                 {
-                    // const auto* vp_cmd = reinterpret_cast<const gpu_set_viewport_command*>(data);
-                    // VkViewport viewport{};
-                    // viewport.x = float(vp_cmd->x);
-                    // viewport.y = float(vp_cmd->y + vp_cmd->height);
-                    // viewport.width = float(vp_cmd->width);
-                    // viewport.height = -float(vp_cmd->height); // Vulkan Flip Y
-                    // viewport.minDepth = 0.f;
-                    // viewport.maxDepth = 1.f;
-                    // vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+                    const auto* vp_cmd = reinterpret_cast<const gpu_set_viewport_command*>(data);
+                    MTLViewport viewport{double(vp_cmd->x),double(vp_cmd->y),double(vp_cmd->width),double(vp_cmd->height), 0., 1.};
+                    [pass setViewport:viewport];
                 }
                 break;
             case gpu_command_type::SET_SCISSOR:
                 {
-                    // const auto* sc_cmd = reinterpret_cast<const gpu_set_scissor_command*>(data);
-                    // VkRect2D scissor{};
-                    // scissor.offset = { sc_cmd->offset_x, sc_cmd->offset_y };
-                    // scissor.extent = { sc_cmd->extent_x, sc_cmd->extent_y };
-                    // vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+                    const auto* sc_cmd = reinterpret_cast<const gpu_set_scissor_command*>(data);
+                    MTLScissorRect scissor{NSUInteger(sc_cmd->offset_x), NSUInteger(sc_cmd->offset_y),
+                        NSUInteger(sc_cmd->extent_x), NSUInteger(sc_cmd->extent_y)};
+                    [pass setScissorRect:scissor];
                 }
                 break;
             case gpu_command_type::BIND_PIPELINE:
@@ -194,8 +188,8 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     auto found = _textures.find(bt_cmd->tex_handle.get());
                     assert(found != _textures.end());
                     auto& tex = found->second;
-                    [pass setFragmentTexture:tex.mtexture atIndex:(u32)bt_cmd->position];
-                    [pass setFragmentSamplerState:tex.sampler atIndex:(u32)bt_cmd->position];
+                    [pass setFragmentTexture:tex.mtexture atIndex:(u32)bt_cmd->position - (u32)shader_binding::MATERIAL];
+                    [pass setFragmentSamplerState:tex.sampler atIndex:(u32)bt_cmd->position - (u32)shader_binding::MATERIAL];
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
