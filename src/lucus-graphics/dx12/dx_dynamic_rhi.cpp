@@ -176,7 +176,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     viewport.TopLeftX = float(vp_cmd->x);
                     viewport.TopLeftY = float(vp_cmd->y);
                     viewport.Width = float(vp_cmd->width);
-                    viewport.Height = vp_cmd->height);
+                    viewport.Height = float(vp_cmd->height);
                     viewport.MinDepth = 0.f;
                     viewport.MaxDepth = 1.f;
                     ctx.commandBuffer->RSSetViewports(1, &viewport);
