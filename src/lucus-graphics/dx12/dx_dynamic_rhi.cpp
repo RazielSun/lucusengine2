@@ -21,10 +21,16 @@ dx_dynamic_rhi::dx_dynamic_rhi()
 
 dx_dynamic_rhi::~dx_dynamic_rhi()
 {
-    for (auto& buffer : _objectUniformBuffers) {
+    _texFence.Reset();
+    if (_texFenceEvent) {
+        CloseHandle((HANDLE)_texFenceEvent);
+        _texFenceEvent = nullptr;
+    }
+
+    for (auto& buffer : _uniformBuffers) {
         buffer.cleanup();
     }
-    _objectUniformBuffers.clear();
+    _uniformBuffers.clear();
 
     _pipelineStates.clear();
 
@@ -63,45 +69,34 @@ window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& h
     return out_handle;
 }
 
-const std::vector<window_context_handle>& dx_dynamic_rhi::getWindowContexts() const
+void dx_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handle, u32& width, u32& height) const
 {
-    return _contextHandles;
-}
-
-float dx_dynamic_rhi::getWindowContextAspectRatio(const window_context_handle& ctx_handle) const
-{
-    if (!ctx_handle.is_valid()) {
-        return 1.0f;
+    width = 0, height = 0;
+    if (!ctx_handle.is_valid())
+    {
+        return;
     }
 
     const auto& ctx = _contexts[ctx_handle.as_index()];
-    return static_cast<float>(ctx.viewport.viewport.Width) / static_cast<float>(ctx.viewport.viewport.Height);
+    width = ctx.width;
+    height = ctx.height;
 }
-
-void dx_dynamic_rhi::beginFrame(const window_context_handle& ctx_handle)
+            
+void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
 {
-    if (!ctx_handle.is_valid()) {
+    if (!ctx_handle.is_valid())
+    {
         return;
     }
 
     auto& ctx = _contexts[ctx_handle.as_index()];
 
-    // Nothing?
-}
-
-void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const command_buffer& cmd)
-{
-    if (!ctx_handle.is_valid()) {
-        return;
-    }
-
-    auto& ctx = _contexts[ctx_handle.as_index()];
-
-    uint32_t bufferIndex = ctx.backBufferIndex % g_framesInFlight;
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    // uint32_t bufferIndex = ctx.backBufferIndex % g_framesInFlight;
 
     // Here or in beginFrame?
-    ThrowIfFailed(ctx.commandPool.commandAllocators[bufferIndex]->Reset(), "Failed Reset Command Allocator");
-    ThrowIfFailed(ctx.commandBuffer->Reset(ctx.commandPool.commandAllocators[bufferIndex].Get(), nullptr), "Failed Reset Command Buffer");
+    ThrowIfFailed(ctx.commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
+    ThrowIfFailed(ctx.commandBuffer->Reset(ctx.commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
     
     if (!ctx.commandBuffer)
         throw std::runtime_error("Command buffer is null");
@@ -123,100 +118,149 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     barrier_begin.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
     barrier_begin.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier_begin.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
     ctx.commandBuffer->ResourceBarrier(1, &barrier_begin);
 
-    ctx.commandBuffer->RSSetViewports(1, &ctx.viewport.viewport);
-    ctx.commandBuffer->RSSetScissorRects(1, &ctx.viewport.scissor);
-
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = ctx.mRTVHeap->GetCPUDescriptorHandleForHeapStart();
-    rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
-
-    D3D12_CPU_DESCRIPTOR_HANDLE dsv = ctx.mDSVHeap->GetCPUDescriptorHandleForHeapStart();
-    dsv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mDSVDescriptorSize;
-
-    const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-
-    ctx.commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-    ctx.commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
-    ctx.commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-    ctx.uniformbuffers.write(bufferIndex, &cmd.frame_ubo, sizeof(cmd.frame_ubo));
-
-    for (const auto& renderInstance : cmd.render_list)
+    for (u32 i = 0; i < cmd.commandCount; ++i)
     {
-        const auto& object_id = renderInstance.object;
-
-        dx_uniform_buffer& buffer = _objectUniformBuffers[object_id.as_index()];
-        buffer.write(bufferIndex, &renderInstance.object_data, sizeof(renderInstance.object_data));
-
-        const auto& material_id = renderInstance.material;
-        if (material_id.is_valid())
+        const u8 *data = cmd.data.data() + i * COMMAND_FIXED_SIZE;
+        const gpu_command_base* gpu_cmd = reinterpret_cast<const gpu_command_base*>(data);
+        switch (gpu_cmd->type)
         {
-            dx_material& dxmat = _materials[material_id.as_index()];
-            auto psoIt = _pipelineStates.find(dxmat.psoHandle);
-            if (psoIt != _pipelineStates.end())
-            {
-                dx_pipeline_state& pso = psoIt->second;
-                ctx.commandBuffer->SetGraphicsRootSignature(pso.getRootSignature().Get());
-                ctx.commandBuffer->SetPipelineState(pso.getPipeline().Get());
-                if (dxmat.bUniformBufferUsed)
+            case gpu_command_type::RENDER_PASS_BEGIN:
                 {
-                    ctx.commandBuffer->SetGraphicsRootConstantBufferView((uint32_t)shader_binding::frame, ctx.uniformbuffers.get(bufferIndex)->GetGPUVirtualAddress());
-                    ctx.commandBuffer->SetGraphicsRootConstantBufferView((uint32_t)shader_binding::object, _objectUniformBuffers[object_id.as_index()].get(bufferIndex)->GetGPUVirtualAddress());
+                    const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
+
+                    D3D12_CPU_DESCRIPTOR_HANDLE rtv = ctx.mRTVHeap->GetCPUDescriptorHandleForHeapStart();
+                    rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
+
+                    D3D12_RENDER_PASS_RENDER_TARGET_DESC colorDesc = {};
+                    colorDesc.cpuDescriptor = rtv;
+                    colorDesc.BeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
+                    colorDesc.BeginningAccess.Clear.ClearValue.Color[0] = 0.f;
+                    colorDesc.BeginningAccess.Clear.ClearValue.Color[1] = 0.f;
+                    colorDesc.BeginningAccess.Clear.ClearValue.Color[2] = 0.f;
+                    colorDesc.BeginningAccess.Clear.ClearValue.Color[3] = 1.f;
+                    colorDesc.EndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
+
+                    D3D12_CPU_DESCRIPTOR_HANDLE dsv = ctx.mDSVHeap->GetCPUDescriptorHandleForHeapStart();
+                    dsv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mDSVDescriptorSize;
+
+                    D3D12_RENDER_PASS_DEPTH_STENCIL_DESC depthDesc = {};
+                    depthDesc.cpuDescriptor = dsv;
+                    depthDesc.DepthBeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
+                    depthDesc.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Depth = 1.0f;
+                    depthDesc.DepthEndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
+
+                    ctx.commandBuffer->BeginRenderPass(1, &colorDesc, &depthDesc,D3D12_RENDER_PASS_FLAG_NONE);
                 }
-                if (dxmat.bTexturesUsed)
+                break;
+            case gpu_command_type::RENDER_PASS_END:
                 {
+                    ctx.commandBuffer->EndRenderPass();
+                }
+                break;
+            case gpu_command_type::SET_VIEWPORT:
+                {
+                    const auto* vp_cmd = reinterpret_cast<const gpu_set_viewport_command*>(data);
+                    D3D12_VIEWPORT viewport{};
+                    viewport.TopLeftX = float(vp_cmd->x);
+                    viewport.TopLeftY = float(vp_cmd->y);
+                    viewport.Width = float(vp_cmd->width);
+                    viewport.Height = vp_cmd->height);
+                    viewport.MinDepth = 0.f;
+                    viewport.MaxDepth = 1.f;
+                    ctx.commandBuffer->RSSetViewports(1, &viewport);
+                }
+                break;
+            case gpu_command_type::SET_SCISSOR:
+                {
+                    const auto* sc_cmd = reinterpret_cast<const gpu_set_scissor_command*>(data);
+                    D3D12_RECT scissor{};
+                    scissor.left = sc_cmd->offset_x;
+                    scissor.top = sc_cmd->offset_y;
+                    scissor.right = sc_cmd->extent_x;
+                    scissor.bottom = sc_cmd->extent_y;
+                    ctx.commandBuffer->RSSetScissorRects(1, &scissor);
+                }
+                break;
+            case gpu_command_type::BIND_PIPELINE:
+                {
+                    const auto* bp_cmd = reinterpret_cast<const gpu_bind_pipeline_command*>(data);
+                    auto found = _pipelineStates.find(bp_cmd->pso_handle.get());
+                    assert(found != _pipelineStates.end());
+                    auto& pso = found->second;
+                    ctx.commandBuffer->SetGraphicsRootSignature(pso.getRootSignature().Get());
+                    ctx.commandBuffer->SetPipelineState(pso.getPipeline().Get());
+                }
+                break;
+            case gpu_command_type::BIND_UNIFORM_BUFFER:
+                {
+                    const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
+                    // auto found = _pipelineStates.find(bu_cmd->pso_handle.get());
+                    // auto& pso = found->second;
+                    auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
+                    ctx.commandBuffer->SetGraphicsRootConstantBufferView((u32)bu_cmd->position, ub.get(currentFrame)->GetGPUVirtualAddress());
+                }
+                break;
+            case gpu_command_type::BIND_TEXTURE:
+                {
+                    const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
+                    // auto found = _pipelineStates.find(bt_cmd->pso_handle.get());
+                    // auto& pso = found->second;
+                    auto found_tex = _textures.find(bt_cmd->tex_handle.get());
+                    assert(found_tex != _textures.end());
+                    auto& tex = found_tex->second;
+
+                    ID3D12DescriptorHeap* heaps[] = { tex.srvHeap.Get(), tex.samplerHeap.Get() };
+                    ctx.commandBuffer->SetDescriptorHeaps(2, heaps);
+
+                    const u32 rootIndex = (u32)bt_cmd->position;
+                    const u32 tex_slot = rootIndex - (u32)shader_binding::MATERIAL;
+
                     const UINT srvDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                    D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = tex.srvHeap->GetGPUDescriptorHandleForHeapStart();
+                    srvHandle.ptr += static_cast<UINT64>(tex_slot) * srvDescriptorSize;
+                    
                     const UINT samplerDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-
-                    for (auto& tex_bind : dxmat.texture_binds)
-                    {
-                        ID3D12DescriptorHeap* heaps[] = { tex_bind.srvHeap.Get(), tex_bind.samplerHeap.Get() };
-                        ctx.commandBuffer->SetDescriptorHeaps(2, heaps);
-                        
-                        D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = tex_bind.srvHeap->GetGPUDescriptorHandleForHeapStart();
-                        srvHandle.ptr += static_cast<UINT64>(tex_bind.slot) * srvDescriptorSize;
-
-                        D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = tex_bind.samplerHeap->GetGPUDescriptorHandleForHeapStart();
-                        samplerHandle.ptr += static_cast<UINT64>(tex_bind.slot) * samplerDescriptorSize;
-
-                        const uint32_t rootIndex = static_cast<uint32_t>(shader_binding::material) + tex_bind.slot * 2;
-                        ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 0, srvHandle);
-                        ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 1, samplerHandle);
-                    }
+                    D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = tex.samplerHeap->GetGPUDescriptorHandleForHeapStart();
+                    samplerHandle.ptr += static_cast<UINT64>(tex_slot) * samplerDescriptorSize;
+                    
+                    ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 0, srvHandle);
+                    ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 1, samplerHandle);
                 }
-            }
-            else
-            {
-                std::cerr << "Invalid material handle: " << material_id.get() << std::endl;
-            }
-        }
-        
-        const auto& mesh_id = renderInstance.mesh;
-        if (mesh_id.is_valid())
-        {
-            auto meshIt = _meshes.find(mesh_id.get());
-            if (meshIt != _meshes.end())
-            {
-                auto& gpuMesh = meshIt->second;
-                if (gpuMesh.bHasVertexData)
+                break;
+            case gpu_command_type::BIND_VERTEX_BUFFER:
                 {
+                    const auto* bv_cmd = reinterpret_cast<const gpu_bind_vertex_command*>(data);
+                    auto found = _meshes.find(bv_cmd->msh_handle.get());
+                    assert(found != _meshes.end());
+                    auto& gpuMesh = found->second;
                     ctx.commandBuffer->IASetVertexBuffers(0, 1, &gpuMesh.vbView);
                 }
-
-                ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-                if (gpuMesh.indexCount > 0)
+                break;
+            case gpu_command_type::DRAW_INDEXED:
                 {
+                    const auto* di_cmd = reinterpret_cast<const gpu_draw_indexed_command*>(data);
+                    auto found = _meshes.find(di_cmd->msh_handle.get());
+                    assert(found != _meshes.end());
+                    auto& gpuMesh = found->second;
                     ctx.commandBuffer->IASetIndexBuffer(&gpuMesh.ibView);
-                    ctx.commandBuffer->DrawIndexedInstanced(gpuMesh.indexCount, 1, 0, 0, 0);
+                    ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.commandBuffer->DrawIndexedInstanced(di_cmd->indexCount, 1, 0, 0, 0);
                 }
-                else if (gpuMesh.vertexCount > 0)
+                break;
+            case gpu_command_type::DRAW_VERTEX:
                 {
-                    ctx.commandBuffer->DrawInstanced(gpuMesh.vertexCount, 1, 0, 0);
+                    const auto* dv_cmd = reinterpret_cast<const gpu_draw_vertex_command*>(data);
+                    ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    ctx.commandBuffer->DrawInstanced(dv_cmd->vertexCount, 1, 0, 0);
                 }
-            }
+                break;
+            default:
+                {
+                    std::printf("execute cmd doesn't handled %d\n", (u32)gpu_cmd->type);
+                }
+                break;
         }
     }
 
@@ -236,104 +280,129 @@ void dx_dynamic_rhi::submit(const window_context_handle& ctx_handle, const comma
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
     ThrowIfFailed(ctx.swapChain->Present(1, 0), "Failed SwapChain Preset");
-}
 
-void dx_dynamic_rhi::endFrame(const window_context_handle& ctx_handle)
-{
-    if (!ctx_handle.is_valid()) {
-        return;
-    }
+    //
 
-    auto& ctx = _contexts[ctx_handle.as_index()];
-
-    uint32_t fenceIndex = ctx.backBufferIndex % g_framesInFlight;
-    const uint64_t current_fence = ctx.fenceValues[fenceIndex];
+    const uint64_t current_fence = ctx.fenceValues[currentFrame];
 
     ThrowIfFailed(_commandQueue->Signal(ctx.fence.Get(), current_fence), "Failed Queue Signal");
 
     ctx.backBufferIndex = ctx.swapChain->GetCurrentBackBufferIndex();
 
-    if (ctx.fence->GetCompletedValue() < ctx.fenceValues[fenceIndex])
+    if (ctx.fence->GetCompletedValue() < ctx.fenceValues[currentFrame])
     {
-        ThrowIfFailed(ctx.fence->SetEventOnCompletion(ctx.fenceValues[fenceIndex], (HANDLE)ctx.fenceEvent), "Failed Set Event OnCompletion");
+        ThrowIfFailed(ctx.fence->SetEventOnCompletion(ctx.fenceValues[currentFrame], (HANDLE)ctx.fenceEvent), "Failed Set Event OnCompletion");
         WaitForSingleObject((HANDLE)ctx.fenceEvent, INFINITE);
     }
 
-    ctx.fenceValues[fenceIndex] = current_fence + 1;
+    ctx.fenceValues[currentFrame] = current_fence + 1;
 }
 
-material_handle dx_dynamic_rhi::createMaterial(material* mat)
+pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
 {
-    assert(mat != nullptr);
+    assert(mat);
 
-    uint64_t shaderHash = mat->getHash();
-
-    uint64_t psoHandle = 0;
-    auto it = _pipelineStates.find(shaderHash);
+    pipeline_state_handle pso_handle = pipeline_state_handle(mat->getHash());
+    auto it = _pipelineStates.find(pso_handle.get());
     if (it != _pipelineStates.end()) {
-        psoHandle = it->first;
+        return pso_handle;
     }
 
-    if (psoHandle == 0)
     {
-        _pipelineStates.emplace(shaderHash, dx_pipeline_state(_deviceHandle));
+        auto pair = _pipelineStates.emplace_back(pso_handle.get(), _deviceHandle);
+        assert(pair.second);
 
-        it = _pipelineStates.find(shaderHash);
-        dx_pipeline_state& pso = it->second;
+        dx_pipeline_state& pso = pair.first->second;
+
+        dx_pipeline_state_desc init_desc;
+
+        init_desc.depthFormat = _contexts[0].mDepthFormat;
+
+        if (mat->useFrameUniformBuffer())
+        {
+            init_desc.layouts.emplace_back().InitAsConstantBufferView(
+                (u32)shader_binding::FRAME, // b0
+                0, // register space
+                D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
+                D3D12_SHADER_VISIBILITY_VERTEX);
+        }
+
+        if (mat->useObjectUniformBuffer())
+        {
+            init_desc.layouts.emplace_back().InitAsConstantBufferView(
+                (u32)shader_binding::OBJECT, // b1
+                0, // register space
+                D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
+                D3D12_SHADER_VISIBILITY_VERTEX);
+        }
+
+        if (mat->getTexturesCount() > 0)
+        {
+            CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+            ranges[0].Init(
+                D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                1,
+                0, // t0
+                0,
+                D3D12_DESCRIPTOR_RANGE_FLAG_NONE
+            );
+
+            ranges[1].Init(
+                D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+                1,
+                0, // s0
+                0,
+                D3D12_DESCRIPTOR_RANGE_FLAG_NONE
+            );
+            // TODO:
+            // texture (SRV table)
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(
+                1,
+                &ranges[0],
+                D3D12_SHADER_VISIBILITY_PIXEL);
+
+            // sampler table
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(
+                1,
+                &ranges[1],
+                D3D12_SHADER_VISIBILITY_PIXEL);
+        }
+
+        if (mat->isUseVertexIndexBuffers())
+        {
+            init_desc.vertexLayouts.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
+            init_desc.vertexLayouts.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(vertex, texCoords), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
+            init_desc.vertexLayouts.push_back({ "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
+        }
         
         // TODO: depth format should be determined by window context or material properties, not hardcoded
-        pso.init(mat, _contexts[0].mDepthFormat);
+        const std::string& shaderName = mat->getShaderName();
+        pso.init(shaderName, init_desc);
 
-        std::printf("PSO %llu created successfully\n", static_cast<unsigned long long>(shaderHash));
-
-        psoHandle = shaderHash;
+        std::printf("PSO %u created successfully\n", pso_handle.get());
     }
 
-    _materials.push_back(dx_material());
-
-    dx_material& dxmat = _materials.back();
-    dxmat.psoHandle = psoHandle;
-    dxmat.bUniformBufferUsed = mat->isUseUniformBuffers();
-    if (mat->getTexturesCount() > 0)
-    {
-        dxmat.bTexturesUsed = true;
-
-        uint32_t i = 0;
-        for (const auto& tex : mat->getTextures())
-        {
-            auto dxtexIt = _textures.find(tex->getHash());
-            if (dxtexIt != _textures.end())
-            {
-                dx_texture& dxtex = dxtexIt->second;
-                dxmat.texture_binds.push_back({dxtex.srvHeap, dxtex.samplerHeap, i});
-            }
-            i++;
-        }
-    }
-
-    uint32_t matIndex = static_cast<uint32_t>(_materials.size());
-    std::printf("Material %d created successfully\n", matIndex);
-
-    return material_handle(matIndex);
+    return pso_handle;
 }
 
 mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
 {
     assert(msh != nullptr);
-    uint64_t meshHash = msh->getHash();
+    u32 meshHash = msh->getHash();
 
     auto it = _meshes.find(meshHash);
     if (it != _meshes.end()) {
         return mesh_handle(it->first);
     }
 
-    _meshes.emplace(meshHash, dx_mesh());
+    auto pair = _meshes.emplace(meshHash, dx_mesh());
+    assert(pair.second);
 
-    it = _meshes.find(meshHash);
+    dx_mesh& dxmsh = pair.first->second;
 
-    it->second.init(_deviceHandle, msh);
+    dxmsh.init(_deviceHandle, msh);
 
-    std::printf("Mesh %llu created successfully\n", static_cast<unsigned long long>(meshHash));
+    std::printf("Mesh %u created successfully\n", meshHash);
 
     return mesh_handle(meshHash);
 }
@@ -341,38 +410,50 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
 texture_handle dx_dynamic_rhi::loadTexture(texture* tex)
 {
     assert(tex != nullptr);
-    uint64_t texHash = tex->getHash();
+    u32 texHash = tex->getHash();
 
     auto it = _textures.find(texHash);
     if (it != _textures.end()) {
         return texture_handle(it->first);
     }
 
-    _textures.emplace(texHash, dx_texture());
+    auto pair = _textures.emplace(texHash, dx_texture());
+    assert(pair.second);
 
-    it = _textures.find(texHash);
-    dx_texture& dxtex = it->second;
+    dx_texture& dxtex = pair.first->second;
 
     dxtex.init(_deviceHandle, tex);
 
     uploadTextureToGpu(dxtex);
     
-    std::printf("Texture %llu loaded successfully\n", static_cast<unsigned long long>(texHash));
+    std::printf("Texture %u loaded successfully\n", texHash);
 
     return texture_handle(texHash);
 }
 
-render_object_handle dx_dynamic_rhi::createUniformBuffer(render_object* obj)
+uniform_buffer_handle dx_dynamic_rhi::createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize)
 {
-    assert(obj != nullptr);
+    dx_uniform_buffer& buffer = _uniformBuffers.emplace_back();
+    buffer.init(_deviceHandle, bufferSize);
 
-    _objectUniformBuffers.emplace_back();
-    dx_uniform_buffer& buffer = _objectUniformBuffers.back();
-    buffer.init(_deviceHandle, sizeof(object_uniform_buffer));
+    uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));
+    std::printf("Uniform buffer %d [Type: %d] created successfully\n", ub_handle.get(), (u32)ub_type);
 
-    std::printf("Uniform buffer for object %p created successfully\n", obj);
+    return ub_handle;
+}
 
-    return render_object_handle(static_cast<uint32_t>(_objectUniformBuffers.size()));
+void dx_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr)
+{
+    // std::printf("getUniformBufferMemory %d [Ctx: %d]\n", ub_handle.get(), ctx_handle.get());
+    if (!ub_handle.is_valid())
+    {
+        throw std::runtime_error("failed to get uniform buffer memory! ub is null!");
+    }
+
+    auto& buffer = _uniformBuffers[ub_handle.as_index()];
+
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    memory_ptr = buffer.getMappedData(currentFrame);
 }
 
 void dx_dynamic_rhi::createInstance()

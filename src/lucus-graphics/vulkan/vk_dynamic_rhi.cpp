@@ -281,7 +281,6 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::SET_VIEWPORT:
                 {
                     const auto* vp_cmd = reinterpret_cast<const gpu_set_viewport_command*>(data);
-
                     VkViewport viewport{};
                     viewport.x = float(vp_cmd->x);
                     viewport.y = float(vp_cmd->y + vp_cmd->height);
@@ -289,18 +288,15 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     viewport.height = -float(vp_cmd->height); // Vulkan Flip Y
                     viewport.minDepth = 0.f;
                     viewport.maxDepth = 1.f;
-
                     vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
                 }
                 break;
             case gpu_command_type::SET_SCISSOR:
                 {
                     const auto* sc_cmd = reinterpret_cast<const gpu_set_scissor_command*>(data);
-
                     VkRect2D scissor{};
                     scissor.offset = { sc_cmd->offset_x, sc_cmd->offset_y };
                     scissor.extent = { sc_cmd->extent_x, sc_cmd->extent_y };
-
                     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
                 }
                 break;
@@ -308,7 +304,7 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* bp_cmd = reinterpret_cast<const gpu_bind_pipeline_command*>(data);
                     auto found = _pipelineStates.find(bp_cmd->pso_handle.get());
-                    vk_pipeline_state& pso = found->second;
+                    auto& pso = found->second;
                     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipeline());
                 }
                 break;
@@ -316,8 +312,8 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
                     auto found = _pipelineStates.find(bu_cmd->pso_handle.get());
-                    vk_pipeline_state& pso = found->second;
-                    vk_uniform_buffer& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
+                    auto& pso = found->second;
+                    auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bu_cmd->position, 1, ub.get(currentFrame), 0, nullptr);
                 }
                 break;
@@ -325,9 +321,9 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
                     auto found = _pipelineStates.find(bt_cmd->pso_handle.get());
-                    vk_pipeline_state& pso = found->second;
+                    auto& pso = found->second;
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
-                    vk_texture& tex = found_tex->second; // TODO: descriptor set to texture
+                    auto& tex = found_tex->second; // TODO: descriptor set to texture
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bt_cmd->position, 1, &tex.texDescriptorSet, 0, nullptr);
                 }
                 break;
@@ -690,7 +686,6 @@ uniform_buffer_handle vk_dynamic_rhi::createUniformBuffer(uniform_buffer_type ub
     }
 
     vk_uniform_buffer& buffer = _uniformBuffers.emplace_back();
-    
     buffer.init(_deviceHandle, _device->getGPU(), descriptorSetLayout, _descriptorPool, bufferSize);
 
     uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));

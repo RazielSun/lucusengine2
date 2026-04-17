@@ -3,7 +3,6 @@
 #include "dx_pch.hpp"
 
 #include "dx_render_types.hpp"
-#include "dx_buffer.hpp"
 
 namespace lucus
 {
@@ -14,11 +13,12 @@ namespace lucus
         void init(Com<IDXGIFactory4> factory, Com<ID3D12Device> device, Com<ID3D12CommandQueue> commandQueue, window* window);
         void cleanup();
 
-        dx_viewport viewport;
-
         Com<ID3D12CommandQueue> mCommandQueue;
 
         Com<IDXGISwapChain3> swapChain;
+
+        u32 width;
+        u32 height;
 
         dx_commandbuffer_pool commandPool;
         Com<ID3D12GraphicsCommandList> commandBuffer;
@@ -33,8 +33,6 @@ namespace lucus
         Com<ID3D12Fence> fence;
         std::array<uint64_t, g_framesInFlight> fenceValues{};
         void* fenceEvent = nullptr;
-
-        dx_uniform_buffer uniformbuffers;
 
         Com<ID3D12DescriptorHeap> mDSVHeap;
         uint32_t mDSVDescriptorSize = 0;

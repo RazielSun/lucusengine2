@@ -2,7 +2,7 @@
 
 using namespace lucus;
 
-void dx_buffer::init(Com<ID3D12Device> device, uint32_t bufferSize)
+void dx_buffer::init(Com<ID3D12Device> device, size_t bufferSize)
 {
     _device = device;
 
@@ -38,7 +38,7 @@ void dx_buffer::write(const void* data, size_t size, size_t offset)
     memcpy(static_cast<uint8_t*>(_mapped) + offset, data, size);
 }
 
-void dx_uniform_buffer::init(Com<ID3D12Device> device, uint32_t bufferSize)
+void dx_uniform_buffer::init(Com<ID3D12Device> device, size_t bufferSize)
 {
     for (size_t i = 0; i < g_framesInFlight; ++i)
     {
@@ -54,7 +54,7 @@ void dx_uniform_buffer::cleanup()
     }
 }
 
-void dx_uniform_buffer::write(uint32_t index, const void* data, size_t size, size_t offset)
+void dx_uniform_buffer::write(u32 index, const void* data, size_t size, size_t offset)
 {
     _buffers[index].write(data, size, offset);
 }

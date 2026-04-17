@@ -17,8 +17,8 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
     HWND hwnd = glfwGetWin32Window(window->getGLFWwindow());
     std::printf("HWND created successfully\n");
 
-    int width = window->framebuffer_width();
-    int height = window->framebuffer_height();
+    width = window->framebuffer_width();
+    height = window->framebuffer_height();
 
     DXGI_SWAP_CHAIN_DESC1 swap_desc{};
     swap_desc.BufferCount = g_swapchainImageCount;
@@ -44,21 +44,9 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
 
     ThrowIfFailed(swapchain1.As(&swapChain), "Failed move SwapChain");
 
-    std::printf("IDXGISwapChain1 created successfully (%dx%d)\n", width, height);
+    std::printf("IDXGISwapChain1 created successfully (%ux%u)\n", width, height);
 
     // backBufferIndex = swapChain->GetCurrentBackBufferIndex();
-
-    viewport.viewport.TopLeftX = 0.0f;
-    viewport.viewport.TopLeftY = 0.0f;
-    viewport.viewport.Width = static_cast<float>(width);
-    viewport.viewport.Height = static_cast<float>(height);
-    viewport.viewport.MinDepth = 0.0f;
-    viewport.viewport.MaxDepth = 1.0f;
-
-    viewport.scissor.left = 0;
-    viewport.scissor.top = 0;
-    viewport.scissor.right = width;
-    viewport.scissor.bottom = height;
 
     createRTVHeaps();
     createDSVHeap();
@@ -66,8 +54,6 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
     createDepthStencils();
     createSyncObjects();
     createCommandBufferPool();
-
-    uniformbuffers.init(device, sizeof(frame_uniform_buffer));
 }
 
 void dx_window_context::cleanup()
@@ -76,8 +62,6 @@ void dx_window_context::cleanup()
     {
         mDepthStencils[i].Reset();
     }
-
-    uniformbuffers.cleanup();
 
     fence.Reset();
     if (fenceEvent) {
@@ -148,8 +132,8 @@ void dx_window_context::createDepthStencils()
     D3D12_RESOURCE_DESC depth_desc{};
     depth_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     depth_desc.Alignment = 0;
-    depth_desc.Width = static_cast<UINT64>(viewport.viewport.Width);
-    depth_desc.Height = static_cast<UINT>(viewport.viewport.Height);
+    depth_desc.Width = static_cast<UINT64>(width);
+    depth_desc.Height = static_cast<UINT>(height);
     depth_desc.DepthOrArraySize = 1;
     depth_desc.MipLevels = 1;
     depth_desc.Format = mDepthFormat;

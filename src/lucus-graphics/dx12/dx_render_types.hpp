@@ -9,7 +9,6 @@ namespace lucus
 {
     class mesh;
     class texture;
-    class material;
 
     struct dx_commandbuffer_pool
     {
@@ -20,13 +19,7 @@ namespace lucus
             std::array<Com<ID3D12CommandAllocator>, g_framesInFlight> commandAllocators{};
     };
 
-    struct dx_viewport
-    {
-        D3D12_VIEWPORT viewport{};
-        D3D12_RECT scissor{};
-    };
-
-    struct dx_mesh : public rhi_mesh
+    struct dx_mesh : public gpu_mesh
     {
         dx_buffer vertexBuffer;
         dx_buffer indexBuffer;
@@ -54,21 +47,6 @@ namespace lucus
 
         void init(Com<ID3D12Device> device, texture* tex);
         void free_staging();
-        void cleanup();
-    };
-
-    struct dx_texture_bind
-    {
-        Com<ID3D12DescriptorHeap> srvHeap;
-        Com<ID3D12DescriptorHeap> samplerHeap;
-        UINT slot;
-    };
-
-    struct dx_material : public rhi_material
-    {
-        std::vector<dx_texture_bind> texture_binds;
-
-        void init(Com<ID3D12Device> device, material* mat);
         void cleanup();
     };
 }

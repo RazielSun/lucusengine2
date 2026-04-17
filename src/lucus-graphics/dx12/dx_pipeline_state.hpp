@@ -4,31 +4,33 @@
 
 namespace lucus
 {
-    class material;
+    struct dx_pipeline_state_desc
+    {
+        DXGI_FORMAT depthFormat;
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> layouts;
+        std::vector<D3D12_INPUT_ELEMENT_DESC> vertexLayouts;
+    };
 
     class dx_pipeline_state
     {
-        public:
-            dx_pipeline_state(Com<ID3D12Device> device);
-            ~dx_pipeline_state();
+    public:
+        dx_pipeline_state(Com<ID3D12Device> device);
+        ~dx_pipeline_state();
 
-            void init(const material* mat, DXGI_FORMAT depthFormat);
+        void init(const std::string& shaderName, const dx_pipeline_state_desc& init_desc);
 
-            Com<ID3D12PipelineState> getPipeline() { return _pipelineState; }
-            Com<ID3D12RootSignature> getRootSignature() { return _rootSignature; }
+        Com<ID3D12PipelineState> getPipeline() { return _pipelineState; }
+        Com<ID3D12RootSignature> getRootSignature() { return _rootSignature; }
+    
+    protected:
 
-            bool isUniformBufferUsed() const { return _useUniformBuffers; }
-        
-        protected:
+        void createRootSignature(const dx_pipeline_state_desc& init_desc);
 
-            void createRootSignature(uint32_t layoutCount = 0, uint32_t texturesCount = 0);
+    private:
+        Com<ID3D12Device> _device;
+        Com<ID3D12RootSignature> _rootSignature;
 
-        private:
-            Com<ID3D12Device> _device;
-            Com<ID3D12RootSignature> _rootSignature;
-
-            Com<ID3D12PipelineState> _pipelineState;
-
-            bool _useUniformBuffers{false};
+        Com<ID3D12PipelineState> _pipelineState;
     };
 }

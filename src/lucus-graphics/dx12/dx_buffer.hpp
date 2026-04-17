@@ -9,12 +9,14 @@ namespace lucus
     class dx_buffer
     {
         public:
-            void init(Com<ID3D12Device> device, uint32_t bufferSize);
+            void init(Com<ID3D12Device> device, size_t bufferSize);
             void cleanup();
 
             void write(const void* data, size_t size, size_t offset = 0);
 
             Com<ID3D12Resource> get() const { return _buffer; }
+
+            void* getMappedData() const { return _mapped; }
 
         private:
             Com<ID3D12Device> _device;
@@ -25,12 +27,14 @@ namespace lucus
     class dx_uniform_buffer
     {
         public:
-            void init(Com<ID3D12Device> device, uint32_t bufferSize);
+            void init(Com<ID3D12Device> device, size_t bufferSize);
             void cleanup();
 
-            void write(uint32_t index, const void* data, size_t size, size_t offset = 0);
+            void write(u32 index, const void* data, size_t size, size_t offset = 0);
 
-            Com<ID3D12Resource> get(uint32_t index) const { return _buffers[index].get(); }
+            Com<ID3D12Resource> get(u32 index) const { return _buffers[index].get(); }
+
+            void* getMappedData(u32 index) const { return _buffers[index].getMappedData(); }
 
         protected:
 

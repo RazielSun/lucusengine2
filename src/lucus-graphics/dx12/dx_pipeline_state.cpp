@@ -1,7 +1,6 @@
 #include "dx_pipeline_state.hpp"
 
 #include "filesystem.hpp"
-#include "material.hpp"
 
 using namespace lucus;
 
@@ -18,12 +17,8 @@ dx_pipeline_state::~dx_pipeline_state()
     _device.Reset();
 }
 
-void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
+void dx_pipeline_state::init(const std::string& shaderName, const dx_pipeline_state_desc& init_desc)
 {
-    assert(mat);
-    const std::string& shaderName = mat->getShaderName();
-
-    _useUniformBuffers = mat->isUseUniformBuffers();
 
     auto vs = filesystem::instance().read_shader(shaderName + ".vert.dxil");
     auto ps = filesystem::instance().read_shader(shaderName + ".frag.dxil");
@@ -35,9 +30,8 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
     pso.PS.pShaderBytecode = ps.data();
     pso.PS.BytecodeLength = ps.size();
 
-    uint32_t layoutCount = mat->isUseUniformBuffers() ? 2 : 0;
-    uint32_t texturesCount = mat->getTexturesCount();
-    createRootSignature(layoutCount, texturesCount);
+    // TODO: Shared?
+    createRootSignature(init_desc);
     pso.pRootSignature = _rootSignature.Get();
 
     D3D12_RASTERIZER_DESC rasterizer{};
@@ -80,24 +74,18 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
     depth_stencil.StencilEnable = FALSE;
 
     pso.DepthStencilState = depth_stencil;
-    pso.DSVFormat = depthFormat;
+    pso.DSVFormat = init_desc.depthFormat;
 
     pso.SampleMask = UINT_MAX;
 
-    if (mat->isUseVertexIndexBuffers())
+    if (init_desc.vertexLayouts.empty())
     {
-        D3D12_INPUT_ELEMENT_DESC inputLayout[] =
-        {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(vertex, texCoords), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            { "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        };
-        pso.InputLayout = { inputLayout, _countof(inputLayout) };
+        pso.InputLayout = { nullptr, 0 }; 
     }
     else
     {
-        pso.InputLayout = { nullptr, 0 }; 
-    } 
+        pso.InputLayout = { init_desc.vertexLayouts.data(), (u32)init_desc.vertexLayouts.size() };
+    }
     
     pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pso.NumRenderTargets = 1;
@@ -109,69 +97,14 @@ void dx_pipeline_state::init(const material* mat, DXGI_FORMAT depthFormat)
     std::printf("ID3D12PipelineState created successfully\n");
 }
 
-void dx_pipeline_state::createRootSignature(uint32_t layoutCount, uint32_t texturesCount)
+void dx_pipeline_state::createRootSignature(const dx_pipeline_state_desc& init_desc)
 {
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC desc{};
     desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
     desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
-    // Texture & Sampler ?
-    CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-    ranges[0].Init(
-        D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-        1,
-        0, // t0
-        0,
-        D3D12_DESCRIPTOR_RANGE_FLAG_NONE
-    );
-
-    ranges[1].Init(
-        D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
-        1,
-        0, // s0
-        0,
-        D3D12_DESCRIPTOR_RANGE_FLAG_NONE
-    );
-
-    std::vector<CD3DX12_ROOT_PARAMETER1> rootParameters;
-    if (layoutCount > 0)
-    {
-        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
-        rootParameters.back().InitAsConstantBufferView(
-            0, // b0
-            0, // register space
-            D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
-            D3D12_SHADER_VISIBILITY_VERTEX);
-        
-        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
-        rootParameters.back().InitAsConstantBufferView(
-            1, // b1
-            0, // register space
-            D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
-            D3D12_SHADER_VISIBILITY_VERTEX);
-    }
-    
-    if (texturesCount > 0)
-    {
-        // TODO: More textures
-        
-        // texture (SRV table)
-        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
-        rootParameters.back().InitAsDescriptorTable(
-            1,
-            &ranges[0],
-            D3D12_SHADER_VISIBILITY_PIXEL);
-
-        // sampler table
-        rootParameters.push_back(CD3DX12_ROOT_PARAMETER1());
-        rootParameters.back().InitAsDescriptorTable(
-            1,
-            &ranges[1],
-            D3D12_SHADER_VISIBILITY_PIXEL);
-    }
-
-    desc.Desc_1_1.NumParameters = static_cast<uint32_t>(rootParameters.size());
-    desc.Desc_1_1.pParameters = rootParameters.data();
+    desc.Desc_1_1.NumParameters = static_cast<uint32_t>(init_desc.layouts.size());
+    desc.Desc_1_1.pParameters = init_desc.layouts.data();
 
     // Static samplers ?
     desc.Desc_1_1.NumStaticSamplers = 0;
