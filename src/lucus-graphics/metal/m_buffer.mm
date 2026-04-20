@@ -2,9 +2,11 @@
 
 using namespace lucus;
 
-void m_buffer::init(id<MTLDevice> device, size_t size, u32 count, MTLResourceOptions options)
+void m_buffer::init(id<MTLDevice> device, size_t size, u32 count, shader_binding_stage in_stage, MTLResourceOptions options)
 {
     assert(device);
+
+    stage = in_stage;
 
     itemSize = size;
     bufferSize = size * count;

@@ -23,6 +23,12 @@ m_dynamic_rhi::m_dynamic_rhi()
 
 m_dynamic_rhi::~m_dynamic_rhi()
 {
+    for (auto& smpl : _samplers)
+    {
+        smpl.cleanup();
+    }
+    _samplers.clear();
+
     for (auto& buffer : _uniformBuffers)
     {
         buffer.cleanup();
@@ -179,7 +185,15 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
                     auto& buffer = _uniformBuffers[bu_cmd->ub_handle.as_index()];
                     const u32 offset = buffer.getItemSize() * currentFrame;
-                    [pass setVertexBuffer:buffer.get() offset:offset atIndex:(u32)bu_cmd->position];
+                    const auto& stage = buffer.getStage();
+                    if (stage == shader_binding_stage::VERTEX || stage == shader_binding_stage::BOTH)
+                    {
+                        [pass setVertexBuffer:buffer.get() offset:offset atIndex:(u32)bu_cmd->position];
+                    }
+                    if (stage == shader_binding_stage::FRAGMENT || stage == shader_binding_stage::BOTH)
+                    {
+                        [pass setFragmentBuffer:buffer.get() offset:offset atIndex:(u32)bu_cmd->position];
+                    }
                 }
                 break;
             case gpu_command_type::BIND_TEXTURE:
@@ -188,8 +202,14 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     auto found = _textures.find(bt_cmd->tex_handle.get());
                     assert(found != _textures.end());
                     auto& tex = found->second;
-                    [pass setFragmentTexture:tex.mtexture atIndex:(u32)bt_cmd->position - (u32)shader_binding::MATERIAL];
-                    [pass setFragmentSamplerState:tex.sampler atIndex:(u32)bt_cmd->position - (u32)shader_binding::MATERIAL];
+                    [pass setFragmentTexture:tex.mtexture atIndex:(u32)bt_cmd->position - (u32)shader_binding::TEXTURE];
+                }
+                break;
+            case gpu_command_type::BIND_SAMPLER:
+                {
+                    const auto* bs_cmd = reinterpret_cast<const gpu_bind_sampler_command*>(data);
+                    auto& smpl = _samplers[bs_cmd->smpl_handle.as_index()];
+                    [pass setFragmentSamplerState:smpl.sampler atIndex:(u32)bs_cmd->position - (u32)shader_binding::SAMPLER];
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -256,13 +276,17 @@ pipeline_state_handle m_dynamic_rhi::createPSO(material* mat)
             vertexDescriptor.attributes[0].offset = offsetof(vertex, position);
             vertexDescriptor.attributes[0].bufferIndex = bufferIndex;
 
-            vertexDescriptor.attributes[1].format = MTLVertexFormatFloat2;
-            vertexDescriptor.attributes[1].offset = offsetof(vertex, texCoords);
+            vertexDescriptor.attributes[1].format = MTLVertexFormatFloat3;
+            vertexDescriptor.attributes[1].offset = offsetof(vertex, normal);
             vertexDescriptor.attributes[1].bufferIndex = bufferIndex;
 
-            vertexDescriptor.attributes[2].format = MTLVertexFormatFloat3;
-            vertexDescriptor.attributes[2].offset = offsetof(vertex, color);
+            vertexDescriptor.attributes[2].format = MTLVertexFormatFloat2;
+            vertexDescriptor.attributes[2].offset = offsetof(vertex, texCoords);
             vertexDescriptor.attributes[2].bufferIndex = bufferIndex;
+
+            vertexDescriptor.attributes[3].format = MTLVertexFormatFloat3;
+            vertexDescriptor.attributes[3].offset = offsetof(vertex, color);
+            vertexDescriptor.attributes[3].bufferIndex = bufferIndex;
 
             vertexDescriptor.layouts[bufferIndex].stride = sizeof(vertex);
             init_desc.vertexDescriptor = vertexDescriptor;
@@ -303,7 +327,20 @@ mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-texture_handle m_dynamic_rhi::loadTexture(texture* tex)
+sampler_handle m_dynamic_rhi::createSampler()
+{
+    auto& smpl = _samplers.emplace_back();
+    
+    smpl.init(_deviceHandle);
+
+    sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));
+
+    std::printf("Sampler %d created successfully\n", smpl_handle.get());
+
+    return smpl_handle;
+}
+
+texture_handle m_dynamic_rhi::createTexture(texture* tex)
 {
     assert(tex);
     u32 texHash = tex->getHash();
@@ -318,20 +355,32 @@ texture_handle m_dynamic_rhi::loadTexture(texture* tex)
 
     auto& mtex = pair.first->second;
     mtex.init(_deviceHandle, tex);
-
-    uploadTextureToGpu(mtex);
-    mtex.free_staging();
     
-    std::printf("Texture %u loaded successfully\n", texHash);
+    std::printf("Texture %u created successfully\n", texHash);
 
     return texture_handle(texHash);
 }
 
-uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(size_t bufferSize)
+void m_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex)
+{
+    auto it = _textures.find(tex_handle.get());
+    if (it == _textures.end()) {
+        // error
+        return;
+    }
+
+    auto& mtex = it->second;
+    uploadTextureToGpu(mtex);
+    mtex.free_staging();
+    
+    std::printf("Texture %u loaded successfully\n", tex_handle.get());
+}
+
+uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(size_t bufferSize, shader_binding_stage stage)
 {
     auto& buffer = _uniformBuffers.emplace_back();
     
-    buffer.init(_deviceHandle, bufferSize, g_framesInFlight);
+    buffer.init(_deviceHandle, bufferSize, g_framesInFlight, stage);
 
     uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));
 

@@ -41,22 +41,24 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
 {
     assert(tex);
 
-    int texWidth, texHeight, texChannels;
-    void* tex_ptr = load_texture(tex->getFileName(), texWidth, texHeight, texChannels);
+    if (!tex->IsInitialized())
+    {
+        tex->initResource();
+    }
 
-    width = texWidth;
-    height = texHeight;
-    bytesPerPixel = 4; // TODO
+    width = tex->getWidth();
+    height = tex->getHeight();
+    bytesPerPixel = tex->getBytesPerPixel();
     texSize = width * height * bytesPerPixel;
     bytesPerRow = width * bytesPerPixel;
 
-    stgBuffer = [device newBufferWithBytes:tex_ptr
+    stgBuffer = [device newBufferWithBytes:tex->getResource()
                         length:texSize
                        options:MTLResourceStorageModeShared];
 
-    // std::memcpy((uint8_t*)stgBuffer.contents, tex_ptr, width * height * bytesPerPixel);
+    // std::memcpy((uint8_t*)stgBuffer.contents, tex->getResource(), width * height * bytesPerPixel);
 
-    free_texture(tex_ptr);
+    tex->freeResource();
 
     MTLTextureDescriptor* texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
                                                     width:width
@@ -70,9 +72,22 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
 
     // [texture replaceRegion:region
     //         mipmapLevel:0
-    //             withBytes:tex_ptr
+    //             withBytes:tex->getResource()
     //         bytesPerRow:bytesPerRow];
+}
 
+void m_texture::free_staging()
+{
+    stgBuffer = nil;
+}
+
+void m_texture::cleanup()
+{
+    mtexture = nil;
+}
+
+void m_sampler::init(id<MTLDevice> device)
+{
     MTLSamplerDescriptor* smplDesc = [MTLSamplerDescriptor new];
 
     smplDesc.minFilter = MTLSamplerMinMagFilterLinear;
@@ -84,12 +99,7 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
     sampler = [device newSamplerStateWithDescriptor:smplDesc];
 }
 
-void m_texture::free_staging()
+void m_sampler::cleanup()
 {
-    stgBuffer = nil;
-}
-
-void m_texture::cleanup()
-{
-    // TODO?
+    sampler = nil;
 }

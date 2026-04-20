@@ -24,7 +24,6 @@ namespace lucus
     {
         id<MTLBuffer> stgBuffer;
         id<MTLTexture> mtexture;
-        id<MTLSamplerState> sampler;
 
         NSUInteger width;
         NSUInteger height;
@@ -34,6 +33,14 @@ namespace lucus
 
         void init(id<MTLDevice> device, texture* tex);
         void free_staging();
+        void cleanup();
+    };
+
+    struct m_sampler
+    {
+        id<MTLSamplerState> sampler;
+
+        void init(id<MTLDevice> device);
         void cleanup();
     };
 }
