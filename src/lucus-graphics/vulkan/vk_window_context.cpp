@@ -48,8 +48,8 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
 	colorFormat = swapChain.colorFormat;
 	depthFormat = utils::findDepthFormat(gpu);
 
-	for (auto& frame : frames) {
-        frame.init(device);
+	for (auto& img_sync : imageSync) {
+        img_sync.init(device);
     }
 }
 
@@ -60,8 +60,8 @@ void vk_window_context::init_framebuffers(const vk_render_pass& render_pass)
 
 void vk_window_context::cleanup()
 {
-    for (auto& frame : frames) {
-        frame.cleanup();
+    for (auto& img_sync : imageSync) {
+        img_sync.cleanup();
     }
 
     swapChain.cleanup();
@@ -159,12 +159,10 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
     std::printf("VkSurfaceKHR created successfully\n");
 }
 
-void vk_window_context::wait_frame(u32 currentFrame)
+void vk_window_context::acquire_image(u32 frameIndex)
 {
-    vkWaitForFences(_device, 1, &frames[currentFrame].fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(_device, 1, &frames[currentFrame].fence);
-
-    vkAcquireNextImageKHR(_device, swapChain.swapChain, UINT64_MAX, frames[currentFrame].imageAvailable, (VkFence)nullptr, &currentImageIndex);
+	u32 nextImageIndex = frameIndex % g_swapchainImageCount;
+    vkAcquireNextImageKHR(_device, swapChain.swapChain, UINT64_MAX, imageSync[nextImageIndex].imageAvailable, (VkFence)nullptr, &currentImageIndex);
 }
 
 void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surface, window* window)

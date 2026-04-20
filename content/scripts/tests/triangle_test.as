@@ -15,7 +15,7 @@ void main()
 
     object.SetMesh(triangle);
 
-    Material@ triangle_mat = Material("nounb_simple");
+    Material@ triangle_mat = Material("simple");
     triangle_mat.SetUseVertexIndexBuffers(true);
 
     object.SetMaterial(triangle_mat);

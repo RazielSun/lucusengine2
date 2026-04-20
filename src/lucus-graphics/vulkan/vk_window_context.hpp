@@ -48,15 +48,14 @@ namespace lucus
 
         vk_framebuffer_list framebuffers;
 
-        std::array<vk_frame_sync, g_framesInFlight> frames{};
-        // uint32_t currentFrame = 0;
         uint32_t currentImageIndex = 0;
+        std::array<vk_image_sync, g_swapchainImageCount> imageSync{};
 
         void init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window);
         void init_framebuffers(const vk_render_pass& render_pass);
         void cleanup();
 
-        void wait_frame(u32 currentFrame);
+        void acquire_image(u32 frameIndex);
 
     protected:
         void initSurface(VkPhysicalDevice gpu, window* window);

@@ -24,9 +24,9 @@ namespace lucus
 
             virtual pipeline_state_handle createPSO(material* mat) override;
             virtual mesh_handle createMesh(mesh* msh) override;
-            virtual texture_handle loadTexture(texture* tex) override;
+            virtual texture_handle loadTexture(texture* tex, u32 frameIndex) override;
 
-            virtual uniform_buffer_handle createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize) override;
+            virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize) override;
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
             virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;
@@ -34,10 +34,11 @@ namespace lucus
         protected:
             void createInstance();
             void createDevice();
+            void createCommandBufferPool();
+            void createSyncObjects();
 
             // void wait_idle();
-            void initTextureCmdResources();
-            void uploadTextureToGpu(dx_texture& tex);
+            void uploadTextureToGpu(dx_texture& tex, u32 frameIndex);
 
         private:
             Com<IDXGIFactory4> _DXGIFactory;
@@ -61,13 +62,13 @@ namespace lucus
             //
             std::unordered_map<u32, dx_texture> _textures;
 
-            // upload texture, need refactor
-            Com<ID3D12CommandAllocator> _texCmdAllocator;
-            Com<ID3D12GraphicsCommandList> _texCmdBuffer;
-            Com<ID3D12Fence> _texFence;
-            uint64_t _texFenceValue{0};
-            void* _texFenceEvent = nullptr;
+            //
+            dx_commandbuffer_pool commandPool;
+            Com<ID3D12GraphicsCommandList> commandBuffer;
 
-            
+            //
+            Com<ID3D12Fence> fence;
+            std::array<uint64_t, g_framesInFlight> fenceValues{};
+            void* fenceEvent = nullptr;
     };
 }

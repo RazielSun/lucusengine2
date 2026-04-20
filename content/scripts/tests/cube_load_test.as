@@ -11,7 +11,7 @@ void main()
 
     Mesh@ cube = Mesh::load("content/assets/geometry/cube.gltf");
 
-    Material@ cube_mat = Material("simple");
+    Material@ cube_mat = Material("simple_unlit");
     cube_mat.SetUseFrameUniformBuffer(true);
     cube_mat.SetUseObjectUniformBuffer(true);
     cube_mat.SetUseVertexIndexBuffers(true);
@@ -24,13 +24,13 @@ void main()
 
     RenderObject@ cube_obj2 = scene.NewObject();
     cube_obj2.SetPosition(Vec3(0.f, 0.f, 0.f));
-    cube_obj2.SetRotationEuler(Vec3(0.f, 10.f, 45.f));
+    cube_obj2.SetRotationEuler(Vec3(0.f, 30.f, 45.f));
     cube_obj2.SetMesh(cube);
     cube_obj2.SetMaterial(cube_mat);
 
     RenderObject@ cube_obj3 = scene.NewObject();
     cube_obj3.SetPosition(Vec3(0.8f, 0.2f, 0.f));
-    cube_obj3.SetRotationEuler(Vec3(90.f, 0.f, 0.f));
+    cube_obj3.SetRotationEuler(Vec3(60.f, 10.f, 0.f));
     cube_obj3.SetMesh(cube);
     cube_obj3.SetMaterial(cube_mat);
 }

@@ -62,12 +62,13 @@ mesh* lucus::create_triangle_factory()
     std::vector<vertex> vertices;
     vertices.resize(3);
 
-    vertices[0].position = glm::vec3(0.5f, 0.5f, 0.0f);
-    vertices[1].position = glm::vec3(0.0f, -0.5f, 0.0f);
-    vertices[2].position = glm::vec3(-0.5f, 0.5f, 0.0f);
+    // Keep this order front-facing with back-face culling enabled.
+    vertices[0].position = glm::vec3(0.0f, 0.5f, 0.0f);
+    vertices[1].position = glm::vec3(-0.5f, -0.5f, 0.0f);
+    vertices[2].position = glm::vec3(0.5f, -0.5f, 0.0f);
 
-    vertices[0].color = glm::vec3(0.0f, 1.0f, 0.0f);
-    vertices[1].color = glm::vec3(1.0f, 0.0f, 0.0f);
+    vertices[0].color = glm::vec3(1.0f, 0.0f, 0.0f);
+    vertices[1].color = glm::vec3(0.0f, 1.0f, 0.0f);
     vertices[2].color = glm::vec3(0.0f, 0.0f, 1.0f);
 
     mesh* m = mesh::create_factory("", static_cast<int>(vertices.size()));

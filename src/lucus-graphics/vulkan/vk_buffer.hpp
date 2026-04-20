@@ -28,6 +28,7 @@ namespace lucus
             VkDeviceMemory _memory{ VK_NULL_HANDLE };
             void* _mapped{ nullptr };
             VkDeviceSize _size{ 0 };
+            VkDeviceSize _rawSize{ 0 };
     };
 
     class vk_uniform_buffer

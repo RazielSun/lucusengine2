@@ -186,18 +186,9 @@ void vk_framebuffer::cleanup()
     depth.cleanup();
 }
 
-void vk_frame_sync::init(VkDevice device)
+void vk_image_sync::init(VkDevice device)
 {
     _device = device;
-
-    VkFenceCreateInfo fenceInfo{
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT
-    };
-
-    if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create synchronization objects for a frame!");
-    }
 
     VkSemaphoreCreateInfo semaphoreInfo{
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
@@ -211,14 +202,34 @@ void vk_frame_sync::init(VkDevice device)
         throw std::runtime_error("failed to create synchronization objects for a frame!");
     }
 
-    std::printf("Semaphore and fence are created successfully\n");
+    std::printf("Semaphores are created successfully\n");
+}
+
+void vk_image_sync::cleanup()
+{
+    vkDestroySemaphore(_device, imageAvailable, nullptr);
+    vkDestroySemaphore(_device, renderFinished, nullptr);
+}
+
+void vk_frame_sync::init(VkDevice device)
+{
+    _device = device;
+
+    VkFenceCreateInfo fenceInfo{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT
+    };
+
+    if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create synchronization objects for a frame!");
+    }
+
+    std::printf("Fences are created successfully\n");
 }
 
 void vk_frame_sync::cleanup()
 {
     vkDestroyFence(_device, fence, nullptr);
-    vkDestroySemaphore(_device, imageAvailable, nullptr);
-    vkDestroySemaphore(_device, renderFinished, nullptr);
 }
 
 
@@ -272,7 +283,7 @@ void vk_texture::init(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkDes
 
     _device = device;
 
-    utils::createTextureImage(tex->getFileName(), device, gpu, stgBuffer, stgBufferMemory, texImage, texImageMemory, texSize, texExtent);
+    utils::createTextureImage(tex, device, gpu, stgBuffer, stgBufferMemory, texImage, texImageMemory, texSize, texExtent);
     utils::createImageView(device, texImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, texImageView);
 
     {
@@ -282,66 +293,28 @@ void vk_texture::init(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkDes
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &descriptorSetLayout;
 
-        if (vkAllocateDescriptorSets(device, &allocInfo, &texDescriptorSet) != VK_SUCCESS) {
+        if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate descriptor sets!");
         }
 
         std::printf("Texture initDescriptor called successfully\n");
     }
-
-    {
-        VkSamplerCreateInfo samplerCreateInfo{};
-        samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
-        samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
-        samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerCreateInfo.anisotropyEnable = VK_FALSE;
-        samplerCreateInfo.maxAnisotropy = 1.0f;
-        samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-        samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
-        samplerCreateInfo.compareEnable = VK_FALSE;
-        samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-        samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        samplerCreateInfo.mipLodBias = 0.0f;
-        samplerCreateInfo.minLod = 0.0f;
-        samplerCreateInfo.maxLod = 0.0f;
-
-        if (vkCreateSampler(device, &samplerCreateInfo, nullptr, &texSampler) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create texture sampler!");
-        }
-
-        std::printf("Texture sampler created successfully\n");
-    }
     
     {
-        std::array<VkWriteDescriptorSet, 2> write{};
+        std::array<VkWriteDescriptorSet, 1> write{};
 
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         imageInfo.imageView = texImageView;
 
-        VkDescriptorImageInfo samplerInfo{};
-        samplerInfo.sampler = texSampler;
-
         // TEXTURE
         write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write[0].dstSet = texDescriptorSet;
+        write[0].dstSet = descriptorSet;
         write[0].dstBinding = 0;
         write[0].dstArrayElement = 0;
         write[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         write[0].descriptorCount = 1;
         write[0].pImageInfo = &imageInfo;
-
-        // SAMPLER
-        write[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write[1].dstSet = texDescriptorSet;
-        write[1].dstBinding = 1;
-        write[1].dstArrayElement = 0;
-        write[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-        write[1].descriptorCount = 1;
-        write[1].pImageInfo = &samplerInfo;
 
         vkUpdateDescriptorSets(device, static_cast<u32>(write.size()), write.data(), 0, nullptr);
 
@@ -357,8 +330,120 @@ void vk_texture::free_staging()
 
 void vk_texture::cleanup()
 {
-    vkDestroySampler(_device, texSampler, nullptr);
     vkDestroyImageView(_device, texImageView, nullptr);
     vkDestroyImage(_device, texImage, nullptr);
     vkFreeMemory(_device, texImageMemory, nullptr);
+}
+
+void vk_sampler::init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool)
+{
+    _device = device;
+
+    // TODO: Create in the feature CLAMP / NON LINEAR
+
+    VkSamplerCreateInfo samplerCreateInfo{};
+    samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.anisotropyEnable = VK_FALSE;
+    samplerCreateInfo.maxAnisotropy = 1.0f;
+    samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerCreateInfo.compareEnable = VK_FALSE;
+    samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.mipLodBias = 0.0f;
+    samplerCreateInfo.minLod = 0.0f;
+    samplerCreateInfo.maxLod = 0.0f;
+
+    if (vkCreateSampler(device, &samplerCreateInfo, nullptr, &sampler) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
+
+    {
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &descriptorSetLayout;
+
+        if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+
+        std::printf("Texture initDescriptor called successfully\n");
+    }
+
+    {
+        std::array<VkWriteDescriptorSet, 1> write{};
+
+        VkDescriptorImageInfo samplerInfo{};
+        samplerInfo.sampler = sampler;
+
+        // SAMPLER
+        write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write[0].dstSet = descriptorSet;
+        write[0].dstBinding = 0;
+        write[0].dstArrayElement = 0;
+        write[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        write[0].descriptorCount = 1;
+        write[0].pImageInfo = &samplerInfo;
+
+        vkUpdateDescriptorSets(device, static_cast<u32>(write.size()), write.data(), 0, nullptr);
+
+        std::printf("Sampler updateDescriptor called successfully\n");
+    }
+
+    std::printf("Sampler created successfully\n");
+}
+
+void vk_sampler::cleanup()
+{
+    vkDestroySampler(_device, sampler, nullptr);
+}
+
+void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_binding_stage in_stage)
+{
+    _device = device;
+    type = in_type;
+    stage = in_stage;
+
+    VkShaderStageFlags flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT; // BOTH
+    if (stage == shader_binding_stage::VERTEX)
+    {
+        flags = VK_SHADER_STAGE_VERTEX_BIT;
+    }
+    else if (stage == shader_binding_stage::FRAGMENT)
+    {
+        flags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+
+    std::array<VkDescriptorSetLayoutBinding, 1> bindings{};
+    bindings[0] = VkDescriptorSetLayoutBinding
+    {
+        .binding = 0,
+        .descriptorType = type, // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = flags,
+        .pImmutableSamplers = nullptr
+    };
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = static_cast<u32>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
+
+    if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout!");
+    }
+
+    std::printf("Descriptor Set Layout [stage: %d type: %d] created successfully\n", (u32)stage, (u32)type);
+}
+
+void vk_descriptor::cleanup()
+{
+    vkDestroyDescriptorSetLayout(_device, descriptorSetLayout, nullptr);
 }

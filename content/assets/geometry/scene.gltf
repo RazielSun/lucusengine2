@@ -1,7 +1,29 @@
 {
 	"asset":{
-		"generator":"Khronos glTF Blender I/O v5.1.18",
+		"generator":"Khronos glTF Blender I/O v5.1.19",
 		"version":"2.0"
+	},
+	"extensionsUsed":[
+		"KHR_lights_punctual"
+	],
+	"extensionsRequired":[
+		"KHR_lights_punctual"
+	],
+	"extensions":{
+		"KHR_lights_punctual":{
+			"lights":[
+				{
+					"color":[
+						1,
+						1,
+						1
+					],
+					"intensity":683,
+					"type":"directional",
+					"name":"DirectionalLight"
+				}
+			]
+		}
 	},
 	"scene":0,
 	"scenes":[
@@ -12,7 +34,8 @@
 				1,
 				2,
 				3,
-				4
+				4,
+				5
 			]
 		}
 	],
@@ -62,6 +85,25 @@
 				0.9045199155807495,
 				1.0905877351760864
 			]
+		},
+		{
+			"extensions":{
+				"KHR_lights_punctual":{
+					"light":0
+				}
+			},
+			"name":"Sun",
+			"rotation":[
+				-0.7836762070655823,
+				0.23308204114437103,
+				-0.23308204114437103,
+				0.5264951586723328
+			],
+			"translation":[
+				4.076245307922363,
+				5.903861999511719,
+				-1.0054539442062378
+			]
 		}
 	],
 	"cameras":[
@@ -79,7 +121,7 @@
 	"materials":[
 		{
 			"doubleSided":true,
-			"name":"Colored",
+			"name":"simple_unlit",
 			"pbrMetallicRoughness":{
 				"metallicFactor":0,
 				"roughnessFactor":0.5

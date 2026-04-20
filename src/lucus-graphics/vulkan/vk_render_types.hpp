@@ -74,10 +74,20 @@ namespace lucus
             VkDevice _device;
     };
 
-    struct vk_frame_sync
+    struct vk_image_sync
     {
         VkSemaphore imageAvailable {VK_NULL_HANDLE};
         VkSemaphore renderFinished {VK_NULL_HANDLE};
+
+        void init(VkDevice device);
+        void cleanup();
+
+    private:
+        VkDevice _device;
+    };
+
+    struct vk_frame_sync
+    {
         VkFence fence {VK_NULL_HANDLE};
 
         void init(VkDevice device);
@@ -100,16 +110,42 @@ namespace lucus
     {
         VkBuffer stgBuffer;
         VkDeviceMemory stgBufferMemory;
+
         VkImage texImage;
         VkDeviceMemory texImageMemory;
         VkImageView texImageView;
-        VkSampler texSampler;
-        VkDescriptorSet texDescriptorSet;
+        VkDescriptorSet descriptorSet;
+
         VkDeviceSize texSize;
         VkExtent2D texExtent;
 
         void init(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
         void free_staging();
+        void cleanup();
+
+    private:
+        VkDevice _device;
+    };
+
+    struct vk_sampler
+    {
+        VkSampler sampler;
+        VkDescriptorSet descriptorSet;
+
+        void init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
+        void cleanup();
+
+    private:
+        VkDevice _device;
+    };
+
+    struct vk_descriptor
+    {
+        VkDescriptorType type;
+        shader_binding_stage stage;
+        VkDescriptorSetLayout descriptorSetLayout { VK_NULL_HANDLE };
+
+        void init(VkDevice device, VkDescriptorType in_type, shader_binding_stage in_stage);
         void cleanup();
 
     private:

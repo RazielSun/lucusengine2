@@ -1,6 +1,6 @@
 #include "vk_utils.hpp"
 
-#include "gltf_utils.hpp"
+#include "texture.hpp"
 
 using namespace lucus;
 
@@ -91,14 +91,18 @@ void lucus::utils::createImageView(VkDevice device, VkImage image, VkFormat form
     }
 }
 
-void lucus::utils::createTextureImage(const std::string& fileName, VkDevice device, VkPhysicalDevice gpu, VkBuffer& stgBuffer, VkDeviceMemory& stgBufferMemory, VkImage& texImage, VkDeviceMemory& texImageMemory, VkDeviceSize& texSize, VkExtent2D& texExtent)
+void lucus::utils::createTextureImage(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkBuffer& stgBuffer, VkDeviceMemory& stgBufferMemory, VkImage& texImage, VkDeviceMemory& texImageMemory, VkDeviceSize& texSize, VkExtent2D& texExtent)
 {
     using namespace lucus::utils;
 
-    int texWidth, texHeight, texChannels;
-    void* tex_ptr = load_texture(fileName, texWidth, texHeight, texChannels);
+    if (!tex->IsInitialized())
+    {
+        tex->initResource();
+    }
 
-    int bytesPerPixel = 4; // TODO
+    int texWidth = tex->getWidth();
+    int texHeight = tex->getHeight();
+    int bytesPerPixel = tex->getBytesPerPixel();
     texSize = texWidth * texHeight * bytesPerPixel;
     texExtent = VkExtent2D{
         .width = static_cast<uint32_t>(texWidth),
@@ -109,10 +113,10 @@ void lucus::utils::createTextureImage(const std::string& fileName, VkDevice devi
 
     void* data;
     vkMapMemory(device, stgBufferMemory, 0, texSize, 0, &data);
-    memcpy(data, tex_ptr, static_cast<size_t>(texSize));
+    memcpy(data, tex->getResource(), static_cast<size_t>(texSize));
     vkUnmapMemory(device, stgBufferMemory);
 
-    free_texture(tex_ptr);
+    tex->freeResource();
 
     createImage(device, gpu, texExtent, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texImage, texImageMemory);
 }

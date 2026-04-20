@@ -18,6 +18,7 @@ namespace lucus
         BIND_PIPELINE,
         BIND_UNIFORM_BUFFER,
         BIND_TEXTURE,
+        BIND_SAMPLER,
         BIND_VERTEX_BUFFER,
         DRAW_INDEXED,
         DRAW_VERTEX,
@@ -144,6 +145,15 @@ namespace lucus
         
         pipeline_state_handle pso_handle;
         texture_handle tex_handle;
+        u8 position;
+    };
+
+    struct gpu_bind_sampler_command : public gpu_command_base
+    {
+        gpu_bind_sampler_command(pipeline_state_handle _pso_handle, sampler_handle _smpl_handle, u8 _position) : gpu_command_base(gpu_command_type::BIND_SAMPLER), pso_handle(_pso_handle), smpl_handle(_smpl_handle), position(_position) {}
+        
+        pipeline_state_handle pso_handle;
+        sampler_handle smpl_handle;
         u8 position;
     };
 

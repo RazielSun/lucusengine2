@@ -29,7 +29,7 @@ namespace lucus
 
             const glm::quat& getRotation() const { return _transform.rotation; }
             void setRotation(const glm::quat& rotation) { _transform.rotation = rotation; }
-            void setRotationEuler(const glm::vec3& eulerAngles) { _transform.rotation = glm::quat(eulerAngles); }
+            void setRotationEuler(const glm::vec3& eulerAngles) { _transform.rotation = glm::quat(glm::radians(eulerAngles)); }
 
             const glm::vec3& getScale() const { return _transform.scale; }
             void setScale(const glm::vec3& scale) { _transform.scale = scale; }

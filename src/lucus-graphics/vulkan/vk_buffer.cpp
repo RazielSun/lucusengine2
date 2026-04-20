@@ -8,9 +8,10 @@ void vk_buffer::init(VkDevice device, VkPhysicalDevice gpu, VkDeviceSize size, V
 {
     _device = device;
     _gpu = gpu;
-    _size = size;
+    _rawSize = size;
+    _size = (size + 255) & ~255;
 
-    utils::createBuffer(_device, _gpu, size, usage, properties, _buffer, _memory);
+    utils::createBuffer(_device, _gpu, _size, usage, properties, _buffer, _memory);
 }
 
 void vk_buffer::cleanup()

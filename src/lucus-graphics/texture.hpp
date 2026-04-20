@@ -4,6 +4,7 @@
 
 #include "object.hpp"
 #include "render_types.hpp"
+#include "gltf_utils.hpp"
 
 namespace lucus
 {
@@ -12,9 +13,21 @@ namespace lucus
         friend class renderer;
 
     public:
-        static texture* create_factory(const std::string& fileName);
+        static texture* create_factory();
+        static texture* create_one_factory(u8 r, u8 g, u8 b, u8 a);
 
         const std::string& getFileName() const { return _fileName; }
+        void setFileName(const std::string& inFileName) { _fileName = inFileName; }
+
+        bool IsInitialized() const { return bInitialized; }
+
+        void initResource();
+        void freeResource();
+        const u8* getResource() const { return (_imageResource) ? _imageResource.get() : data.data(); }
+
+        u32 getWidth() const { return imageWidth; }
+        u32 getHeight() const { return imageHeight; }
+        u32 getBytesPerPixel() const { return imageBytesPerPixel; }
 
         u32 getHash() const;
     
@@ -24,8 +37,22 @@ namespace lucus
 
     private:
         std::string _fileName;
+        u32 _uid {0};
+
+        bool bInitialized{false};
+        texture_format _imageFormat = texture_format::RGB_ALPHA;
+        stbi_image_ptr _imageResource { nullptr };
+        u32 imageWidth;
+        u32 imageHeight;
+        u32 imageChannels;
+        u32 imageBytesPerPixel{4};
+
+        // custom
+        std::vector<u8> data;
 
         // transient
         texture_handle _texture_handle;
     };
+
+    texture* create_texture_factory(const std::string& fileName);
 } // namespace lucus

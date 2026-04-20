@@ -1,26 +1,31 @@
-#include "camera.hpp"
+#include "lights.hpp"
 
 using namespace lucus;
 
-void camera::setPosition(const glm::vec3& pos)
+void directional_light::setPosition(const glm::vec3& pos)
 {
     _transform.position = pos;
     bViewMatrixDirty = true;
 }
 
-void camera::setRotation(const glm::quat& rot)
+void directional_light::setRotation(const glm::quat& rot)
 {
     _transform.rotation = rot;
     bViewMatrixDirty = true;
 }
 
-void camera::setRotationEuler(const glm::vec3& eulerAngles)
+void directional_light::setRotationEuler(const glm::vec3& eulerAngles)
 {
     _transform.rotation = glm::quat(glm::radians(eulerAngles));
     bViewMatrixDirty = true;
 }
 
-glm::mat4 camera::getViewMatrix() const
+glm::vec3 directional_light::getDirection() const
+{
+    return glm::normalize(_transform.rotation * glm::vec3(0.0f, 0.0f, -1.0f));
+}
+
+glm::mat4 directional_light::getViewMatrix() const
 {
     if (bViewMatrixDirty)
     {
@@ -34,7 +39,7 @@ glm::mat4 camera::getViewMatrix() const
     return cachedViewMatrix;
 }
 
-glm::mat4 camera::getProjectionMatrix(float aspectRatio) const
+glm::mat4 directional_light::getProjectionMatrix() const
 {
-    return glm::perspective(_fovYRadians, aspectRatio, _zNear, _zFar);
+    return glm::ortho(-_orthoSize, _orthoSize, -_orthoSize, _orthoSize, _zNear, _zFar);
 }

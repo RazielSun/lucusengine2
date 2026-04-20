@@ -22,6 +22,15 @@ dx_dynamic_rhi::dx_dynamic_rhi()
 
 dx_dynamic_rhi::~dx_dynamic_rhi()
 {
+    fence.Reset();
+    if (fenceEvent) {
+        CloseHandle((HANDLE)fenceEvent);
+        fenceEvent = nullptr;
+    }
+
+    commandBuffer.Reset();
+    commandPool.cleanup();
+
     _texFence.Reset();
     if (_texFenceEvent) {
         CloseHandle((HANDLE)_texFenceEvent);
@@ -50,7 +59,8 @@ void dx_dynamic_rhi::init()
 {
     createInstance();
     createDevice();
-    initTextureCmdResources();
+    createSyncObjects();
+    createCommandBufferPool();
 }
 
 window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& handle) 
@@ -96,10 +106,10 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     // uint32_t bufferIndex = ctx.backBufferIndex % g_framesInFlight;
 
     // Here or in beginFrame?
-    ThrowIfFailed(ctx.commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
-    ThrowIfFailed(ctx.commandBuffer->Reset(ctx.commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
+    ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
+    ThrowIfFailed(commandBuffer->Reset(commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
     
-    if (!ctx.commandBuffer)
+    if (!commandBuffer)
         throw std::runtime_error("Command buffer is null");
 
     if (!ctx.mRTVHeap)
@@ -119,7 +129,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     barrier_begin.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
     barrier_begin.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier_begin.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    ctx.commandBuffer->ResourceBarrier(1, &barrier_begin);
+    commandBuffer->ResourceBarrier(1, &barrier_begin);
 
     for (u32 i = 0; i < cmd.commandCount; ++i)
     {
@@ -132,7 +142,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
 
                     // Com<ID3D12GraphicsCommandList4> cmd4;
-                    // ctx.commandBuffer.As(&cmd4);
+                    // commandBuffer.As(&cmd4);
 
                     D3D12_CPU_DESCRIPTOR_HANDLE rtv = ctx.mRTVHeap->GetCPUDescriptorHandleForHeapStart();
                     rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
@@ -155,18 +165,18 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     // depthDesc.DepthBeginningAccess.Clear.ClearValue.DepthStencil.Depth = 1.0f;
                     // depthDesc.DepthEndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
 
-                    // ctx.commandBuffer->BeginRenderPass(1, &colorDesc, &depthDesc,D3D12_RENDER_PASS_FLAG_NONE);
+                    // commandBuffer->BeginRenderPass(1, &colorDesc, &depthDesc,D3D12_RENDER_PASS_FLAG_NONE);
 
                     const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-                    ctx.commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-                    ctx.commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
-                    ctx.commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+                    commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+                    commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
+                    commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
                 }
                 break;
             case gpu_command_type::RENDER_PASS_END:
                 {
-                    // ctx.commandBuffer->EndRenderPass();
+                    // commandBuffer->EndRenderPass();
                 }
                 break;
             case gpu_command_type::SET_VIEWPORT:
@@ -179,7 +189,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     viewport.Height = float(vp_cmd->height);
                     viewport.MinDepth = 0.f;
                     viewport.MaxDepth = 1.f;
-                    ctx.commandBuffer->RSSetViewports(1, &viewport);
+                    commandBuffer->RSSetViewports(1, &viewport);
                 }
                 break;
             case gpu_command_type::SET_SCISSOR:
@@ -190,7 +200,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     scissor.top = sc_cmd->offset_y;
                     scissor.right = sc_cmd->extent_x;
                     scissor.bottom = sc_cmd->extent_y;
-                    ctx.commandBuffer->RSSetScissorRects(1, &scissor);
+                    commandBuffer->RSSetScissorRects(1, &scissor);
                 }
                 break;
             case gpu_command_type::BIND_PIPELINE:
@@ -199,8 +209,8 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto found = _pipelineStates.find(bp_cmd->pso_handle.get());
                     assert(found != _pipelineStates.end());
                     auto& pso = found->second;
-                    ctx.commandBuffer->SetGraphicsRootSignature(pso.getRootSignature().Get());
-                    ctx.commandBuffer->SetPipelineState(pso.getPipeline().Get());
+                    commandBuffer->SetGraphicsRootSignature(pso.getRootSignature().Get());
+                    commandBuffer->SetPipelineState(pso.getPipeline().Get());
                 }
                 break;
             case gpu_command_type::BIND_UNIFORM_BUFFER:
@@ -209,7 +219,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     // auto found = _pipelineStates.find(bu_cmd->pso_handle.get());
                     // auto& pso = found->second;
                     auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
-                    ctx.commandBuffer->SetGraphicsRootConstantBufferView((u32)bu_cmd->position, ub.get(currentFrame)->GetGPUVirtualAddress());
+                    commandBuffer->SetGraphicsRootConstantBufferView((u32)bu_cmd->position, ub.get(currentFrame)->GetGPUVirtualAddress());
                 }
                 break;
             case gpu_command_type::BIND_TEXTURE:
@@ -235,8 +245,8 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = tex.samplerHeap->GetGPUDescriptorHandleForHeapStart();
                     samplerHandle.ptr += static_cast<UINT64>(tex_slot) * samplerDescriptorSize;
                     
-                    ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 0, srvHandle);
-                    ctx.commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 1, samplerHandle);
+                    commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 0, srvHandle);
+                    commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 1, samplerHandle);
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -245,7 +255,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto found = _meshes.find(bv_cmd->msh_handle.get());
                     assert(found != _meshes.end());
                     auto& gpuMesh = found->second;
-                    ctx.commandBuffer->IASetVertexBuffers(0, 1, &gpuMesh.vbView);
+                    commandBuffer->IASetVertexBuffers(0, 1, &gpuMesh.vbView);
                 }
                 break;
             case gpu_command_type::DRAW_INDEXED:
@@ -254,16 +264,16 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto found = _meshes.find(di_cmd->msh_handle.get());
                     assert(found != _meshes.end());
                     auto& gpuMesh = found->second;
-                    ctx.commandBuffer->IASetIndexBuffer(&gpuMesh.ibView);
-                    ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-                    ctx.commandBuffer->DrawIndexedInstanced(di_cmd->indexCount, 1, 0, 0, 0);
+                    commandBuffer->IASetIndexBuffer(&gpuMesh.ibView);
+                    commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    commandBuffer->DrawIndexedInstanced(di_cmd->indexCount, 1, 0, 0, 0);
                 }
                 break;
             case gpu_command_type::DRAW_VERTEX:
                 {
                     const auto* dv_cmd = reinterpret_cast<const gpu_draw_vertex_command*>(data);
-                    ctx.commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-                    ctx.commandBuffer->DrawInstanced(dv_cmd->vertexCount, 1, 0, 0);
+                    commandBuffer->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                    commandBuffer->DrawInstanced(dv_cmd->vertexCount, 1, 0, 0);
                 }
                 break;
             default:
@@ -282,30 +292,28 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     barrier_end.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
     barrier_end.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
-    ctx.commandBuffer->ResourceBarrier(1, &barrier_end);
+    commandBuffer->ResourceBarrier(1, &barrier_end);
 
-    ThrowIfFailed(ctx.commandBuffer->Close(), "Failed Close Command Buffer");
+    ThrowIfFailed(commandBuffer->Close(), "Failed Close Command Buffer");
 
-    ID3D12CommandList* command_lists[] = { ctx.commandBuffer.Get() };
+    ID3D12CommandList* command_lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
     ThrowIfFailed(ctx.swapChain->Present(1, 0), "Failed SwapChain Preset");
 
-    //
+    const uint64_t current_fence = fenceValues[currentFrame];
 
-    const uint64_t current_fence = ctx.fenceValues[currentFrame];
-
-    ThrowIfFailed(_commandQueue->Signal(ctx.fence.Get(), current_fence), "Failed Queue Signal");
+    ThrowIfFailed(_commandQueue->Signal(fence.Get(), current_fence), "Failed Queue Signal");
 
     ctx.backBufferIndex = ctx.swapChain->GetCurrentBackBufferIndex();
 
-    if (ctx.fence->GetCompletedValue() < ctx.fenceValues[currentFrame])
+    if (fence->GetCompletedValue() < fenceValues[currentFrame])
     {
-        ThrowIfFailed(ctx.fence->SetEventOnCompletion(ctx.fenceValues[currentFrame], (HANDLE)ctx.fenceEvent), "Failed Set Event OnCompletion");
-        WaitForSingleObject((HANDLE)ctx.fenceEvent, INFINITE);
+        ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[currentFrame], (HANDLE)fenceEvent), "Failed Set Event OnCompletion");
+        WaitForSingleObject((HANDLE)fenceEvent, INFINITE);
     }
 
-    ctx.fenceValues[currentFrame] = current_fence + 1;
+    fenceValues[currentFrame] = current_fence + 1;
 }
 
 pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
@@ -417,7 +425,7 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-texture_handle dx_dynamic_rhi::loadTexture(texture* tex)
+texture_handle dx_dynamic_rhi::loadTexture(texture* tex, u32 frameIndex)
 {
     assert(tex != nullptr);
     u32 texHash = tex->getHash();
@@ -434,20 +442,20 @@ texture_handle dx_dynamic_rhi::loadTexture(texture* tex)
 
     dxtex.init(_deviceHandle, tex);
 
-    uploadTextureToGpu(dxtex);
+    uploadTextureToGpu(dxtex, frameIndex);
     
     std::printf("Texture %u loaded successfully\n", texHash);
 
     return texture_handle(texHash);
 }
 
-uniform_buffer_handle dx_dynamic_rhi::createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize)
+uniform_buffer_handle dx_dynamic_rhi::createUniformBuffer(size_t bufferSize)
 {
     dx_uniform_buffer& buffer = _uniformBuffers.emplace_back();
     buffer.init(_deviceHandle, bufferSize);
 
     uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));
-    std::printf("Uniform buffer %d [Type: %d] created successfully\n", ub_handle.get(), (u32)ub_type);
+    std::printf("Uniform buffer %d created successfully\n", ub_handle.get());
 
     return ub_handle;
 }
@@ -585,35 +593,43 @@ void dx_dynamic_rhi::createDevice()
 //     ++_fenceValues[_currentFrame];
 // }
 
-void dx_dynamic_rhi::initTextureCmdResources()
+void dx_dynamic_rhi::createSyncObjects()
 {
     // Create synchronization objects.
+	ThrowIfFailed(_deviceHandle->CreateFence(fenceValues[0], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)), "Failed Create Fence");
+	fenceValues[0]++;
 
-    ThrowIfFailed(_deviceHandle->CreateFence(_texFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_texFence)), "Failed Create TexFence");
-	_texFenceValue++;
-
-	_texFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-	if (_texFenceEvent == nullptr)
+	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (fenceEvent == nullptr)
 	{
-		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), " Failed Create Tex Fence Event");
+		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), " Failed Create Event");
 	}
 
-    ThrowIfFailed(_deviceHandle->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(_texCmdAllocator.ReleaseAndGetAddressOf())), "Failed Create Tex Command Allocator");
-
-    // Create command list for recording graphics commands
-	ThrowIfFailed(_deviceHandle->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, _texCmdAllocator.Get(), nullptr, IID_PPV_ARGS(_texCmdBuffer.ReleaseAndGetAddressOf())),
-        "Failed Create Tex Command List"
-    );
-	ThrowIfFailed(_texCmdBuffer->Close(), "Failed Close Tex Command List");
-	_texCmdBuffer->SetName(L"Tex Command List");
-
-    std::printf("Texture Command Buffer Resources created successfully\n");
+    std::printf("ID3D12Fence created successfully\n");
 }
 
-void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
+void dx_dynamic_rhi::createCommandBufferPool()
 {
-    ThrowIfFailed(_texCmdAllocator->Reset(), "Failed Reset Tex Command Allocator");
-    ThrowIfFailed(_texCmdBuffer->Reset(_texCmdAllocator.Get(), nullptr), "Failed Reset Tex Command Buffer");
+    commandPool.init(_deviceHandle);
+
+    // Create command list for recording graphics commands
+	ThrowIfFailed(_deviceHandle->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, commandPool.commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(commandBuffer.ReleaseAndGetAddressOf())),
+        "Failed Create Command List"
+    );
+	ThrowIfFailed(commandBuffer->Close(), "Failed Close Command List");
+	commandBuffer->SetName(L"Command List");
+
+    std::printf("ID3D12GraphicsCommandList created successfully\n");
+}
+
+void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
+{
+    u32 currentFrame = frameIndex % g_framesInFlight;
+
+    // TODO: Upload several textures during the cmd
+
+    ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
+    ThrowIfFailed(commandBuffer->Reset(commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
     
     // --- Copy buffer → texture ---
     D3D12_SUBRESOURCE_DATA subresource{};
@@ -622,7 +638,7 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
     subresource.SlicePitch = subresource.RowPitch * tex.height;
 
     UpdateSubresources(
-        _texCmdBuffer.Get(),
+        commandBuffer.Get(),
         tex.texResource.Get(),
         tex.stgBuffer.Get(),
         0,
@@ -638,22 +654,22 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex)
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
         );
 
-    _texCmdBuffer->ResourceBarrier(1, &barrier);
+    commandBuffer->ResourceBarrier(1, &barrier);
 
     // --- Submit ---
-    _texCmdBuffer->Close();
+    commandBuffer->Close();
 
-    ID3D12CommandList* lists[] = { _texCmdBuffer.Get() };
+    ID3D12CommandList* lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, lists);
 
     // --- Fence wait (sync) ---
-    _texFenceValue++;
-    _commandQueue->Signal(_texFence.Get(), _texFenceValue);
+    fenceValues[currentFrame]++;
+    _commandQueue->Signal(fence.Get(), fenceValues[currentFrame]);
 
-    if (_texFence->GetCompletedValue() < _texFenceValue)
+    if (fence->GetCompletedValue() < fenceValues[currentFrame])
     {
-        _texFence->SetEventOnCompletion(_texFenceValue, _texFenceEvent);
-        WaitForSingleObject(_texFenceEvent, INFINITE);
+        fence->SetEventOnCompletion(fenceValues[currentFrame], fenceEvent);
+        WaitForSingleObject(fenceEvent, INFINITE);
     }
 
     // --- Cleanup ---

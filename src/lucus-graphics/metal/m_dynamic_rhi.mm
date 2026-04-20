@@ -327,7 +327,7 @@ texture_handle m_dynamic_rhi::loadTexture(texture* tex)
     return texture_handle(texHash);
 }
 
-uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize)
+uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(size_t bufferSize)
 {
     auto& buffer = _uniformBuffers.emplace_back();
     
@@ -335,7 +335,7 @@ uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(uniform_buffer_type ub_
 
     uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));
 
-    std::printf("Uniform buffer %d [Type: %d] created successfully\n", ub_handle.get(), (u32)ub_type);
+    std::printf("Uniform buffer %d created successfully\n", ub_handle.get());
 
     return ub_handle;
 }
@@ -363,17 +363,6 @@ void m_dynamic_rhi::createDevice()
 
     _deviceHandle = _device->getDevice();
 }
-
-// void m_dynamic_rhi::createObjectUniformBuffers()
-// {
-//     size_t size = sizeof(object_uniform_buffer) * g_maxObjectBufferCount;
-//     for (int i = 0; i < g_framesInFlight; ++i)
-//     {
-//         _objectUniformBuffers[i].init(_deviceHandle, size);
-//     }
-
-//     std::printf("Frame & Object uniform buffers created successfully\n");
-// }
 
 void m_dynamic_rhi::uploadTextureToGpu(m_texture& tex)
 {

@@ -10,8 +10,8 @@ ConstantBuffer<ObjectUniforms> gObject : register(b1);
 VSOutput vsMain(VSInput input)
 {
     float4 worldPos = mul(gObject.model, float4(input.position, 1.0));
-    float4 viewPos  = mul(gFrame.view, worldPos);
-    float4 clipPos  = mul(gFrame.proj, viewPos);
+    float4 viewPos = mul(gFrame.view, worldPos);
+    float4 clipPos = mul(gFrame.proj, viewPos);
 
     VSOutput o;
     o.position = clipPos;
@@ -20,9 +20,9 @@ VSOutput vsMain(VSInput input)
     return o;
 }
 
-[[vk::binding(0, 2)]]
+[[vk::binding(0, 3)]]
 Texture2D gAlbedo : register(t0);
-[[vk::binding(1, 2)]]
+[[vk::binding(0, 4)]]
 SamplerState gSampler : register(s0);
 
 [shader("fragment")]

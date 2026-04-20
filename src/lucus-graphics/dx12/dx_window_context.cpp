@@ -52,8 +52,6 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
     createDSVHeap();
     createRenderTargets();
     createDepthStencils();
-    createSyncObjects();
-    createCommandBufferPool();
 }
 
 void dx_window_context::cleanup()
@@ -62,20 +60,11 @@ void dx_window_context::cleanup()
     {
         mDepthStencils[i].Reset();
     }
-
-    fence.Reset();
-    if (fenceEvent) {
-        CloseHandle((HANDLE)fenceEvent);
-        fenceEvent = nullptr;
-    }
-
+    
     for (int i = 0; i < mRenderTargets.size(); ++i)
     {
         mRenderTargets[i].Reset();
     }
-
-    commandBuffer.Reset();
-    commandPool.cleanup();
 
     mDSVHeap.Reset();
     mRTVHeap.Reset();
@@ -176,33 +165,4 @@ void dx_window_context::createDepthStencils()
     }
 
     std::printf("Depth Stencils created successfully\n");
-}
-
-void dx_window_context::createSyncObjects()
-{
-    // Create synchronization objects.
-	ThrowIfFailed(mDevice->CreateFence(fenceValues[0], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)), "Failed Create Fence");
-	fenceValues[0]++;
-
-	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-	if (fenceEvent == nullptr)
-	{
-		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), " Failed Create Event");
-	}
-
-    std::printf("ID3D12Fence created successfully\n");
-}
-
-void dx_window_context::createCommandBufferPool()
-{
-    commandPool.init(mDevice);
-
-    // Create command list for recording graphics commands
-	ThrowIfFailed(mDevice->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, commandPool.commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(commandBuffer.ReleaseAndGetAddressOf())),
-        "Failed Create Command List"
-    );
-	ThrowIfFailed(commandBuffer->Close(), "Failed Close Command List");
-	commandBuffer->SetName(L"Command List");
-
-    std::printf("ID3D12GraphicsCommandList created successfully\n");
 }

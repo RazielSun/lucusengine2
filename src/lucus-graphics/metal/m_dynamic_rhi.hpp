@@ -26,7 +26,7 @@ namespace lucus
             virtual mesh_handle createMesh(mesh* msh) override;
             virtual texture_handle loadTexture(texture* tex) override;
 
-            virtual uniform_buffer_handle createUniformBuffer(uniform_buffer_type ub_type, size_t bufferSize) override;
+            virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize) override;
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
             virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;

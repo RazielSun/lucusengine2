@@ -48,8 +48,8 @@ VSOutput vsMain(uint vertexID : SV_VertexID)
     float3 color = colors[i];
 
     float4 worldPos = mul(gObject.model, float4(localPos, 1.0));
-    float4 viewPos  = mul(gFrame.view, worldPos);
-    float4 clipPos  = mul(gFrame.proj, viewPos);
+    float4 viewPos = mul(gFrame.view, worldPos);
+    float4 clipPos = mul(gFrame.proj, viewPos);
 
     VSOutput o;
     o.position = clipPos;

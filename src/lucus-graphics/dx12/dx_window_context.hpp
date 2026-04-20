@@ -20,19 +20,12 @@ namespace lucus
         u32 width;
         u32 height;
 
-        dx_commandbuffer_pool commandPool;
-        Com<ID3D12GraphicsCommandList> commandBuffer;
-
         Com<ID3D12DescriptorHeap> mRTVHeap;
         uint32_t mRTVDescriptorSize = 0;
 
         std::array<Com<ID3D12Resource>, g_swapchainImageCount> mRenderTargets{};
 
         uint32_t backBufferIndex{ 0 };
-
-        Com<ID3D12Fence> fence;
-        std::array<uint64_t, g_framesInFlight> fenceValues{};
-        void* fenceEvent = nullptr;
 
         Com<ID3D12DescriptorHeap> mDSVHeap;
         uint32_t mDSVDescriptorSize = 0;
@@ -41,12 +34,10 @@ namespace lucus
         DXGI_FORMAT mDepthFormat = DXGI_FORMAT_D32_FLOAT;
 
         protected:
-            void createCommandBufferPool();
             void createRTVHeaps();
             void createDSVHeap();
             void createRenderTargets();
             void createDepthStencils();
-            void createSyncObjects();
         
         private:
             Com<IDXGIFactory4> mDXGIFactory;

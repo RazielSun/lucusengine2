@@ -237,6 +237,50 @@ namespace utils
         return true;
     }
 
+    bool read_normals(const tg3_model& model, const tg3_primitive& primitive, std::vector<lucus::vertex>& outVertices)
+    {
+        const int32_t normalAccessorIndex = find_attribute_accessor_index(primitive, "NORMAL");
+        if (normalAccessorIndex < 0)
+        {
+            return true;
+        }
+
+        const tg3_accessor* accessor = get_accessor(model, normalAccessorIndex);
+        if (!accessor)
+        {
+            std::printf("mesh::create_gltf_factory: invalid NORMAL accessor.\n");
+            return false;
+        }
+
+        if (accessor->component_type != TG3_COMPONENT_TYPE_FLOAT || accessor->type != TG3_TYPE_VEC3)
+        {
+            std::printf("mesh::create_gltf_factory: NORMAL accessor must be float VEC3.\n");
+            return false;
+        }
+
+        if (accessor->count != outVertices.size())
+        {
+            std::printf("mesh::create_gltf_factory: NORMAL count does not match POSITION count.\n");
+            return false;
+        }
+
+        int32_t stride = 0;
+        const uint8_t* data = get_accessor_data(model, *accessor, stride);
+        if (!data)
+        {
+            std::printf("mesh::create_gltf_factory: failed to access NORMAL buffer data.\n");
+            return false;
+        }
+
+        for (uint64_t i = 0; i < accessor->count; ++i)
+        {
+            const float* normal = reinterpret_cast<const float*>(data + (i * stride));
+            outVertices[static_cast<size_t>(i)].normal = glm::vec3(normal[0], normal[1], normal[2]);
+        }
+
+        return true;
+    }
+
     bool read_vertex_colors(const tg3_model& model, const tg3_primitive& primitive, std::vector<lucus::vertex>& outVertices)
     {
         const int32_t colorAccessorIndex = find_attribute_accessor_index(primitive, "COLOR_0");
@@ -402,6 +446,51 @@ namespace utils
         return &model.scenes[sceneIndex];
     }
 
+    const tg3_material* get_material(const tg3_model& model, int32_t materialIndex)
+    {
+        if (materialIndex < 0 || static_cast<uint32_t>(materialIndex) >= model.materials_count)
+        {
+            return nullptr;
+        }
+
+        return &model.materials[materialIndex];
+    }
+
+    const tg3_light* get_light(const tg3_model& model, int32_t lightIndex)
+    {
+        if (lightIndex < 0 || static_cast<uint32_t>(lightIndex) >= model.lights_count)
+        {
+            return nullptr;
+        }
+
+        return &model.lights[lightIndex];
+    }
+
+    std::string str_to_string(tg3_str str)
+    {
+        if (!str.data || str.len == 0)
+        {
+            return {};
+        }
+
+        return std::string(str.data, str.len);
+    }
+
+    lucus::material* create_material_from_gltf(const tg3_material& sourceMaterial)
+    {
+        std::string shaderName = str_to_string(sourceMaterial.name);
+        if (shaderName.empty())
+        {
+            shaderName = "simple_unlit";
+        }
+
+        lucus::material* mat = lucus::material::create_factory(shaderName);
+        mat->setUseFrameUniformBuffer(true);
+        mat->setUseObjectUniformBuffer(true);
+        mat->setUseVertexIndexBuffers(true);
+        return mat;
+    }
+
     lucus::transform matrix_to_transform(const glm::mat4& matrix);
 
     glm::mat4 get_node_local_matrix(const tg3_node& node)
@@ -510,6 +599,11 @@ namespace utils
             return nullptr;
         }
 
+        if (!read_normals(model, primitive, vertices))
+        {
+            return nullptr;
+        }
+
         if (!read_tex_coords(model, primitive, vertices))
         {
             return nullptr;
@@ -526,6 +620,11 @@ namespace utils
         loadedMesh->setIndices(std::move(indices));
         return loadedMesh;
     }
+}
+
+void lucus::stbi_deleter::operator()(u8* p) const
+{
+    stbi_image_free(p);
 }
 
 lucus::mesh* lucus::load_mesh_gltf(const std::string& fileName)
@@ -581,6 +680,11 @@ lucus::mesh* lucus::load_mesh_gltf(const std::string& fileName)
         return nullptr;
     }
 
+    if (!read_normals(*model.get(), primitive, vertices))
+    {
+        return nullptr;
+    }
+
     if (!read_tex_coords(*model.get(), primitive, vertices))
     {
         return nullptr;
@@ -600,6 +704,11 @@ lucus::mesh* lucus::load_mesh_gltf(const std::string& fileName)
 }
 
 lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
+{
+    return load_scene_with_material_gltf(fileName, nullptr);
+}
+
+lucus::scene* lucus::load_scene_with_material_gltf(const std::string& fileName, lucus::material* override_mat)
 {
     using namespace utils;
 
@@ -629,10 +738,16 @@ lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
     const tg3_model& sourceModel = *model.get();
     scene* loadedScene = scene::create_factory();
 
-    material* sharedMaterial = material::create_factory("simple");
-    sharedMaterial->setUseFrameUniformBuffer(true);
-    sharedMaterial->setUseObjectUniformBuffer(true);
-    sharedMaterial->setUseVertexIndexBuffers(true);
+    std::vector<intrusive_ptr<material>> materialCache(static_cast<size_t>(sourceModel.materials_count));
+    if (!override_mat)
+    {
+        for (uint32_t materialIndex = 0; materialIndex < sourceModel.materials_count; ++materialIndex)
+        {
+            material* importedMaterial = create_material_from_gltf(sourceModel.materials[materialIndex]);
+            materialCache[materialIndex] = intrusive_ptr<material>(importedMaterial);
+            importedMaterial->releaseRef();
+        }
+    }
 
     std::vector<std::vector<mesh*>> meshCache(static_cast<size_t>(sourceModel.meshes_count));
     for (uint32_t meshIndex = 0; meshIndex < sourceModel.meshes_count; ++meshIndex)
@@ -657,6 +772,20 @@ lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
         const glm::mat4 worldMatrix = parentMatrix * get_node_local_matrix(*node);
         const glm::quat worldRotation = glm::normalize(parentRotation * get_node_local_rotation(*node));
 
+        if (!loadedScene->getDirectionalLight() && node->light >= 0)
+        {
+            const tg3_light* sourceLight = get_light(sourceModel, node->light);
+            if (sourceLight && tg3_str_equals_cstr(sourceLight->type, "directional"))
+            {
+                directional_light* dirLight = directional_light::create_factory();
+                const transform lightTransform = matrix_to_transform(worldMatrix);
+                dirLight->setPosition(lightTransform.position);
+                dirLight->setRotation(worldRotation);
+                loadedScene->setDirectionalLight(dirLight);
+                dirLight->releaseRef();
+            }
+        }
+
         if (node->mesh >= 0)
         {
             const tg3_mesh* sourceMesh = get_mesh(sourceModel, node->mesh);
@@ -673,7 +802,16 @@ lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
 
                     render_object* obj = loadedScene->newObject();
                     obj->setMesh(primitiveMesh);
-                    obj->setMaterial(sharedMaterial);
+                    material* primitiveMaterial = override_mat;
+                    if (!primitiveMaterial)
+                    {
+                        const tg3_material* sourceMaterial = get_material(sourceModel, sourceMesh->primitives[primitiveIndex].material);
+                        if (sourceMaterial)
+                        {
+                            primitiveMaterial = materialCache[static_cast<size_t>(sourceMesh->primitives[primitiveIndex].material)].get();
+                        }
+                    }
+                    obj->setMaterial(primitiveMaterial);
                     obj->setTransform(matrix_to_transform(worldMatrix));
                 }
             }
@@ -751,26 +889,13 @@ lucus::scene* lucus::load_scene_gltf(const std::string& fileName)
     return loadedScene;
 }
 
-void* lucus::load_texture(const std::string& fileName, int& texWidth, int& texHeight, int& texChannels)
+lucus::stbi_image_ptr lucus::load_texture(const std::string& fileName, int& texWidth, int& texHeight, int& texChannels, texture_format format)
 {
     const std::string filePath = filesystem::instance().get_path(fileName);
-
-    // TODO: 
-    auto imageLoadType = STBI_rgb_alpha;
-
-    stbi_uc* pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, imageLoadType);
+    stbi_uc* pixels = stbi_load(filePath.c_str(), &texWidth, &texHeight, &texChannels, (u8)format);
     if (!pixels) {
         throw std::runtime_error("failed to load texture image!");
     }
 
-    return reinterpret_cast<void*>(pixels);
-}
-
-void lucus::free_texture(void* texture_ptr)
-{
-    stbi_uc* pixels = reinterpret_cast<stbi_uc*>(texture_ptr);
-    if (!pixels) {
-        throw std::runtime_error("failed to free texture image!");
-    }
-    stbi_image_free(pixels);
+    return stbi_image_ptr(pixels);
 }

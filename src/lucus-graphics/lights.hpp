@@ -8,12 +8,12 @@
 
 namespace lucus
 {
-    class camera : public object
+    class directional_light : public object
     {
         friend class renderer;
         
     public:
-        static camera* create_factory() { return new camera(); }
+        static directional_light* create_factory() { return new directional_light(); }
 
         void setPosition(const glm::vec3& pos);
         glm::vec3 getPosition() const { return _transform.position; }
@@ -21,12 +21,15 @@ namespace lucus
         void setRotation(const glm::quat& rot);
         glm::quat getRotation() const { return _transform.rotation; }
         void setRotationEuler(const glm::vec3& eulerAngles);
-        void setFovYRadians(float fovYRadians) { _fovYRadians = fovYRadians; }
+
+        glm::vec3 getDirection() const;
+
+        void setOrthoSize(float orthoSize) { _orthoSize = orthoSize; }
         void setZNear(float zNear) { _zNear = zNear; }
         void setZFar(float zFar) { _zFar = zFar; }
 
         glm::mat4 getViewMatrix() const;
-        glm::mat4 getProjectionMatrix(float aspectRatio) const;
+        glm::mat4 getProjectionMatrix() const;
     
     protected:
         const uniform_buffer_handle& getHandle() const { return _handle; }
@@ -35,9 +38,9 @@ namespace lucus
     private:
         transform _transform;
 
-        float _fovYRadians = glm::radians(60.0f);
+        float _orthoSize = 50.0f;
         float _zNear = 0.1f;
-        float _zFar = 1000.0f;
+        float _zFar = 500.0f;
 
         mutable bool bViewMatrixDirty = true;
         mutable glm::mat4 cachedViewMatrix;
