@@ -67,10 +67,8 @@ namespace lucus
             std::unordered_map<u32, dx_texture> _textures;
             std::vector<dx_sampler> _samplers;
 
-            std::array<dx_heap_allocator, g_framesInFlight> srvAllocators{};
-            std::array<dx_heap_allocator, g_framesInFlight> samplerAllocators{};
-            Com<ID3D12DescriptorHeap> srvGlobalHeap;
-            Com<ID3D12DescriptorHeap> samplerGlobalHeap;
+            dx_heap_descriptor srvHeapDesc;
+            dx_heap_descriptor samplerHeapDesc;
 
             //
             dx_commandbuffer_pool commandPool;

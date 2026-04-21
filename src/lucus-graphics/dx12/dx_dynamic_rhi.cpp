@@ -37,6 +37,11 @@ dx_dynamic_rhi::~dx_dynamic_rhi()
     _uniformBuffers.clear();
 
     _pipelineStates.clear();
+    _textures.clear();
+    _samplers.clear();
+
+    srvHeapDesc.cleanup();
+    samplerHeapDesc.cleanup();
 
     for (auto& context : _contexts) {
         context.cleanup();
@@ -104,8 +109,8 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
     ThrowIfFailed(commandBuffer->Reset(commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
 
-    srvAllocators[currentFrame].reset();
-    samplerAllocators[currentFrame].reset();
+    srvHeapDesc.reset_allocator(frameIndex);
+    samplerHeapDesc.reset_allocator(frameIndex);
     
     if (!commandBuffer)
         throw std::runtime_error("Command buffer is null");
@@ -228,55 +233,30 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
                     assert(found_tex != _textures.end());
                     auto& tex = found_tex->second;
-                    
-                    u32 new_index = srvAllocators[currentFrame].allocate();
-                    const UINT srvDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                    CD3DX12_CPU_DESCRIPTOR_HANDLE dstCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-                        srvGlobalHeap->GetCPUDescriptorHandleForHeapStart(),
-                        static_cast<INT>(new_index),
-                        srvDescriptorSize);
-
-                    _deviceHandle->CopyDescriptorsSimple(1, dstCpuHandle, tex.srvCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                    srvHeapDesc.copy(tex.index, frameIndex);
                 }
                 break;
             case gpu_command_type::BIND_SAMPLER:
                 {
                     const auto* bs_cmd = reinterpret_cast<const gpu_bind_sampler_command*>(data);
                     auto& smpl = _samplers[bs_cmd->smpl_handle.as_index()];
-
-                    u32 new_index = samplerAllocators[currentFrame].allocate();
-                    const UINT samplerDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-                    CD3DX12_CPU_DESCRIPTOR_HANDLE dstCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-                        samplerGlobalHeap->GetCPUDescriptorHandleForHeapStart(),
-                        static_cast<INT>(new_index),
-                        samplerDescriptorSize);
-
-                    _deviceHandle->CopyDescriptorsSimple(1, dstCpuHandle, smpl.samplerCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+                    samplerHeapDesc.copy(smpl.index, frameIndex);
                 }
                 break;
             case gpu_command_type::BIND_DESCRIPTION_TABLE:
                 {
                     const auto* bd_cmd = reinterpret_cast<const gpu_bind_description_table_command*>(data);
-                    ID3D12DescriptorHeap* heaps[] = { srvGlobalHeap.Get(), samplerGlobalHeap.Get() };
+                    ID3D12DescriptorHeap* heaps[] = { srvHeapDesc.shaderHeap.Get(), samplerHeapDesc.shaderHeap.Get() };
                     commandBuffer->SetDescriptorHeaps(2, heaps);
 
-                    const UINT srvDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                    D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = D3D12_GPU_DESCRIPTOR_HANDLE(
-                        srvGlobalHeap->GetGPUDescriptorHandleForHeapStart(),
-                        static_cast<INT>(srvAllocators[currentFrame].head),
-                        srvDescriptorSize);
-
-                    const UINT samplerDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-                    D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = D3D12_GPU_DESCRIPTOR_HANDLE(
-                        samplerGlobalHeap->GetGPUDescriptorHandleForHeapStart(),
-                        static_cast<INT>(samplerAllocators[currentFrame].head),
-                        samplerDescriptorSize);
+                    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle = srvHeapDesc.getShaderHeadHandle(frameIndex);
+                    CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeapDesc.getShaderHeadHandle(frameIndex);
 
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::TEXTURE, srvHandle);
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER, samplerHandle);
 
-                    srvAllocators[currentFrame].head_to_current();
-                    samplerAllocators[currentFrame].head_to_current();
+                    srvHeapDesc.head_to_current(frameIndex);
+                    samplerHeapDesc.head_to_current(frameIndex);
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -455,12 +435,11 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
 
 sampler_handle dx_dynamic_rhi::createSampler()
 {
-    u32 index = static_cast<u32>(_samplers.size());
-
     auto& smpl = _samplers.emplace_back();
-    smpl.init(_deviceHandle, samplerGlobalHeap, index);
 
-    sampler_handle smpl_handle(index + 1);
+    smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, samplerHeapDesc.allocateResource());
+
+    sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));
     std::printf("Sampler %d created successfully\n", smpl_handle.get());
 
     return smpl_handle;
@@ -479,10 +458,8 @@ texture_handle dx_dynamic_rhi::createTexture(texture* tex)
     auto pair = _textures.emplace(texHash, dx_texture());
     assert(pair.second);
 
-    static u32 texture_index = 0;
-
     dx_texture& dxtex = pair.first->second;
-    dxtex.init(_deviceHandle, srvGlobalHeap, texture_index++, tex);
+    dxtex.init(_deviceHandle, srvHeapDesc.resourceHeap, srvHeapDesc.allocateResource(), tex);
     std::printf("Texture %u created successfully\n", texHash);
 
     return texture_handle(texHash);
@@ -676,33 +653,8 @@ void dx_dynamic_rhi::createCommandBufferPool()
 
 void dx_dynamic_rhi::createDescriptorHeaps()
 {
-    {
-        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-        heapDesc.NumDescriptors = g_maxTexturesCount * (g_framesInFlight + 1);
-        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
-        ThrowIfFailed(_deviceHandle->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&srvGlobalHeap)), "CreateDescriptorHeap for SRV Texture failed");
-
-        for (u32 i = 0; i < g_framesInFlight; i++)
-        {
-            srvAllocators[i].init((i + 1) * g_maxTexturesCount, g_maxTexturesCount);
-        }
-    }
-
-    {
-        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-        heapDesc.NumDescriptors = g_maxSamplersCount * (g_framesInFlight + 1);
-        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
-        ThrowIfFailed(_deviceHandle->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&samplerGlobalHeap)), "CreateDescriptorHeap Sampler failed");
-
-        for (u32 i = 0; i < g_framesInFlight; i++)
-        {
-            samplerAllocators[i].init((i + 1) * g_maxSamplersCount, g_maxSamplersCount);
-        }
-    }
+    srvHeapDesc.init(_deviceHandle, g_maxTexturesCount, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    samplerHeapDesc.init(_deviceHandle, g_maxSamplersCount, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 }
 
 void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)

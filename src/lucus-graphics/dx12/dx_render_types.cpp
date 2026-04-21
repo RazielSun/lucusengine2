@@ -128,7 +128,14 @@ void dx_texture::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> srvHea
             srvDescriptorSize);
         device->CreateShaderResourceView(texResource.Get(), &srvDesc, srvCPUHandle);
 
-        srvGPUHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(srvHeap->GetGPUDescriptorHandleForHeapStart(), static_cast<INT>(index), srvDescriptorSize);
+        if (srvHeap->GetDesc().Flags & D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE)
+        {
+            srvGPUHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(srvHeap->GetGPUDescriptorHandleForHeapStart(), static_cast<INT>(index), srvDescriptorSize);
+        }
+        else
+        {
+            srvGPUHandle = {};
+        }
     }
 }
 
@@ -161,11 +168,103 @@ void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> sample
 
         device->CreateSampler(&samplerDesc, samplerCPUHandle);
 
-        samplerGPUHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(samplerHeap->GetGPUDescriptorHandleForHeapStart(), static_cast<INT>(index), samplerDescriptorSize);
+        if (samplerHeap->GetDesc().Flags & D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE)
+        {
+            samplerGPUHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(samplerHeap->GetGPUDescriptorHandleForHeapStart(), static_cast<INT>(index), samplerDescriptorSize);
+        }
+        else
+        {
+            samplerGPUHandle = {};
+        }
     }
 }
 
 void dx_sampler::cleanup()
 {
     //
+}
+
+void dx_heap_descriptor::init(Com<ID3D12Device> device, u32 in_capacity, D3D12_DESCRIPTOR_HEAP_TYPE type)
+{
+    resourceIndex = 0;
+    capacity = in_capacity;
+    heapItemSize = device->GetDescriptorHandleIncrementSize(type);
+    _device = device;
+    heapType = type;
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+        heapDesc.NumDescriptors = capacity;
+        heapDesc.Type = type;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+        ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&resourceHeap)), "CreateDescriptorHeap failed");
+    }
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+        heapDesc.NumDescriptors = capacity * g_framesInFlight;
+        heapDesc.Type = type;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+        ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&shaderHeap)), "CreateDescriptorHeap failed");
+
+        for (u32 i = 0; i < g_framesInFlight; i++)
+        {
+            allocators[i].init(i * capacity, capacity);
+        }
+    }
+}
+
+u32 dx_heap_descriptor::allocateResource()
+{
+    assert(resourceIndex < capacity);
+    return resourceIndex++;
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getResourceHandle(u32 index) const
+{
+    return CD3DX12_CPU_DESCRIPTOR_HANDLE(
+        resourceHeap->GetCPUDescriptorHandleForHeapStart(),
+        static_cast<INT>(index),
+        heapItemSize);
+}
+
+void dx_heap_descriptor::copy(u32 index, u32 frameIndex)
+{
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    u32 new_index = allocators[currentFrame].allocate();
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dstCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+        shaderHeap->GetCPUDescriptorHandleForHeapStart(),
+        static_cast<INT>(new_index),
+        heapItemSize);
+    _device->CopyDescriptorsSimple(1, dstCpuHandle, getResourceHandle(index), heapType);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getShaderHeadHandle(u32 frameIndex) const
+{
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    return CD3DX12_GPU_DESCRIPTOR_HANDLE(
+        shaderHeap->GetGPUDescriptorHandleForHeapStart(),
+        static_cast<INT>(allocators[currentFrame].head),
+        heapItemSize);
+}
+
+void dx_heap_descriptor::reset_allocator(u32 frameIndex)
+{
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    allocators[currentFrame].reset();
+}
+
+void dx_heap_descriptor::head_to_current(u32 frameIndex)
+{
+    u32 currentFrame = frameIndex % g_framesInFlight;
+    allocators[currentFrame].head_to_current();
+}
+
+void dx_heap_descriptor::cleanup()
+{
+    _device.Reset();
+    resourceHeap.Reset();
+    shaderHeap.Reset();
 }

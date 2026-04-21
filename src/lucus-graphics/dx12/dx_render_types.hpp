@@ -66,7 +66,7 @@ namespace lucus
         void cleanup();
     };
 
-    struct dx_heap_allocator
+    struct dx_allocator
     {
         u32 initial;
         u32 capacity;
@@ -74,11 +74,35 @@ namespace lucus
         u32 head;
         u32 current;
 
-        dx_heap_allocator() {}
+        dx_allocator() {}
 
         void init(u32 in_initial, u32 in_capacity) { initial = in_initial; capacity = in_capacity; }
         void reset() { head = initial; current = initial; }
         void head_to_current() { head = current; }
         u32 allocate() { assert(current < initial + capacity); return current++; }
+    };
+
+    struct dx_heap_descriptor
+    {
+        Com<ID3D12DescriptorHeap> resourceHeap;
+        Com<ID3D12DescriptorHeap> shaderHeap;
+
+        std::array<dx_allocator, g_framesInFlight> allocators{};
+
+        u32 resourceIndex = 0;
+        u32 heapItemSize = 0;
+        u32 capacity = 0;
+        D3D12_DESCRIPTOR_HEAP_TYPE heapType;
+
+        void init(Com<ID3D12Device> device, u32 in_capacity, D3D12_DESCRIPTOR_HEAP_TYPE type);
+        u32 allocateResource();
+        CD3DX12_CPU_DESCRIPTOR_HANDLE getResourceHandle(u32 index) const;
+        CD3DX12_GPU_DESCRIPTOR_HANDLE getShaderHeadHandle(u32 frameIndex) const;
+        void copy(u32 index, u32 frameIndex);
+        void reset_allocator(u32 frameIndex);
+        void head_to_current(u32 frameIndex);
+        void cleanup();
+    private:
+        Com<ID3D12Device> _device;
     };
 }

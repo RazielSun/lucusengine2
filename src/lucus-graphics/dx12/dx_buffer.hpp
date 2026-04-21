@@ -22,6 +22,8 @@ namespace lucus
             Com<ID3D12Device> _device;
             Com<ID3D12Resource> _buffer;
             void* _mapped{ nullptr };
+            size_t alignedSize;
+            size_t _size;
     };
 
     class dx_uniform_buffer

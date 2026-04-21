@@ -3,6 +3,8 @@
 #include "filesystem.hpp"
 
 #include "mesh.hpp"
+#include "camera.hpp"
+#include "lights.hpp"
 #include "scene.hpp"
 
 #define TINYGLTF3_IMPLEMENTATION
@@ -757,7 +759,8 @@ lucus::scene* lucus::load_scene_with_material_gltf(const std::string& fileName, 
 
         for (uint32_t primitiveIndex = 0; primitiveIndex < sourceMesh.primitives_count; ++primitiveIndex)
         {
-            meshCache[meshIndex][primitiveIndex] = create_mesh_from_primitive(sourceModel, sourceMesh.primitives[primitiveIndex], filePath);
+             std::string meshPath = filePath + "#" + str_to_string(sourceMesh.name);
+            meshCache[meshIndex][primitiveIndex] = create_mesh_from_primitive(sourceModel, sourceMesh.primitives[primitiveIndex], meshPath);
         }
     }
 
