@@ -6,8 +6,10 @@ void dx_buffer::init(Com<ID3D12Device> device, size_t bufferSize)
 {
     _device = device;
 
+    size_t alignedSize = (bufferSize + 255) & ~255;
+
     CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
+    CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(alignedSize);
 
     ThrowIfFailed(device->CreateCommittedResource(
             &heapProps,

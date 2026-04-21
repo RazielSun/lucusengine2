@@ -64,16 +64,20 @@ void dx_mesh::cleanup()
     indexBuffer.cleanup();
 }
 
-void dx_texture::init(Com<ID3D12Device> device, texture* tex)
+void dx_texture::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> srvHeap, u32 in_index, texture* tex)
 {
     assert(tex);
-    
-    int texWidth, texHeight, texChannels;
-    tex_ptr = load_texture(tex->getFileName(), texWidth, texHeight, texChannels);
+    texLink.reset(tex);
+    index = in_index;
 
-    bytesPerPixel = 4; // TODO
-    width = texWidth;
-    height = texHeight;
+    if (!tex->IsInitialized())
+    {
+        tex->initResource();
+    }
+
+    width = tex->getWidth();
+    height = tex->getHeight();
+    bytesPerPixel = tex->getBytesPerPixel();
 
     texSize = width * height * bytesPerPixel;
 
@@ -111,36 +115,43 @@ void dx_texture::init(Com<ID3D12Device> device, texture* tex)
     ), "CreateCommittedResource Stage Buffer failed");
 
     {
-        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-        heapDesc.NumDescriptors = 1;
-        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
-        ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&srvHeap)), "CreateDescriptorHeap for SRV Texture failed");
-
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
         srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
-        D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle = srvHeap->GetCPUDescriptorHandleForHeapStart();
-        device->CreateShaderResourceView(
-            texResource.Get(),
-            &srvDesc,
-            srvCpuHandle
-        );
+        const UINT srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        srvCPUHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            srvHeap->GetCPUDescriptorHandleForHeapStart(),
+            static_cast<INT>(index),
+            srvDescriptorSize);
+        device->CreateShaderResourceView(texResource.Get(), &srvDesc, srvCPUHandle);
+
+        srvGPUHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(srvHeap->GetGPUDescriptorHandleForHeapStart(), static_cast<INT>(index), srvDescriptorSize);
     }
+}
 
+void dx_texture::free_staging()
+{
+    texLink.reset();
+    stgBuffer.Reset();
+}
+
+void dx_texture::cleanup()
+{
+    //
+}
+
+void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index)
+{
+    index = in_index;
     {
-        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-        heapDesc.NumDescriptors = 1;
-        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
-        ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&samplerHeap)), "CreateDescriptorHeap Sampler failed");
-
-        D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeap->GetCPUDescriptorHandleForHeapStart();
+        const UINT samplerDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+        samplerCPUHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            samplerHeap->GetCPUDescriptorHandleForHeapStart(),
+            static_cast<INT>(index),
+            samplerDescriptorSize);
 
         D3D12_SAMPLER_DESC samplerDesc{};
         samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -148,17 +159,13 @@ void dx_texture::init(Com<ID3D12Device> device, texture* tex)
         samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 
-        device->CreateSampler(&samplerDesc, samplerHandle);
+        device->CreateSampler(&samplerDesc, samplerCPUHandle);
+
+        samplerGPUHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(samplerHeap->GetGPUDescriptorHandleForHeapStart(), static_cast<INT>(index), samplerDescriptorSize);
     }
 }
 
-void dx_texture::free_staging()
-{
-    free_texture(tex_ptr);
-    stgBuffer.Reset();
-}
-
-void dx_texture::cleanup()
+void dx_sampler::cleanup()
 {
     //
 }

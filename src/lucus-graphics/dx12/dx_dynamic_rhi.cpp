@@ -31,12 +31,6 @@ dx_dynamic_rhi::~dx_dynamic_rhi()
     commandBuffer.Reset();
     commandPool.cleanup();
 
-    _texFence.Reset();
-    if (_texFenceEvent) {
-        CloseHandle((HANDLE)_texFenceEvent);
-        _texFenceEvent = nullptr;
-    }
-
     for (auto& buffer : _uniformBuffers) {
         buffer.cleanup();
     }
@@ -61,6 +55,7 @@ void dx_dynamic_rhi::init()
     createDevice();
     createSyncObjects();
     createCommandBufferPool();
+    createDescriptorHeaps();
 }
 
 window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& handle) 
@@ -108,6 +103,9 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     // Here or in beginFrame?
     ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
     ThrowIfFailed(commandBuffer->Reset(commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
+
+    srvAllocators[currentFrame].reset();
+    samplerAllocators[currentFrame].reset();
     
     if (!commandBuffer)
         throw std::runtime_error("Command buffer is null");
@@ -230,23 +228,55 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
                     assert(found_tex != _textures.end());
                     auto& tex = found_tex->second;
+                    
+                    u32 new_index = srvAllocators[currentFrame].allocate();
+                    const UINT srvDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                    CD3DX12_CPU_DESCRIPTOR_HANDLE dstCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+                        srvGlobalHeap->GetCPUDescriptorHandleForHeapStart(),
+                        static_cast<INT>(new_index),
+                        srvDescriptorSize);
 
-                    ID3D12DescriptorHeap* heaps[] = { tex.srvHeap.Get(), tex.samplerHeap.Get() };
-                    ctx.commandBuffer->SetDescriptorHeaps(2, heaps);
+                    _deviceHandle->CopyDescriptorsSimple(1, dstCpuHandle, tex.srvCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                }
+                break;
+            case gpu_command_type::BIND_SAMPLER:
+                {
+                    const auto* bs_cmd = reinterpret_cast<const gpu_bind_sampler_command*>(data);
+                    auto& smpl = _samplers[bs_cmd->smpl_handle.as_index()];
 
-                    const u32 rootIndex = (u32)bt_cmd->position;
-                    const u32 tex_slot = rootIndex - (u32)shader_binding::MATERIAL;
+                    u32 new_index = samplerAllocators[currentFrame].allocate();
+                    const UINT samplerDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+                    CD3DX12_CPU_DESCRIPTOR_HANDLE dstCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+                        samplerGlobalHeap->GetCPUDescriptorHandleForHeapStart(),
+                        static_cast<INT>(new_index),
+                        samplerDescriptorSize);
+
+                    _deviceHandle->CopyDescriptorsSimple(1, dstCpuHandle, smpl.samplerCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+                }
+                break;
+            case gpu_command_type::BIND_DESCRIPTION_TABLE:
+                {
+                    const auto* bd_cmd = reinterpret_cast<const gpu_bind_description_table_command*>(data);
+                    ID3D12DescriptorHeap* heaps[] = { srvGlobalHeap.Get(), samplerGlobalHeap.Get() };
+                    commandBuffer->SetDescriptorHeaps(2, heaps);
 
                     const UINT srvDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-                    D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = tex.srvHeap->GetGPUDescriptorHandleForHeapStart();
-                    srvHandle.ptr += static_cast<UINT64>(tex_slot) * srvDescriptorSize;
-                    
+                    D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = D3D12_GPU_DESCRIPTOR_HANDLE(
+                        srvGlobalHeap->GetGPUDescriptorHandleForHeapStart(),
+                        static_cast<INT>(srvAllocators[currentFrame].head),
+                        srvDescriptorSize);
+
                     const UINT samplerDescriptorSize = _deviceHandle->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-                    D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = tex.samplerHeap->GetGPUDescriptorHandleForHeapStart();
-                    samplerHandle.ptr += static_cast<UINT64>(tex_slot) * samplerDescriptorSize;
-                    
-                    commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 0, srvHandle);
-                    commandBuffer->SetGraphicsRootDescriptorTable(rootIndex + 1, samplerHandle);
+                    D3D12_GPU_DESCRIPTOR_HANDLE samplerHandle = D3D12_GPU_DESCRIPTOR_HANDLE(
+                        samplerGlobalHeap->GetGPUDescriptorHandleForHeapStart(),
+                        static_cast<INT>(samplerAllocators[currentFrame].head),
+                        samplerDescriptorSize);
+
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::TEXTURE, srvHandle);
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER, samplerHandle);
+
+                    srvAllocators[currentFrame].head_to_current();
+                    samplerAllocators[currentFrame].head_to_current();
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -336,59 +366,57 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
 
         init_desc.depthFormat = _contexts[0].mDepthFormat;
 
-        if (mat->useFrameUniformBuffer())
-        {
-            init_desc.layouts.emplace_back().InitAsConstantBufferView(
-                (u32)shader_binding::FRAME, // b0
-                0, // register space
-                D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
-                D3D12_SHADER_VISIBILITY_VERTEX);
-        }
+        init_desc.layouts.emplace_back().InitAsConstantBufferView(
+            (u32)shader_binding::VIEW, // b0
+            0, // register space
+            D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
+            D3D12_SHADER_VISIBILITY_VERTEX);
+        
+        init_desc.layouts.emplace_back().InitAsConstantBufferView(
+            (u32)shader_binding::OBJECT, // b1
+            0, // register space
+            D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
+            D3D12_SHADER_VISIBILITY_VERTEX);
+        
+        init_desc.layouts.emplace_back().InitAsConstantBufferView(
+            (u32)shader_binding::LIGHT, // b2
+            0, // register space
+            D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
+            D3D12_SHADER_VISIBILITY_ALL);
 
-        if (mat->useObjectUniformBuffer())
-        {
-            init_desc.layouts.emplace_back().InitAsConstantBufferView(
-                (u32)shader_binding::OBJECT, // b1
-                0, // register space
-                D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
-                D3D12_SHADER_VISIBILITY_VERTEX);
-        }
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+        ranges[0].Init(
+            D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+            1,
+            0, // t0
+            0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_NONE
+        );
 
-        if (mat->getTexturesCount() > 0)
-        {
-            CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-            ranges[0].Init(
-                D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-                1,
-                0, // t0
-                0,
-                D3D12_DESCRIPTOR_RANGE_FLAG_NONE
-            );
+        ranges[1].Init(
+            D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+            1,
+            0, // s0
+            0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_NONE
+        );
+        // TODO:
+        // texture (SRV table)
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(
+            1,
+            &ranges[0],
+            D3D12_SHADER_VISIBILITY_PIXEL);
 
-            ranges[1].Init(
-                D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
-                1,
-                0, // s0
-                0,
-                D3D12_DESCRIPTOR_RANGE_FLAG_NONE
-            );
-            // TODO:
-            // texture (SRV table)
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(
-                1,
-                &ranges[0],
-                D3D12_SHADER_VISIBILITY_PIXEL);
-
-            // sampler table
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(
-                1,
-                &ranges[1],
-                D3D12_SHADER_VISIBILITY_PIXEL);
-        }
+        // sampler table
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(
+            1,
+            &ranges[1],
+            D3D12_SHADER_VISIBILITY_PIXEL);
 
         if (mat->useVertexIndexBuffers())
         {
             init_desc.vertexLayouts.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
+            init_desc.vertexLayouts.push_back({ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(vertex, texCoords), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
         }
@@ -425,9 +453,22 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-texture_handle dx_dynamic_rhi::loadTexture(texture* tex, u32 frameIndex)
+sampler_handle dx_dynamic_rhi::createSampler()
 {
-    assert(tex != nullptr);
+    u32 index = static_cast<u32>(_samplers.size());
+
+    auto& smpl = _samplers.emplace_back();
+    smpl.init(_deviceHandle, samplerGlobalHeap, index);
+
+    sampler_handle smpl_handle(index + 1);
+    std::printf("Sampler %d created successfully\n", smpl_handle.get());
+
+    return smpl_handle;
+}
+            
+texture_handle dx_dynamic_rhi::createTexture(texture* tex)
+{
+    assert(tex);
     u32 texHash = tex->getHash();
 
     auto it = _textures.find(texHash);
@@ -438,18 +479,29 @@ texture_handle dx_dynamic_rhi::loadTexture(texture* tex, u32 frameIndex)
     auto pair = _textures.emplace(texHash, dx_texture());
     assert(pair.second);
 
+    static u32 texture_index = 0;
+
     dx_texture& dxtex = pair.first->second;
-
-    dxtex.init(_deviceHandle, tex);
-
-    uploadTextureToGpu(dxtex, frameIndex);
-    
-    std::printf("Texture %u loaded successfully\n", texHash);
+    dxtex.init(_deviceHandle, srvGlobalHeap, texture_index++, tex);
+    std::printf("Texture %u created successfully\n", texHash);
 
     return texture_handle(texHash);
 }
 
-uniform_buffer_handle dx_dynamic_rhi::createUniformBuffer(size_t bufferSize)
+void dx_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex)
+{
+    auto it = _textures.find(tex_handle.get());
+    if (it == _textures.end()) {
+        // error
+        return;
+    }
+
+    dx_texture& dxtex = it->second;
+    uploadTextureToGpu(dxtex, frameIndex);
+    std::printf("Texture %u loaded successfully\n", tex_handle.get());
+}
+
+uniform_buffer_handle dx_dynamic_rhi::createUniformBuffer(size_t bufferSize, shader_binding_stage stage)
 {
     dx_uniform_buffer& buffer = _uniformBuffers.emplace_back();
     buffer.init(_deviceHandle, bufferSize);
@@ -622,6 +674,37 @@ void dx_dynamic_rhi::createCommandBufferPool()
     std::printf("ID3D12GraphicsCommandList created successfully\n");
 }
 
+void dx_dynamic_rhi::createDescriptorHeaps()
+{
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+        heapDesc.NumDescriptors = g_maxTexturesCount * (g_framesInFlight + 1);
+        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+        ThrowIfFailed(_deviceHandle->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&srvGlobalHeap)), "CreateDescriptorHeap for SRV Texture failed");
+
+        for (u32 i = 0; i < g_framesInFlight; i++)
+        {
+            srvAllocators[i].init((i + 1) * g_maxTexturesCount, g_maxTexturesCount);
+        }
+    }
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+        heapDesc.NumDescriptors = g_maxSamplersCount * (g_framesInFlight + 1);
+        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+        ThrowIfFailed(_deviceHandle->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&samplerGlobalHeap)), "CreateDescriptorHeap Sampler failed");
+
+        for (u32 i = 0; i < g_framesInFlight; i++)
+        {
+            samplerAllocators[i].init((i + 1) * g_maxSamplersCount, g_maxSamplersCount);
+        }
+    }
+}
+
 void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
 {
     u32 currentFrame = frameIndex % g_framesInFlight;
@@ -633,7 +716,7 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
     
     // --- Copy buffer → texture ---
     D3D12_SUBRESOURCE_DATA subresource{};
-    subresource.pData = tex.tex_ptr;
+    subresource.pData = tex.texLink->getResource();
     subresource.RowPitch = tex.width * tex.bytesPerPixel;
     subresource.SlicePitch = subresource.RowPitch * tex.height;
 

@@ -19,6 +19,7 @@ namespace lucus
         BIND_UNIFORM_BUFFER,
         BIND_TEXTURE,
         BIND_SAMPLER,
+        BIND_DESCRIPTION_TABLE,
         BIND_VERTEX_BUFFER,
         DRAW_INDEXED,
         DRAW_VERTEX,
@@ -155,6 +156,11 @@ namespace lucus
         pipeline_state_handle pso_handle;
         sampler_handle smpl_handle;
         u8 position;
+    };
+
+    struct gpu_bind_description_table_command : public gpu_command_base
+    {
+        gpu_bind_description_table_command() : gpu_command_base(gpu_command_type::BIND_DESCRIPTION_TABLE) {}
     };
 
     struct gpu_bind_vertex_command : public gpu_command_base

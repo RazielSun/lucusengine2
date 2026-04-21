@@ -212,6 +212,11 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     [pass setFragmentSamplerState:smpl.sampler atIndex:(u32)bs_cmd->position - (u32)shader_binding::SAMPLER];
                 }
                 break;
+            case gpu_command_type::BIND_DESCRIPTION_TABLE:
+                {
+                    // Nothing to do
+                }
+                break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
                 {
                     const auto* bv_cmd = reinterpret_cast<const gpu_bind_vertex_command*>(data);

@@ -5,6 +5,9 @@
 #include "render_types.hpp"
 #include "dx_buffer.hpp"
 
+#include "texture.hpp"
+#include "intrusive_ptr.hpp"
+
 namespace lucus
 {
     class mesh;
@@ -35,18 +38,47 @@ namespace lucus
     {
         Com<ID3D12Resource> stgBuffer;
         Com<ID3D12Resource> texResource;
-        Com<ID3D12DescriptorHeap> srvHeap;
-        Com<ID3D12DescriptorHeap> samplerHeap;
+
+        u32 index;
+        D3D12_CPU_DESCRIPTOR_HANDLE srvCPUHandle;
+        D3D12_GPU_DESCRIPTOR_HANDLE srvGPUHandle;
+        
 
         UINT bytesPerPixel;
         UINT64 width;
         UINT64 height;
         UINT64 texSize;
 
-        void* tex_ptr;
+        intrusive_ptr<texture> texLink;
 
-        void init(Com<ID3D12Device> device, texture* tex);
+        void init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> srvHeap, u32 in_index, texture* tex);
         void free_staging();
         void cleanup();
+    };
+
+    struct dx_sampler
+    {
+        u32 index;
+        D3D12_CPU_DESCRIPTOR_HANDLE samplerCPUHandle;
+        D3D12_GPU_DESCRIPTOR_HANDLE samplerGPUHandle;
+
+        void init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index);
+        void cleanup();
+    };
+
+    struct dx_heap_allocator
+    {
+        u32 initial;
+        u32 capacity;
+
+        u32 head;
+        u32 current;
+
+        dx_heap_allocator() {}
+
+        void init(u32 in_initial, u32 in_capacity) { initial = in_initial; capacity = in_capacity; }
+        void reset() { head = initial; current = initial; }
+        void head_to_current() { head = current; }
+        u32 allocate() { assert(current < initial + capacity); return current++; }
     };
 }

@@ -169,6 +169,8 @@ void renderer::processScene(const scene* scn, const window_context_handle& ctx_h
 
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
 
+        cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+
         mesh_handle msh_handle = meshInst->getHandle();
         if (!msh_handle.is_valid()) {
             msh_handle = _dynamicRHI->createMesh(meshInst);

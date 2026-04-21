@@ -357,6 +357,11 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bs_cmd->position, 1, &smpl.descriptorSet, 0, nullptr);
                 }
                 break;
+            case gpu_command_type::BIND_DESCRIPTION_TABLE:
+                {
+                    // Nothing to do
+                }
+                break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
                 {
                     const auto* bv_cmd = reinterpret_cast<const gpu_bind_vertex_command*>(data);

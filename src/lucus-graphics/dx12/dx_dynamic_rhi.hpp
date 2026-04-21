@@ -24,9 +24,12 @@ namespace lucus
 
             virtual pipeline_state_handle createPSO(material* mat) override;
             virtual mesh_handle createMesh(mesh* msh) override;
-            virtual texture_handle loadTexture(texture* tex, u32 frameIndex) override;
 
-            virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize) override;
+            virtual sampler_handle createSampler() override;
+            virtual texture_handle createTexture(texture* tex) override;
+            virtual void loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex) override;
+
+            virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize, shader_binding_stage stage = shader_binding_stage::VERTEX) override;
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
             virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;
@@ -36,6 +39,7 @@ namespace lucus
             void createDevice();
             void createCommandBufferPool();
             void createSyncObjects();
+            void createDescriptorHeaps();
 
             // void wait_idle();
             void uploadTextureToGpu(dx_texture& tex, u32 frameIndex);
@@ -61,6 +65,12 @@ namespace lucus
 
             //
             std::unordered_map<u32, dx_texture> _textures;
+            std::vector<dx_sampler> _samplers;
+
+            std::array<dx_heap_allocator, g_framesInFlight> srvAllocators{};
+            std::array<dx_heap_allocator, g_framesInFlight> samplerAllocators{};
+            Com<ID3D12DescriptorHeap> srvGlobalHeap;
+            Com<ID3D12DescriptorHeap> samplerGlobalHeap;
 
             //
             dx_commandbuffer_pool commandPool;
