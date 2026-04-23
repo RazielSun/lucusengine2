@@ -9,24 +9,12 @@ namespace lucus
 {
     class window;
 
-    struct vk_swapchain;
-
-    struct vk_framebuffer_list
-    {
-        std::vector<vk_framebuffer> frameBuffers;
-
-        void init(VkDevice device, VkPhysicalDevice gpu, VkRenderPass renderPass, const vk_swapchain& swapchain, VkFormat depthFormat);
-        void cleanup();
-    };
-
     struct vk_swapchain
     {
         VkFormat colorFormat{};
         VkColorSpaceKHR colorSpace{};
         VkExtent2D extent{};
 
-        std::vector<VkImage> images{};
-        std::vector<VkImageView> imageViews{};
         uint32_t imageCount{ 0 };
 
         VkSwapchainKHR swapChain{ VK_NULL_HANDLE };
@@ -43,16 +31,16 @@ namespace lucus
         VkSurfaceKHR surface{ VK_NULL_HANDLE };
 
         vk_swapchain swapChain;
-        VkFormat colorFormat;
-        VkFormat depthFormat;
 
-        vk_framebuffer_list framebuffers;
+        VkSurfaceFormatKHR selectedFormat;
 
         uint32_t currentImageIndex = 0;
         std::array<vk_image_sync, g_swapchainImageCount> imageSync{};
 
+        render_target_handle rt_handle;
+
         void init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window);
-        void init_framebuffers(const vk_render_pass& render_pass);
+        void init_images(vk_render_target& render_target);
         void cleanup();
 
         void acquire_image(u32 frameIndex);

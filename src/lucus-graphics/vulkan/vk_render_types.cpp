@@ -59,55 +59,77 @@ void vk_commandbuffer_pool::destroyCommandBuffers()
 }
 
 
-void vk_render_pass::init(VkDevice device, VkFormat inColorFormat, VkFormat inDepthFormat)
+void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
 {
+    name = init_desc.name;
+
     _device = device;
-    colorFormat = inColorFormat;
-    depthFormat = inDepthFormat;
 
-    VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = colorFormat;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-    VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentDescription depthAttachment{};
-    depthAttachment.format = depthFormat;
-    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference depthAttachmentRef{};
-    depthAttachmentRef.attachment = 1;
-    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    std::vector<VkAttachmentDescription> attachments; //  = {colorAttachment, depthAttachment}
 
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
-    subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+    VkAttachmentReference colorAttachmentRef{};
+    VkAttachmentReference depthAttachmentRef{};
+
+    if (init_desc.bUseColor)
+    {
+        VkAttachmentDescription colorAttachment{};
+        colorAttachment.format = init_desc.colorFormat;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        colorAttachmentRef.attachment = static_cast<uint32_t>(attachments.size());
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+
+        attachments.push_back(colorAttachment);
+    }
+    else
+    {
+        subpass.colorAttachmentCount = 0;
+        subpass.pColorAttachments = nullptr;
+    }
+
+    if (init_desc.bUseDepth)
+    {
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = init_desc.depthFormat;
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = name == render_pass_name::SHADOW_PASS ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        depthAttachmentRef.attachment = static_cast<uint32_t>(attachments.size());
+        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+        attachments.push_back(depthAttachment);
+    }
+    else
+    {
+        subpass.pDepthStencilAttachment = nullptr;
+    }
 
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
+    // TODO: change here depends on Color/Depth
     dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     dependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
@@ -122,9 +144,7 @@ void vk_render_pass::init(VkDevice device, VkFormat inColorFormat, VkFormat inDe
         throw std::runtime_error("failed to create render pass!");
     }
 
-    bInitialized = true;
-
-    std::printf("Render pass created successfully\n");
+    std::printf("Render pass %u created successfully\n", (u32)name);
 }
 
 void vk_render_pass::cleanup()
@@ -135,55 +155,162 @@ void vk_render_pass::cleanup()
     }
 }
 
-void vk_image::init(VkDevice device)
+void vk_images::init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc& init_desc)
 {
     _device = device;
+
+    if (!bPreinitialized)
+    {
+        images.resize(init_desc.count);
+        memories.resize(init_desc.count);
+    }
+    views.resize(init_desc.count);
+    if (init_desc.bUseDescriptorSet)
+    {
+        descriptorSets.resize(init_desc.count);
+    }
+
+    for (u32 i = 0; i < init_desc.count; ++i)
+    {
+        if (!bPreinitialized)
+        {
+            utils::createImage(device, gpu, init_desc.extent, init_desc.format, init_desc.usage, init_desc.properties, images[i], memories[i]);
+        }
+        utils::createImageView(device, images[i], init_desc.format, init_desc.aspectFlags, views[i]);
+
+        if (init_desc.bUseDescriptorSet)
+        {
+            assert(init_desc.descriptorPool);
+            assert(init_desc.descriptorSetLayout);
+
+            VkDescriptorSetAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool = init_desc.descriptorPool;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = &init_desc.descriptorSetLayout;
+
+            if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSets[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to allocate descriptor sets!");
+            }
+            
+            VkDescriptorImageInfo dsInfo{};
+            dsInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            dsInfo.imageView = views[i];
+            dsInfo.sampler = VK_NULL_HANDLE; // because your sampler is a separate descriptor
+
+            VkWriteDescriptorSet write{};
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = descriptorSets[i];
+            write.dstBinding = 0;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            write.descriptorCount = 1;
+            write.pImageInfo = &dsInfo;
+
+            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+        }
+    }
 }
 
-void vk_image::cleanup()
+void vk_images::cleanup()
 {
-    if (view != VK_NULL_HANDLE) {
+    for (auto& view : views)
+    {
         vkDestroyImageView(_device, view, nullptr);
-        view = VK_NULL_HANDLE;
     }
-    if (image != VK_NULL_HANDLE) {
-        vkDestroyImage(_device, image, nullptr);
-        image = VK_NULL_HANDLE;
-    }
-    if (memory != VK_NULL_HANDLE) {
-        vkFreeMemory(_device, memory, nullptr);
-        memory = VK_NULL_HANDLE;
+    views.clear();
+    if (!bPreinitialized)
+    {
+        for (auto& image : images)
+        {
+            vkDestroyImage(_device, image, nullptr);
+        }
+        images.clear();
+        for (auto& memory : memories)
+        {
+            vkFreeMemory(_device, memory, nullptr);
+        }
+        memories.clear();
     }
 }
 
-void vk_framebuffer::init(VkDevice device, VkPhysicalDevice gpu, VkRenderPass renderPass, VkExtent2D extent, VkImageView colorImageView, VkFormat depthFormat)
+void vk_render_target::init(VkDevice device, VkPhysicalDevice gpu, const vk_render_target_desc& init_desc)
 {
     _device = device;
 
-    depth.init(device);
-    utils::createImage(device, gpu, extent, depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth.image, depth.memory);
-    utils::createImageView(device, depth.image, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, depth.view);
+    bColor = init_desc.bUseColor;
+    if (bColor)
+    {
+        vk_images_desc color_desc
+        {
+            .count = init_desc.count,
+            .format = init_desc.colorFormat,
+            .extent = init_desc.extent,
+            // TODO ?
+            // .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            // .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            .aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT,
+            .bUseDescriptorSet = init_desc.bUseColorDescriptorSet,
+            .descriptorPool = init_desc.descriptorPool,
+            .descriptorSetLayout = init_desc.descriptorSetLayout,
+        };
+        color.init(device, gpu, color_desc);
+    }
 
-    std::array<VkImageView, 2> attachments = {colorImageView, depth.view};
+    bDepth = init_desc.bUseDepth;
+    if (bDepth)
+    {
+        vk_images_desc depth_desc
+        {
+            .count = init_desc.count,
+            .format = init_desc.depthFormat,
+            .extent = init_desc.extent,
+            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            .aspectFlags =VK_IMAGE_ASPECT_DEPTH_BIT,
+            .bUseDescriptorSet = init_desc.bUseDepthDescriptorSet,
+            .descriptorPool = init_desc.descriptorPool,
+            .descriptorSetLayout = init_desc.descriptorSetLayout,
+        };
+        depth.init(device, gpu, depth_desc);
+    }
 
-    VkFramebufferCreateInfo framebufferInfo{};
-    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebufferInfo.renderPass = renderPass;
-    framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());;
-    framebufferInfo.pAttachments = attachments.data();
-    framebufferInfo.width = extent.width;
-    framebufferInfo.height = extent.height;
-    framebufferInfo.layers = 1;
+    bFramebuffer = init_desc.bUseFramebuffer;
+    if (bFramebuffer)
+    {
+        assert(init_desc.renderPass);
+        
+        frameBuffers.resize(init_desc.count);
 
-    if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create framebuffer!");
+        for (u32 i = 0; i < init_desc.count; ++i)
+        {
+            std::vector<VkImageView> attachments;
+            if (bColor) attachments.push_back(color.views[i]);
+            if (bDepth) attachments.push_back(depth.views[i]);
+
+            VkFramebufferCreateInfo framebufferInfo{};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = init_desc.renderPass;
+            framebufferInfo.attachmentCount = static_cast<u32>(attachments.size());;
+            framebufferInfo.pAttachments = attachments.data();
+            framebufferInfo.width = init_desc.extent.width;
+            framebufferInfo.height = init_desc.extent.height;
+            framebufferInfo.layers = 1;
+
+            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create framebuffer!");
+            }
+        }
     }
 }
 
-void vk_framebuffer::cleanup()
+void vk_render_target::cleanup()
 {
-    vkDestroyFramebuffer(_device, framebuffer, nullptr);
+    for(auto& framebuffer : frameBuffers)
+    {
+        vkDestroyFramebuffer(_device, framebuffer, nullptr);
+    }
     depth.cleanup();
+    color.cleanup();
 }
 
 void vk_image_sync::init(VkDevice device)

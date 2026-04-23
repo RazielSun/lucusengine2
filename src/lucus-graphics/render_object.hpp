@@ -34,6 +34,9 @@ namespace lucus
             const glm::vec3& getScale() const { return _transform.scale; }
             void setScale(const glm::vec3& scale) { _transform.scale = scale; }
 
+            bool getCastShadow() const { return bCastShadow; }
+            void setCastShadow(bool bValue) { bCastShadow = bValue; }
+
         protected:
             const uniform_buffer_handle& getHandle() const { return _handle; }
             void setHandle(const uniform_buffer_handle& handle) { _handle = handle; }
@@ -43,6 +46,8 @@ namespace lucus
             intrusive_ptr<material> _material;
 
             transform _transform;
+
+            bool bCastShadow = true;
 
             // transient
             uniform_buffer_handle _handle;

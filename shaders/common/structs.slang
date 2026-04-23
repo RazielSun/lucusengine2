@@ -19,6 +19,7 @@ struct LightUniforms
     float4 direction;
     float4 color;   // xyz - color, w - intensity
     float4 ambient; // xyz - color, w - intensity
+    float4x4 viewProj;
 };
 
 struct VSInput {
@@ -34,6 +35,7 @@ struct VSOutput
     float3 normal : NORMAL;
     float2 texCoords0 : TEXCOORD0;
     float3 color : COLOR0;
+    float4 lightClipPos : TEXCOORD1;
 };
 
 #endif /* STRUCTS_SLANG */

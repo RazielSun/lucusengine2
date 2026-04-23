@@ -33,41 +33,89 @@ namespace lucus
 	        std::array<VkCommandBuffer, g_framesInFlight> _buffers;
     };
 
+    struct vk_render_pass_desc
+    {
+        render_pass_name name;
+        bool bUseColor{true};
+        VkFormat colorFormat;
+        bool bUseDepth{false};
+        VkFormat depthFormat;
+    };
+
     struct vk_render_pass
     {
-        bool bInitialized{false};
-        VkFormat colorFormat{};
-        VkFormat depthFormat{};
+        render_pass_name name;
 
         VkRenderPass renderPass{ VK_NULL_HANDLE };
 
-        void init(VkDevice device, VkFormat inColorFormat, VkFormat inDepthFormat);
+        void init(VkDevice device, const vk_render_pass_desc& init_desc);
         void cleanup();
 
         private:
             VkDevice _device;
     };
 
-    struct vk_image
+    struct vk_images_desc
     {
-        VkImage image;
-        VkImageView view;
-        VkDeviceMemory memory;
+        u32 count {0};
+        VkFormat format;
+        VkExtent2D extent;
+        VkImageUsageFlags usage;
+        VkMemoryPropertyFlags properties;
+        VkImageAspectFlags aspectFlags;
+        bool bUseDescriptorSet { false };
+        VkDescriptorPool descriptorPool { VK_NULL_HANDLE };
+        VkDescriptorSetLayout descriptorSetLayout { VK_NULL_HANDLE };
+    };
 
-        void init(VkDevice device);
+    struct vk_images
+    {
+        bool bPreinitialized { false };
+        std::vector<VkImage> images;
+        std::vector<VkImageView> views;
+        std::vector<VkDeviceMemory> memories;
+        std::vector<VkDescriptorSet> descriptorSets;
+
+        void init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc& init_desc);
         void cleanup();
 
         private:
             VkDevice _device{ VK_NULL_HANDLE };
     };
 
-    struct vk_framebuffer
+    struct vk_render_target_desc
     {
-        VkFramebuffer framebuffer{ VK_NULL_HANDLE };
+        u32 count { 0 };
+        VkExtent2D extent;
 
-        vk_image depth;
+        bool bUseColor {false};
+        bool bUseColorDescriptorSet { false };
+        VkFormat colorFormat;
 
-        void init(VkDevice device, VkPhysicalDevice gpu, VkRenderPass renderPass, VkExtent2D extent, VkImageView colorImageView, VkFormat depthFormat);
+        bool bUseDepth {false};
+        bool bUseDepthDescriptorSet { false };
+        VkFormat depthFormat;
+
+        bool bUseFramebuffer{false};
+        VkRenderPass renderPass;
+
+        VkDescriptorPool descriptorPool { VK_NULL_HANDLE };
+        VkDescriptorSetLayout descriptorSetLayout { VK_NULL_HANDLE };
+    };
+
+    struct vk_render_target
+    {
+        bool bColor { true };
+        vk_images color;
+
+        bool bDepth { false };
+        vk_images depth;
+
+        bool bFramebuffer { false };
+        bool bSwapChain { false };
+        std::vector<VkFramebuffer> frameBuffers;
+
+        void init(VkDevice device, VkPhysicalDevice gpu, const vk_render_target_desc& init_desc);
         void cleanup();
 
         private:
@@ -150,5 +198,12 @@ namespace lucus
 
     private:
         VkDevice _device;
+    };
+
+    struct vk_barrier_type
+    {
+        VkImageLayout layout;
+        VkAccessFlags access;
+        VkPipelineStageFlags stage;
     };
 }

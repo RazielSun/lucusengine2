@@ -19,18 +19,20 @@ namespace lucus
     enum class shader_binding : u8
     {
         VIEW = 0,
-        OBJECT = 1,
-        LIGHT = 2,
-        TEXTURE = 3,
-        SAMPLER = 4,
-        VERTEX = 5,
+        OBJECT,
+        LIGHT,
+        TEXTURE,
+        SHADOW_MAP,
+        SAMPLER,
+        SHADOW_MAP_SAMPLER,
+        VERTEX,
     };
 
     enum class shader_binding_stage : u8
     {
         VERTEX      = 0,
         FRAGMENT    = 1,
-        BOTH        = 2
+        BOTH        = 2,
     };
 
     // STBI
@@ -39,7 +41,43 @@ namespace lucus
         GREY       = 1,
         GREY_ALPHA = 2,
         RGB        = 3,
-        RGB_ALPHA  = 4
+        RGB_ALPHA  = 4,
+    };
+
+    enum class render_target_type : u8
+    {
+        COLOR_ONLY = 0,
+        DEPTH_ONLY = 1,
+        COLOR_AND_DEPTH = 2,
+    };
+
+    enum class render_target_binding : u8
+    {
+        COLOR = 0,
+        DEPTH = 1,
+    };
+
+    enum class render_pass_name : u8
+    {
+        MAIN_PASS = 0,
+        SHADOW_PASS = 1,
+    };
+
+    enum class resource_state : u8
+    {
+        UNDEFINED,
+        DEPTH_WRITE,
+        SHADER_READ,
+        COLOR_WRITE,
+        PRESENT,
+        COPY_SRC,
+        COPY_DST,
+    };
+
+    enum class image_barrier_aspect : u8
+    {
+        COLOR = 0,
+        DEPTH = 1,
     };
 
     struct resource_handle
@@ -68,6 +106,7 @@ namespace lucus
     CUSTOM_RESOURCE_HANDLE(window_context_handle);
     CUSTOM_RESOURCE_HANDLE(mesh_handle);
     CUSTOM_RESOURCE_HANDLE(texture_handle);
+    CUSTOM_RESOURCE_HANDLE(render_target_handle);
     CUSTOM_RESOURCE_HANDLE(sampler_handle);
     CUSTOM_RESOURCE_HANDLE(pipeline_state_handle);
     CUSTOM_RESOURCE_HANDLE(uniform_buffer_handle);
@@ -90,6 +129,7 @@ namespace lucus
         glm::vec4 direction{0.0f};
         glm::vec4 color{1.0f}; // xyz - color, w - intensity
         glm::vec4 ambient{1.0f}; // xyz - color, w - intensity
+        alignas(16) glm::mat4 viewProj;
     };
 
     struct vertex

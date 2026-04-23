@@ -7,6 +7,7 @@
 #include "render_types.hpp"
 #include "scene.hpp"
 #include "texture.hpp"
+#include "material.hpp"
 
 namespace lucus
 {
@@ -27,8 +28,12 @@ namespace lucus
         void setCurrentScene(scene* scn) { _currentScene.reset(scn); }
 
     protected:
-        void processScene(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+        void prepareScene(const scene* scn);
+        void shadowPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+        void mainPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+
         void updateFrameUniformBuffer(const camera* cmr, float aspectRatio);
+        void updateFrameUniformBuffer(const directional_light* dir_light);
         void updateLightUniformBuffer(const directional_light* dir_light);
         void updateObjectUniformBuffer(const render_object* obj);
 
@@ -43,8 +48,14 @@ namespace lucus
         uniform_buffer_handle g_defaultLightBufferHandle{};
 
         sampler_handle g_defaultSamplerHandle{};
+        sampler_handle g_shadowMapSamplerHandle{};
+
         intrusive_ptr<texture> g_defaultWhiteTexture{};
         intrusive_ptr<texture> g_defaultBlackTexture{};
+
+        intrusive_ptr<material> g_shadowMat;
+
+        render_target_handle shadow_rt_handle;
 
         intrusive_ptr<scene> _currentScene;
     };

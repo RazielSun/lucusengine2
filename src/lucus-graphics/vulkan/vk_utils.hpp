@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vk_pch.hpp"
+#include "vk_render_types.hpp"
 
 namespace lucus
 {
@@ -17,5 +18,7 @@ namespace lucus
         VkFormat findSupportedFormat(VkPhysicalDevice gpu, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
         VkFormat findDepthFormat(VkPhysicalDevice gpu);
         bool hasStencilComponent(VkFormat format);
+        
+        vk_barrier_type toVkBarrierState(resource_state res_state);
     }
 }

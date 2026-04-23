@@ -14,6 +14,8 @@ namespace lucus
     public:
         static mesh* create_factory(const std::string& filePath = std::string(), int drawCount = 0);
 
+        const std::string& getName() const { return _initialFilePath; }
+
         const std::vector<vertex>& getVertices() const { return _vertices; }
         void setVertices(std::vector<vertex> vertices) { _vertices = std::move(vertices); }
 

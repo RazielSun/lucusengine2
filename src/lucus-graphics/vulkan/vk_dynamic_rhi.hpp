@@ -23,8 +23,11 @@ namespace lucus
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
+            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle) const override;
 
-            virtual pipeline_state_handle createPSO(material* mat) override;
+            virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
+            virtual render_target_handle createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle) override;
+
             virtual mesh_handle createMesh(mesh* msh) override;
 
             virtual sampler_handle createSampler() override;
@@ -39,6 +42,7 @@ namespace lucus
         protected:
             void createInstance();
             void createDevice();
+            void createPasses();
             void createCommandBufferPool();
             
             void createDescriptorPool();
@@ -65,10 +69,18 @@ namespace lucus
             std::vector<const char*> _enabledDeviceExtensions;
             std::vector<const char*> _enabledInstanceExtensions;
 
+            //
+            VkFormat colorFormat;
+            VkFormat depthFormat;
+            bool bPassesInitialized{false};
+            std::vector<vk_render_pass> _renderPasses;
+
+            //
             std::vector<vk_window_context> _contexts;
 
-            // TODO: refactor me
-            vk_render_pass mainRenderPass;
+            //
+            std::vector<vk_render_target> _renderTargets;
+            
 
             vk_commandbuffer_pool _commandbuffer_pool;
 

@@ -15,9 +15,11 @@ namespace lucus
         RENDER_PASS_END,
         SET_VIEWPORT,
         SET_SCISSOR,
+        IMAGE_BARRIER,
         BIND_PIPELINE,
         BIND_UNIFORM_BUFFER,
         BIND_TEXTURE,
+        BIND_RENDER_TARGET,
         BIND_SAMPLER,
         BIND_DESCRIPTION_TABLE,
         BIND_VERTEX_BUFFER,
@@ -71,18 +73,20 @@ namespace lucus
 
     struct gpu_render_pass_begin_command : public gpu_command_base
     {
-        gpu_render_pass_begin_command(i32 _ox, i32 _oy, u32 _ex, u32 _ey)
+        gpu_render_pass_begin_command(render_pass_name in_pass, u32 _width, u32 _height, const render_target_handle& _rt_handle)
         : gpu_command_base(gpu_command_type::RENDER_PASS_BEGIN)
-        , offset_x(_ox)
-        , offset_y(_oy)
-        , extent_x(_ex)
-        , extent_y(_ey)
+        , pass(in_pass)
+        , width(_width)
+        , height(_height)
+        , rt_handle(_rt_handle)
         {}
 
-        i32 offset_x;
-        i32 offset_y;
-        u32 extent_x;
-        u32 extent_y;
+        render_pass_name pass;
+
+        u32 width;
+        u32 height;
+
+        render_target_handle rt_handle;
     };
 
     struct gpu_render_pass_end_command : public gpu_command_base
@@ -90,6 +94,22 @@ namespace lucus
         gpu_render_pass_end_command()
         : gpu_command_base(gpu_command_type::RENDER_PASS_END)
         {}
+    };
+
+    struct gpu_image_barrier_command : public gpu_command_base
+    {
+        gpu_image_barrier_command(const render_target_handle& _rt_handle, resource_state _src, resource_state _dst, image_barrier_aspect _aspect)
+        : gpu_command_base(gpu_command_type::IMAGE_BARRIER)
+        , rt_handle(_rt_handle)
+        , src(_src)
+        , dst(_dst)
+        , aspect(_aspect)
+        {}
+
+        render_target_handle rt_handle;
+        resource_state src;
+        resource_state dst;
+        image_barrier_aspect aspect;
     };
 
     struct gpu_set_viewport_command : public gpu_command_base
@@ -146,6 +166,16 @@ namespace lucus
         
         pipeline_state_handle pso_handle;
         texture_handle tex_handle;
+        u8 position;
+    };
+
+    struct gpu_bind_render_target_command : public gpu_command_base
+    {
+        gpu_bind_render_target_command(pipeline_state_handle _pso_handle, render_target_handle _rt_handle, render_target_binding _binding, u8 _position) : gpu_command_base(gpu_command_type::BIND_RENDER_TARGET), pso_handle(_pso_handle), rt_handle(_rt_handle), binding(_binding), position(_position) {}
+        
+        pipeline_state_handle pso_handle;
+        render_target_handle rt_handle;
+        render_target_binding binding;
         u8 position;
     };
 

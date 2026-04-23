@@ -126,8 +126,8 @@ void vk_pipeline_state::init(const std::string& shaderName, const vk_pipeline_st
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.attachmentCount = init_desc.bUseColor ? 1 : 0;
+    colorBlending.pAttachments = init_desc.bUseColor ? &colorBlendAttachment : nullptr;
     colorBlending.blendConstants[0] = 0.0f; // Optional
     colorBlending.blendConstants[1] = 0.0f; // Optional
     colorBlending.blendConstants[2] = 0.0f; // Optional
@@ -217,4 +217,3 @@ void vk_pipeline_state::createPipelineLayout(uint32_t layoutCount, const VkDescr
         throw std::runtime_error("failed to create pipeline layout!");
     }
 }
-

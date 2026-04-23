@@ -27,8 +27,11 @@ namespace lucus
         virtual window_context_handle createWindowContext(const window_handle& handle) = 0;
         virtual const std::vector<window_context_handle>& getWindowContexts() const { return _contextHandles; }
         virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const = 0;
+        virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle) const = 0;
 
-        virtual pipeline_state_handle createPSO(material* mat) = 0;
+        virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) = 0;
+        virtual render_target_handle createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle) = 0;
+        
         virtual mesh_handle createMesh(mesh* msh) = 0;
 
         virtual sampler_handle createSampler() = 0;

@@ -9,6 +9,7 @@ namespace lucus
     struct vk_pipeline_state_desc
     {
         VkRenderPass renderPass;
+        bool bUseColor{ true };
 
         std::vector<VkDescriptorSetLayout> layouts;
 

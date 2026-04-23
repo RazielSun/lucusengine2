@@ -35,17 +35,21 @@ namespace lucus
         const uniform_buffer_handle& getHandle() const { return _handle; }
         void setHandle(const uniform_buffer_handle& handle) { _handle = handle; }
 
+        const uniform_buffer_handle& getViewProjHandle() const { return _view_proj_handle; }
+        void setViewProjHandle(const uniform_buffer_handle& handle) { _view_proj_handle = handle; }
+
     private:
         transform _transform;
 
-        float _orthoSize = 50.0f;
-        float _zNear = 0.1f;
-        float _zFar = 500.0f;
+        float _orthoSize = 10.0f;
+        float _zNear = 1.0f;
+        float _zFar = 150.0f;
 
         mutable bool bViewMatrixDirty = true;
         mutable glm::mat4 cachedViewMatrix;
 
         // transient
         uniform_buffer_handle _handle;
+        uniform_buffer_handle _view_proj_handle;
     };
 }

@@ -7,25 +7,6 @@
 
 using namespace lucus;
 
-void vk_framebuffer_list::init(VkDevice device, VkPhysicalDevice gpu, VkRenderPass renderPass, const vk_swapchain& swapchain, VkFormat depthFormat)
-{
-    frameBuffers.resize(swapchain.imageViews.size());
-
-    for (size_t i = 0; i < swapchain.imageViews.size(); i++) {
-        frameBuffers[i].init(device, gpu, renderPass, swapchain.extent, swapchain.imageViews[i], depthFormat);
-    }
-
-    std::printf("Created %zu frame buffers\n", frameBuffers.size());
-}
-
-void vk_framebuffer_list::cleanup()
-{
-    for (auto& framebuffer : frameBuffers) {
-        framebuffer.cleanup();
-    }
-    frameBuffers.clear();
-}
-
 void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window)
 {
     assert(gpu);
@@ -45,17 +26,18 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
     initSurface(gpu, window);
     swapChain.init(gpu, device, surface, window);
 
-	colorFormat = swapChain.colorFormat;
-	depthFormat = utils::findDepthFormat(gpu);
-
 	for (auto& img_sync : imageSync) {
         img_sync.init(device);
     }
 }
 
-void vk_window_context::init_framebuffers(const vk_render_pass& render_pass)
+void vk_window_context::init_images(vk_render_target& render_target)
 {
-	framebuffers.init(_device, _gpu, render_pass.renderPass, swapChain, depthFormat);
+	u32 imageCount = swapChain.imageCount;
+
+	render_target.color.bPreinitialized = true;
+	render_target.color.images.resize(imageCount);
+    vkGetSwapchainImagesKHR(_device, swapChain.swapChain, &imageCount, render_target.color.images.data());
 }
 
 void vk_window_context::cleanup()
@@ -65,7 +47,6 @@ void vk_window_context::cleanup()
     }
 
     swapChain.cleanup();
-    framebuffers.cleanup();
 
     if (surface != VK_NULL_HANDLE) {
         vkDestroySurfaceKHR(_instance, surface, nullptr);
@@ -140,7 +121,7 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 
 	// We want to get a format that best suits our needs, so we try to get one from a set of preferred formats
 	// Initialize the format to the first one returned by the implementation in case we can't find one of the preffered formats
-	VkSurfaceFormatKHR selectedFormat = surfaceFormats[0];
+	selectedFormat = surfaceFormats[0];
 	std::vector<VkFormat> preferredImageFormats = { 
 		VK_FORMAT_B8G8R8A8_UNORM,
 		VK_FORMAT_R8G8B8A8_UNORM, 
@@ -287,24 +268,12 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
     }
 
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
-    images.resize(imageCount);
-    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, images.data());
 
-    std::printf("VkSwapchainKHR created successfully (%dx%d)\n", extent.width, extent.height);
-
-    imageViews.resize(images.size());
-    for (size_t i = 0; i < images.size(); i++)
-    {
-        utils::createImageView(device, images[i], colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, imageViews[i]);
-    }
-    std::printf("Created %zu image views\n", imageViews.size());
+	std::printf("VkSwapchainKHR created successfully (%dx%d)\n", extent.width, extent.height);
 }
 
 void vk_swapchain::cleanup()
 {
-	for (auto imageView : imageViews) {
-        vkDestroyImageView(_device, imageView, nullptr);
-    }
     if (swapChain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(_device, swapChain, nullptr);
     }
