@@ -11,7 +11,8 @@ An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not 
 
 ## TODO LIST
 ### Current
-- [ ] Add support simple shadow for dx12
+- [x] Add support simple shadow for dx12
+- [ ] Fix dx12 render triangle upside down
 - [ ] New sampler for shadow map
 - [ ] Refactor work with handlers for renderer
 - [ ] Fix Window context aspect ratio
@@ -34,6 +35,7 @@ An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not 
 - LLVM > 20.0
 
 ### Mac
+* I decided do not support mac on shadow_map pass stage, maybe in the future
 ```
 brew install cmake
 brew install ninja

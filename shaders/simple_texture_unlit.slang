@@ -22,7 +22,7 @@ VSOutput vsMain(VSInput input)
 
 [[vk::binding(0, 3)]]
 Texture2D gAlbedo : register(t0);
-[[vk::binding(0, 4)]]
+[[vk::binding(0, 5)]]
 SamplerState gSampler : register(s0);
 
 [shader("fragment")]
