@@ -151,27 +151,27 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
 
                     u32 numRTV {0};
                     D3D12_CPU_DESCRIPTOR_HANDLE rtv {};
-                    if (rt.bColor)
+                    if (rt.bUseColor)
                     {
                         rtv = rt.color.getResourceHandle(index);
                         numRTV = 1;
                     }
 
                     D3D12_CPU_DESCRIPTOR_HANDLE dsv {};
-                    if (rt.bDepth)
+                    if (rt.bUseDepth)
                     {
                         dsv = rt.depth.getResourceHandle(index);
                     }
                     
-                    commandBuffer->OMSetRenderTargets(numRTV, bColor ? &rtv : nullptr, FALSE, bDepth ? &dsv : nullptr);
+                    commandBuffer->OMSetRenderTargets(numRTV, rt.bUseColor ? &rtv : nullptr, FALSE, rt.bUseDepth ? &dsv : nullptr);
 
-                    if (rt.bColor)
+                    if (rt.bUseColor)
                     {
                         const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
                         commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
                     }
 
-                    if (rt.bDepth)
+                    if (rt.bUseDepth)
                     {
                         commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
                     }

@@ -418,12 +418,12 @@ void lucus::dx_render_target::init(Com<ID3D12Device> device, const dx_render_tar
             .heapType = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
             .resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
             .initialState = bSwapChain ? D3D12_RESOURCE_STATE_PRESENT : D3D12_RESOURCE_STATE_RENDER_TARGET,
-            .bIsColor = true,
             .clearValue = color_clear,
+            .bIsColor = true,
             .bPreinitialized = bSwapChain,
             .bShaderRead = init_desc.bColorShaderRead,
-            .ShaderHeadIndex = init_desc.ColorSRVHeadIndex,
             .resourceHeap = init_desc.resourceHeap,
+            .ShaderHeadIndex = init_desc.ColorSRVHeadIndex,
         };
         color.init(device, color_desc);
     }
@@ -449,8 +449,8 @@ void lucus::dx_render_target::init(Com<ID3D12Device> device, const dx_render_tar
             .bIsColor = false,
             .bPreinitialized = false,
             .bShaderRead = init_desc.bDepthShaderRead,
-            .ShaderHeadIndex = init_desc.DepthSRVHeadIndex,
             .resourceHeap = init_desc.resourceHeap,
+            .ShaderHeadIndex = init_desc.DepthSRVHeadIndex,
         };
         depth.init(device, depth_desc);
     }
