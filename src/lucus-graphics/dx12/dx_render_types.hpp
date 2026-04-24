@@ -95,14 +95,90 @@ namespace lucus
         D3D12_DESCRIPTOR_HEAP_TYPE heapType;
 
         void init(Com<ID3D12Device> device, u32 in_capacity, D3D12_DESCRIPTOR_HEAP_TYPE type);
-        u32 allocateResource();
+        u32 allocateResource(u32 count = 1);
         CD3DX12_CPU_DESCRIPTOR_HANDLE getResourceHandle(u32 index) const;
-        CD3DX12_GPU_DESCRIPTOR_HANDLE getShaderHeadHandle(u32 frameIndex) const;
+        CD3DX12_GPU_DESCRIPTOR_HANDLE getShaderHeadHandle(u32 frameIndex, u32 offset = 0) const;
         void copy(u32 index, u32 frameIndex);
         void reset_allocator(u32 frameIndex);
         void head_to_current(u32 frameIndex);
         void cleanup();
     private:
         Com<ID3D12Device> _device;
+    };
+
+    struct dx_images_desc
+    {
+        u32 count {0};
+        u32 width {0};
+        u32 height {0};
+
+        DXGI_FORMAT format {DXGI_FORMAT_UNKNOWN};
+        DXGI_FORMAT shaderReadFormat {DXGI_FORMAT_UNKNOWN};
+        D3D12_DESCRIPTOR_HEAP_TYPE heapType {D3D12_DESCRIPTOR_HEAP_TYPE_RTV};
+        D3D12_RESOURCE_FLAGS resourceFlags {D3D12_RESOURCE_FLAG_NONE};
+        D3D12_RESOURCE_STATES initialState {D3D12_RESOURCE_STATE_COMMON};
+        D3D12_CLEAR_VALUE clearValue{};
+
+        bool bIsColor {true};
+        bool bPreinitialized {false};
+
+        bool bShaderRead {false};
+        Com<ID3D12DescriptorHeap> resourceHeap { nullptr };
+        u32 ShaderHeadIndex {0};
+    };
+
+    struct dx_images
+    {
+        bool bPreinitialized { false };
+        bool bShaderRead { false };
+        u32 ShaderHeadIndex {0};
+        D3D12_RESOURCE_STATES initialState { D3D12_RESOURCE_STATE_COMMON };
+        Com<ID3D12DescriptorHeap> heap;
+        u32 descriptorSize = 0;
+        std::vector<Com<ID3D12Resource>> images;
+        std::vector<D3D12_RESOURCE_STATES> states;
+
+        void init(Com<ID3D12Device> device, const dx_images_desc& init_desc);
+        void cleanup();
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE getResourceHandle(u32 index) const;
+        u32 getShaderHandle(u32 index) const;
+    private:
+        Com<ID3D12Device> _device;
+    };
+
+    struct dx_render_target_desc
+    {
+        u32 count {0};
+        u32 width {0};
+        u32 height {0};
+
+        bool bSwapChain {false};
+
+        bool bUseColor {false};
+        DXGI_FORMAT colorFormat {DXGI_FORMAT_R8G8B8A8_UNORM};
+        bool bColorShaderRead {false};
+        u32 ColorSRVHeadIndex {0};
+
+        bool bUseDepth {false};
+        DXGI_FORMAT depthFormat {DXGI_FORMAT_D32_FLOAT};
+        bool bDepthShaderRead {false};
+        u32 DepthSRVHeadIndex {0};
+
+        Com<ID3D12DescriptorHeap> resourceHeap { nullptr };
+    };
+
+    struct dx_render_target
+    {
+        bool bColor { true };
+        dx_images color;
+
+        bool bDepth { false };
+        dx_images depth;
+
+        bool bSwapChain {false};
+
+        void init(Com<ID3D12Device> device, const dx_render_target_desc& init_desc);
+        void cleanup();
     };
 }

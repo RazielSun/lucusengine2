@@ -497,12 +497,12 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
                     if (ti_cmd->aspect == image_barrier_aspect::COLOR)
                     {
-                        image = rt.color.images[currentFrame];
+                        image = rt.color.images[index];
                         aspect |= VK_IMAGE_ASPECT_COLOR_BIT;
                     }
                     else if (ti_cmd->aspect == image_barrier_aspect::DEPTH)
                     {
-                        image = rt.depth.images[currentFrame];
+                        image = rt.depth.images[index];
                         aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
                     }
 

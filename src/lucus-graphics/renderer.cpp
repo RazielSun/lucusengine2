@@ -235,7 +235,8 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
     cmd.emplaceCommand<gpu_render_pass_end_command>();
     
     // 5. Transit to MainPass
-    cmd.emplaceCommand<gpu_image_barrier_command>(shadow_rt_handle,
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        shadow_rt_handle,
         resource_state::DEPTH_WRITE,
         resource_state::SHADER_READ,
         image_barrier_aspect::DEPTH);
@@ -255,6 +256,21 @@ void renderer::mainPass(const scene* scn, const window_context_handle& ctx_handl
         // TODO: error
         return;
     }
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        fb_handle,
+        // The backbuffer is cleared at the start of the pass, so we don't depend
+        // on preserving its previous contents or layout across acquire/present.
+        resource_state::UNDEFINED,
+        resource_state::COLOR_WRITE,
+        image_barrier_aspect::COLOR);
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        fb_handle,
+        // The window depth buffer is also cleared every frame before use.
+        resource_state::UNDEFINED,
+        resource_state::DEPTH_WRITE,
+        image_barrier_aspect::DEPTH);
 
     cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::MAIN_PASS, v_width, v_height, fb_handle);
 
@@ -372,6 +388,12 @@ void renderer::mainPass(const scene* scn, const window_context_handle& ctx_handl
     }
 
     cmd.emplaceCommand<gpu_render_pass_end_command>();
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        fb_handle,
+        resource_state::COLOR_WRITE,
+        resource_state::PRESENT,
+        image_barrier_aspect::COLOR);
 }
 
 void renderer::updateFrameUniformBuffer(const camera* cmr, float aspectRatio)

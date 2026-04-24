@@ -10,34 +10,21 @@ namespace lucus
     
     struct dx_window_context
     {
-        void init(Com<IDXGIFactory4> factory, Com<ID3D12Device> device, Com<ID3D12CommandQueue> commandQueue, window* window);
+        void init(Com<IDXGIFactory4> factory, Com<ID3D12Device> device, Com<ID3D12CommandQueue> commandQueue, DXGI_FORMAT format, window* window);
+        void init_images(dx_render_target& rt);
         void cleanup();
 
         Com<ID3D12CommandQueue> mCommandQueue;
 
         Com<IDXGISwapChain3> swapChain;
 
-        u32 width;
-        u32 height;
-
-        Com<ID3D12DescriptorHeap> mRTVHeap;
-        uint32_t mRTVDescriptorSize = 0;
-
-        std::array<Com<ID3D12Resource>, g_swapchainImageCount> mRenderTargets{};
+        u32 imageCount {0};
+        u32 width {0};
+        u32 height {0};
 
         uint32_t backBufferIndex{ 0 };
 
-        Com<ID3D12DescriptorHeap> mDSVHeap;
-        uint32_t mDSVDescriptorSize = 0;
-        
-        std::array<Com<ID3D12Resource>, g_swapchainImageCount> mDepthStencils{};
-        DXGI_FORMAT mDepthFormat = DXGI_FORMAT_D32_FLOAT;
-
-        protected:
-            void createRTVHeaps();
-            void createDSVHeap();
-            void createRenderTargets();
-            void createDepthStencils();
+        render_target_handle rt_handle;
         
         private:
             Com<IDXGIFactory4> mDXGIFactory;

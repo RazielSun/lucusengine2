@@ -216,10 +216,12 @@ void dx_heap_descriptor::init(Com<ID3D12Device> device, u32 in_capacity, D3D12_D
     }
 }
 
-u32 dx_heap_descriptor::allocateResource()
+u32 dx_heap_descriptor::allocateResource(u32 count)
 {
-    assert(resourceIndex < capacity);
-    return resourceIndex++;
+    assert(resourceIndex + count < capacity);
+    u32 current = resourceIndex;
+    resourceIndex += count;
+    return current;
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getResourceHandle(u32 index) const
@@ -241,12 +243,12 @@ void dx_heap_descriptor::copy(u32 index, u32 frameIndex)
     _device->CopyDescriptorsSimple(1, dstCpuHandle, getResourceHandle(index), heapType);
 }
 
-CD3DX12_GPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getShaderHeadHandle(u32 frameIndex) const
+CD3DX12_GPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getShaderHeadHandle(u32 frameIndex, u32 offset) const
 {
     u32 currentFrame = frameIndex % g_framesInFlight;
     return CD3DX12_GPU_DESCRIPTOR_HANDLE(
         shaderHeap->GetGPUDescriptorHandleForHeapStart(),
-        static_cast<INT>(allocators[currentFrame].head),
+        static_cast<INT>(allocators[currentFrame].head + offset),
         heapItemSize);
 }
 
@@ -267,4 +269,195 @@ void dx_heap_descriptor::cleanup()
     _device.Reset();
     resourceHeap.Reset();
     shaderHeap.Reset();
+}
+
+void lucus::dx_images::init(Com<ID3D12Device> device, const dx_images_desc &init_desc)
+{
+    _device = device;
+    bPreinitialized = init_desc.bPreinitialized;
+    bShaderRead = init_desc.bShaderRead;
+    ShaderHeadIndex = init_desc.ShaderHeadIndex;
+    initialState = init_desc.initialState;
+    descriptorSize = device->GetDescriptorHandleIncrementSize(init_desc.heapType);
+
+    D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
+    heap_desc.NumDescriptors = init_desc.count;
+    heap_desc.Type = init_desc.heapType;
+    heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+    ThrowIfFailed(device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&heap)), "Failed Create Descriptor Heap");
+
+    std::printf("dx_images Heap created successfully\n");
+
+    CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = heap->GetCPUDescriptorHandleForHeapStart();
+
+    D3D12_RESOURCE_DESC image_desc{};
+    image_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    image_desc.Alignment = 0;
+    image_desc.Width = static_cast<UINT64>(init_desc.width);
+    image_desc.Height = static_cast<UINT>(init_desc.height);
+    image_desc.DepthOrArraySize = 1;
+    image_desc.MipLevels = 1;
+    image_desc.Format = init_desc.format;
+    image_desc.SampleDesc.Count = 1;
+    image_desc.SampleDesc.Quality = 0;
+    image_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    image_desc.Flags = init_desc.resourceFlags;
+
+    if (images.size() < init_desc.count)
+    {
+        images.resize(init_desc.count);
+    }
+    states.assign(init_desc.count, init_desc.initialState);
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        if (!bPreinitialized)
+        {
+            ThrowIfFailed(device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &image_desc,
+                init_desc.initialState,
+                &init_desc.clearValue,
+                IID_PPV_ARGS(&images[i])
+            ), "Failed Create Committed Resource for Image");
+        }
+
+        if (init_desc.bIsColor)
+        {
+            if (bPreinitialized)
+            {
+                device->CreateRenderTargetView(images[i].Get(), nullptr, handle);
+            }
+            else
+            {
+                D3D12_RENDER_TARGET_VIEW_DESC rtv_desc{};
+                rtv_desc.Format = init_desc.format;
+                rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+                device->CreateRenderTargetView(images[i].Get(), &rtv_desc, handle);
+            }
+        }
+        else
+        {
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsv_depth_desc{};
+            dsv_depth_desc.Format = init_desc.format;
+            dsv_depth_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+            dsv_depth_desc.Flags = D3D12_DSV_FLAG_NONE;
+
+            device->CreateDepthStencilView(images[i].Get(), &dsv_depth_desc, handle);
+        }
+        
+        if (bShaderRead)
+        {
+            assert(init_desc.resourceHeap);
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
+            srv_desc.Format = init_desc.shaderReadFormat;
+            srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; // TODO
+            srv_desc.Texture2D.MipLevels = 1;
+
+            CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
+                init_desc.resourceHeap->GetCPUDescriptorHandleForHeapStart(),
+                static_cast<INT>(init_desc.ShaderHeadIndex + (u32)i),
+                descriptorSize);
+
+            device->CreateShaderResourceView(images[i].Get(), &srv_desc, srvHandle);
+        }
+
+        handle.ptr += descriptorSize;
+    }
+
+    std::printf("dx_images created successfully\n");
+}
+
+void lucus::dx_images::cleanup()
+{
+    for (int i = 0; i < images.size(); ++i)
+    {
+        images[i].Reset();
+    }
+    states.clear();
+    heap.Reset();
+    _device.Reset();
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE lucus::dx_images::getResourceHandle(u32 index) const
+{
+    return CD3DX12_CPU_DESCRIPTOR_HANDLE(
+        heap->GetCPUDescriptorHandleForHeapStart(),
+        static_cast<INT>(index),
+        descriptorSize);
+}
+
+u32 lucus::dx_images::getShaderHandle(u32 index) const
+{
+    return ShaderHeadIndex + index;
+}
+
+void lucus::dx_render_target::init(Com<ID3D12Device> device, const dx_render_target_desc &init_desc)
+{
+    bSwapChain = init_desc.bSwapChain;
+    bColor = init_desc.bUseColor;
+    if (bColor)
+    {
+        D3D12_CLEAR_VALUE color_clear{};
+        color_clear.Format = init_desc.colorFormat;
+        color_clear.Color[0] = 0.0f;
+        color_clear.Color[1] = 0.0f;
+        color_clear.Color[2] = 0.0f;
+        color_clear.Color[3] = 1.0f;
+
+        dx_images_desc color_desc {
+            .count = init_desc.count,
+            .width = init_desc.width,
+            .height = init_desc.height,
+            .format = init_desc.colorFormat,
+            .shaderReadFormat = init_desc.colorFormat,
+            .heapType = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+            .resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
+            .initialState = bSwapChain ? D3D12_RESOURCE_STATE_PRESENT : D3D12_RESOURCE_STATE_RENDER_TARGET,
+            .bIsColor = true,
+            .clearValue = color_clear,
+            .bPreinitialized = bSwapChain,
+            .bShaderRead = init_desc.bColorShaderRead,
+            .ShaderHeadIndex = init_desc.ColorSRVHeadIndex,
+            .resourceHeap = init_desc.resourceHeap,
+        };
+        color.init(device, color_desc);
+    }
+
+    bDepth = init_desc.bUseDepth;
+    if (bDepth)
+    {
+        D3D12_CLEAR_VALUE depth_clear{};
+        depth_clear.Format = init_desc.depthFormat;
+        depth_clear.DepthStencil.Depth = 1.f;
+        depth_clear.DepthStencil.Stencil = 0.f;
+
+        dx_images_desc depth_desc {
+            .count = init_desc.count,
+            .width = init_desc.width,
+            .height = init_desc.height,
+            .format = init_desc.depthFormat,
+            .shaderReadFormat = DXGI_FORMAT_R32_FLOAT,
+            .heapType = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+            .resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+            .initialState = D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            .clearValue = depth_clear,
+            .bIsColor = false,
+            .bPreinitialized = false,
+            .bShaderRead = init_desc.bDepthShaderRead,
+            .ShaderHeadIndex = init_desc.DepthSRVHeadIndex,
+            .resourceHeap = init_desc.resourceHeap,
+        };
+        depth.init(device, depth_desc);
+    }
+}
+
+void lucus::dx_render_target::cleanup()
+{
+    color.cleanup();
+    depth.cleanup();
 }

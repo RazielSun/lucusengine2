@@ -21,8 +21,11 @@ namespace lucus
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
+            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle) const override;
 
-            virtual pipeline_state_handle createPSO(material* mat) override;
+            virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
+            virtual render_target_handle createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle) override;
+
             virtual mesh_handle createMesh(mesh* msh) override;
 
             virtual sampler_handle createSampler() override;
@@ -52,7 +55,12 @@ namespace lucus
 
             Com<ID3D12CommandQueue> _commandQueue;
 
+            DXGI_FORMAT mColorFormat { DXGI_FORMAT_R8G8B8A8_UNORM };
+            DXGI_FORMAT mDepthFormat { DXGI_FORMAT_D32_FLOAT };
             std::vector<dx_window_context> _contexts;
+
+            //
+            std::vector<dx_render_target> _renderTargets;
 
             //
             std::unordered_map<u32, dx_pipeline_state> _pipelineStates;

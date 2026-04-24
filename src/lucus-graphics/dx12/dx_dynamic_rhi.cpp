@@ -6,6 +6,8 @@
 #include "material.hpp"
 #include "mesh.hpp"
 
+#include "dx_utils.hpp"
+
 namespace lucus
 {
     std::shared_ptr<dynamic_rhi> create_dynamic_rhi()
@@ -70,12 +72,19 @@ window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& h
 		throw std::runtime_error("Invalid window handle provided to dx_swapchain::init");
 	}
 
-    dx_window_context context;
-    context.init(_DXGIFactory, _deviceHandle, _commandQueue, window);
+    auto& context = _contexts.emplace_back();
+    context.init(_DXGIFactory, _deviceHandle, _commandQueue, mColorFormat, window);
 
-    _contexts.push_back(context);
     window_context_handle out_handle(static_cast<uint32_t>(_contexts.size()));
     _contextHandles.push_back(out_handle);
+
+    context.rt_handle = createRenderTarget(
+        context.imageCount,
+        context.width,
+        context.height,
+        render_target_type::COLOR_AND_DEPTH,
+        render_pass_name::MAIN_PASS,
+        out_handle);
 
     return out_handle;
 }
@@ -91,6 +100,16 @@ void dx_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handl
     const auto& ctx = _contexts[ctx_handle.as_index()];
     width = ctx.width;
     height = ctx.height;
+}
+
+render_target_handle lucus::dx_dynamic_rhi::getWindowContextRenderTarget(const window_context_handle &handle) const
+{
+    if (!handle.is_valid())
+    {
+        return render_target_handle();
+    }
+
+    return _contexts[handle.as_index()].rt_handle;
 }
             
 void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
@@ -115,25 +134,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     if (!commandBuffer)
         throw std::runtime_error("Command buffer is null");
 
-    if (!ctx.mRTVHeap)
-        throw std::runtime_error("RTV heap is null");
-    if (!ctx.mRenderTargets[ctx.backBufferIndex])
-        throw std::runtime_error("Current render target is null");
-
-    if (!ctx.mDSVHeap)
-        throw std::runtime_error("DSV heap is null");
-    if (!ctx.mDepthStencils[ctx.backBufferIndex])
-        throw std::runtime_error("Depth stencil is null");
-
-    D3D12_RESOURCE_BARRIER barrier_begin{};
-    barrier_begin.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier_begin.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier_begin.Transition.pResource = ctx.mRenderTargets[ctx.backBufferIndex].Get();
-    barrier_begin.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier_begin.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier_begin.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    commandBuffer->ResourceBarrier(1, &barrier_begin);
-
     for (u32 i = 0; i < cmd.commandCount; ++i)
     {
         const u8 *data = cmd.data.data() + i * COMMAND_FIXED_SIZE;
@@ -143,12 +143,41 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::RENDER_PASS_BEGIN:
                 {
                     const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
+                    auto rt_handle = rb_cmd->rt_handle;
+                    assert(rt_handle.is_valid());
+                    auto& rt = _renderTargets[rt_handle.as_index()];
 
+                    const u32 index = rt.bSwapChain ? ctx.backBufferIndex : currentFrame;
+
+                    u32 numRTV {0};
+                    D3D12_CPU_DESCRIPTOR_HANDLE rtv {};
+                    if (rt.bColor)
+                    {
+                        rtv = rt.color.getResourceHandle(index);
+                        numRTV = 1;
+                    }
+
+                    D3D12_CPU_DESCRIPTOR_HANDLE dsv {};
+                    if (rt.bDepth)
+                    {
+                        dsv = rt.depth.getResourceHandle(index);
+                    }
+                    
+                    commandBuffer->OMSetRenderTargets(numRTV, bColor ? &rtv : nullptr, FALSE, bDepth ? &dsv : nullptr);
+
+                    if (rt.bColor)
+                    {
+                        const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                        commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
+                    }
+
+                    if (rt.bDepth)
+                    {
+                        commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+                    }
+                    
                     // Com<ID3D12GraphicsCommandList4> cmd4;
                     // commandBuffer.As(&cmd4);
-
-                    D3D12_CPU_DESCRIPTOR_HANDLE rtv = ctx.mRTVHeap->GetCPUDescriptorHandleForHeapStart();
-                    rtv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mRTVDescriptorSize;
 
                     // D3D12_RENDER_PASS_RENDER_TARGET_DESC colorDesc = {};
                     // colorDesc.cpuDescriptor = rtv;
@@ -159,9 +188,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     // colorDesc.BeginningAccess.Clear.ClearValue.Color[3] = 1.f;
                     // colorDesc.EndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
 
-                    D3D12_CPU_DESCRIPTOR_HANDLE dsv = ctx.mDSVHeap->GetCPUDescriptorHandleForHeapStart();
-                    dsv.ptr += static_cast<SIZE_T>(ctx.backBufferIndex) * ctx.mDSVDescriptorSize;
-
                     // D3D12_RENDER_PASS_DEPTH_STENCIL_DESC depthDesc = {};
                     // depthDesc.cpuDescriptor = dsv;
                     // depthDesc.DepthBeginningAccess.Type = D3D12_RENDER_PASS_BEGINNING_ACCESS_TYPE_CLEAR;
@@ -169,12 +195,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     // depthDesc.DepthEndingAccess.Type = D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_PRESERVE;
 
                     // commandBuffer->BeginRenderPass(1, &colorDesc, &depthDesc,D3D12_RENDER_PASS_FLAG_NONE);
-
-                    const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-
-                    commandBuffer->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-                    commandBuffer->ClearRenderTargetView(rtv, clear_color, 0, nullptr);
-                    commandBuffer->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
                 }
                 break;
             case gpu_command_type::RENDER_PASS_END:
@@ -204,6 +224,53 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     scissor.right = sc_cmd->extent_x;
                     scissor.bottom = sc_cmd->extent_y;
                     commandBuffer->RSSetScissorRects(1, &scissor);
+                }
+                break;
+            case gpu_command_type::IMAGE_BARRIER:
+                {
+                    const auto* ib_cmd = reinterpret_cast<const gpu_image_barrier_command*>(data);
+                    auto rt_handle = ib_cmd->rt_handle;
+                    assert(rt_handle.is_valid());
+
+                    auto& rt = _renderTargets[rt_handle.as_index()];
+                    const u32 index = rt.bSwapChain ? ctx.backBufferIndex : currentFrame;
+
+                    dx_images* images = nullptr;
+                    if (ib_cmd->aspect == image_barrier_aspect::COLOR)
+                    {
+                        assert(rt.bColor);
+                        images = &rt.color;
+                    }
+                    else if (ib_cmd->aspect == image_barrier_aspect::DEPTH)
+                    {
+                        assert(rt.bDepth);
+                        images = &rt.depth;
+                    }
+
+                    assert(images);
+                    assert(index < images->images.size());
+                    assert(index < images->states.size());
+
+                    D3D12_RESOURCE_STATES before = images->states[index];
+                    if (ib_cmd->src != resource_state::UNDEFINED)
+                    {
+                        before = utils::to_dx12_resource_state(ib_cmd->src);
+                    }
+
+                    const D3D12_RESOURCE_STATES after = utils::to_dx12_resource_state(ib_cmd->dst);
+                    if (before != after)
+                    {
+                        D3D12_RESOURCE_BARRIER barrier{};
+                        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                        barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+                        barrier.Transition.pResource = images->images[index].Get();
+                        barrier.Transition.StateBefore = before;
+                        barrier.Transition.StateAfter = after;
+                        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                        commandBuffer->ResourceBarrier(1, &barrier);
+                    }
+
+                    images->states[index] = after;
                 }
                 break;
             case gpu_command_type::BIND_PIPELINE:
@@ -243,17 +310,43 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     samplerHeapDesc.copy(smpl.index, frameIndex);
                 }
                 break;
+            case gpu_command_type::BIND_RENDER_TARGET:
+                {
+                    const auto* br_cmd = reinterpret_cast<const gpu_bind_render_target_command*>(data);
+                    auto rt_handle = br_cmd->rt_handle;
+                    assert(rt_handle.is_valid());
+
+                    auto& rt = _renderTargets[rt_handle.as_index()];
+                    const u32 index = rt.bSwapChain ? ctx.backBufferIndex : currentFrame;
+
+                    const dx_images* images = nullptr;
+                    if (br_cmd->binding == render_target_binding::COLOR)
+                    {
+                        assert(rt.bColor);
+                        images = &rt.color;
+                    }
+                    else if (br_cmd->binding == render_target_binding::DEPTH)
+                    {
+                        assert(rt.bDepth);
+                        images = &rt.depth;
+                    }
+
+                    assert(images);
+                    assert(images->bShaderRead);
+                    assert(index < images->images.size());
+                    srvHeapDesc.copy(images->getShaderHandle(index), frameIndex);
+                }
+                break;
             case gpu_command_type::BIND_DESCRIPTION_TABLE:
                 {
                     const auto* bd_cmd = reinterpret_cast<const gpu_bind_description_table_command*>(data);
                     ID3D12DescriptorHeap* heaps[] = { srvHeapDesc.shaderHeap.Get(), samplerHeapDesc.shaderHeap.Get() };
                     commandBuffer->SetDescriptorHeaps(2, heaps);
 
-                    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle = srvHeapDesc.getShaderHeadHandle(frameIndex);
-                    CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle = samplerHeapDesc.getShaderHeadHandle(frameIndex);
-
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::TEXTURE, srvHandle);
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER, samplerHandle);
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::TEXTURE, srvHeapDesc.getShaderHeadHandle(frameIndex));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP, srvHeapDesc.getShaderHeadHandle(frameIndex, 1));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP_SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex, 1));
 
                     srvHeapDesc.head_to_current(frameIndex);
                     samplerHeapDesc.head_to_current(frameIndex);
@@ -294,16 +387,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
         }
     }
 
-    D3D12_RESOURCE_BARRIER barrier_end{};
-    barrier_end.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier_end.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier_end.Transition.pResource = ctx.mRenderTargets[ctx.backBufferIndex].Get();
-    barrier_end.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier_end.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
-    barrier_end.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-    commandBuffer->ResourceBarrier(1, &barrier_end);
-
     ThrowIfFailed(commandBuffer->Close(), "Failed Close Command Buffer");
 
     ID3D12CommandList* command_lists[] = { commandBuffer.Get() };
@@ -326,7 +409,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     fenceValues[currentFrame] = current_fence + 1;
 }
 
-pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
+pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
 {
     assert(mat);
 
@@ -344,7 +427,7 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
 
         dx_pipeline_state_desc init_desc;
 
-        init_desc.depthFormat = _contexts[0].mDepthFormat;
+        init_desc.depthFormat = mDepthFormat;
 
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
             (u32)shader_binding::VIEW, // b0
@@ -364,34 +447,20 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_ALL);
 
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-        ranges[0].Init(
-            D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-            1,
-            0, // t0
-            0,
-            D3D12_DESCRIPTOR_RANGE_FLAG_NONE
-        );
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[4];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,0, /* t0 */0,D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,1, /* t1 */0,D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,1,0, /* s0 */ 0,D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,1,1, /* s1 */ 0,D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
 
-        ranges[1].Init(
-            D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
-            1,
-            0, // s0
-            0,
-            D3D12_DESCRIPTOR_RANGE_FLAG_NONE
-        );
         // TODO:
         // texture (SRV table)
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(
-            1,
-            &ranges[0],
-            D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
 
         // sampler table
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(
-            1,
-            &ranges[1],
-            D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
 
         if (mat->useVertexIndexBuffers())
         {
@@ -400,8 +469,6 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
             init_desc.vertexLayouts.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(vertex, texCoords), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
         }
-        
-        // TODO: depth format should be determined by window context or material properties, not hardcoded
         const std::string& shaderName = mat->getShaderName();
         pso.init(shaderName, init_desc);
 
@@ -409,6 +476,61 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat)
     }
 
     return pso_handle;
+}
+
+render_target_handle dx_dynamic_rhi::createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle)
+{
+    (void)passName;
+
+    auto& rt = _renderTargets.emplace_back();
+    render_target_handle rt_handle(static_cast<u32>(_renderTargets.size()));
+
+    bool bSwapChain = false;
+    bool bShaderRead = true;
+    if (ctx_handle.is_valid())
+    {
+        auto& ctx = _contexts[ctx_handle.as_index()];
+        ctx.init_images(rt);
+        bSwapChain = true;
+        bShaderRead = false;
+    }
+
+    bool bUseColor = type == render_target_type::COLOR_ONLY || type == render_target_type::COLOR_AND_DEPTH;
+    bool bUseDepth = type == render_target_type::DEPTH_ONLY || type == render_target_type::COLOR_AND_DEPTH;
+
+    u32 srvColorIndex = 0, srvDepthIndex = 0;
+    if (bShaderRead)
+    {
+        if (bUseColor)
+        {
+            srvColorIndex = srvHeapDesc.allocateResource(count);
+        }
+        if (bUseDepth)
+        {
+            srvDepthIndex = srvHeapDesc.allocateResource(count);
+        }
+    }
+
+	dx_render_target_desc init_desc {
+		.count = count,
+		.width = width,
+		.height = height,
+        .bSwapChain = bSwapChain,
+		.bUseColor = bUseColor,
+		.colorFormat = mColorFormat,
+        .bColorShaderRead = bShaderRead,
+        .ColorSRVHeadIndex = srvColorIndex,
+		.bUseDepth = bUseDepth,
+		.depthFormat = mDepthFormat,
+        .bDepthShaderRead = bShaderRead,
+        .DepthSRVHeadIndex = srvDepthIndex,
+        .resourceHeap = srvHeapDesc.resourceHeap,
+	};
+	rt.init(_deviceHandle, init_desc);
+
+    std::printf("Render Target %u created successfully\n", rt_handle.get());
+
+    return rt_handle;
 }
 
 mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)

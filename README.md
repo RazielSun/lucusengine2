@@ -9,6 +9,22 @@ An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not 
 - content/scripts/ - AngelScript code for engine (main and tests)
 - third-party/ - third-party dependencies for different platforms
 
+## TODO LIST
+### Current
+- [ ] Add support simple shadow for dx12
+- [ ] New sampler for shadow map
+- [ ] Refactor work with handlers for renderer
+- [ ] Fix Window context aspect ratio
+- [ ] Add support for get render object from scene by name
+- [ ] Add flag in render object to disable render on main pass
+
+### Features
+- [ ] Simple Defered pipeline (GBuffer)
+- [ ] Simple PBR
+- [ ] Early Z
+- [ ] Bindless textures
+- [ ] TAA like Inside
+
 ## Dependencies
 
 ### WIN
@@ -47,22 +63,10 @@ to scripts/tools/dxc
 
 ```bash
 ./bin/app --script tests/cube_gpu_test.as --ticks 5
-./bin/app --script tests/cube_load_test.as --ticks 5
-./bin/app --script tests/cube_test.as --ticks 5
-./bin/app --script tests/scene_load_test.as --ticks 5
-./bin/app --script tests/triangle_gpu_test.as --ticks 5
-./bin/app --script tests/triangle_test.as --ticks 5
-./bin/app --script tests/two_windows_test.as --ticks 5
 ```
 
 ```bat
 ./bin/app.exe --script tests/cube_gpu_test.as --ticks 5
-./bin/app.exe --script tests/cube_load_test.as --ticks 5
-./bin/app.exe --script tests/cube_test.as --ticks 5
-./bin/app.exe --script tests/scene_load_test.as --ticks 5
-./bin/app.exe --script tests/triangle_gpu_test.as --ticks 5
-./bin/app.exe --script tests/triangle_test.as --ticks 5
-./bin/app.exe --script tests/two_windows_test.as --ticks 5
 ```
 
 Or run the scripted test runners:
