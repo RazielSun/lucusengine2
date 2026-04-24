@@ -355,13 +355,14 @@ void lucus::dx_images::init(Com<ID3D12Device> device, const dx_images_desc &init
             D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc{};
             srv_desc.Format = init_desc.shaderReadFormat;
             srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-            srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; // TODO
+            srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             srv_desc.Texture2D.MipLevels = 1;
 
+            UINT srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
                 init_desc.resourceHeap->GetCPUDescriptorHandleForHeapStart(),
                 static_cast<INT>(init_desc.ShaderHeadIndex + (u32)i),
-                descriptorSize);
+                srvDescriptorSize);
 
             device->CreateShaderResourceView(images[i].Get(), &srv_desc, srvHandle);
         }
