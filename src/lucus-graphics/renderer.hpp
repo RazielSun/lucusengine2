@@ -20,7 +20,8 @@ namespace lucus
     public:
         static u32 g_frameIndex;
 
-        void init(window_handle handle);
+        void init(render_mode in_mode);
+        void add_window(window_handle handle);
 
         void tick(float dt);
         void cleanup();
@@ -30,7 +31,9 @@ namespace lucus
     protected:
         void prepareScene(const scene* scn);
         void shadowPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
-        void mainPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+        void forwardPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+        void gbufferPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+        void lightingPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
 
         void updateFrameUniformBuffer(const camera* cmr, float aspectRatio);
         void updateFrameUniformBuffer(const directional_light* dir_light);
@@ -40,6 +43,7 @@ namespace lucus
         void initDefaultResources();
 
     private:
+        render_mode r_mode = render_mode::NONE;
         std::shared_ptr<dynamic_rhi> _dynamicRHI;
 
         // default ub & tex
@@ -53,9 +57,12 @@ namespace lucus
         intrusive_ptr<texture> g_defaultWhiteTexture{};
         intrusive_ptr<texture> g_defaultBlackTexture{};
 
+        // SHADOW PASS
+        u32 shadow_map_width = 1024, shadow_map_height = 1024;
+        render_target_handle shadow_rt_handle;
         intrusive_ptr<material> g_shadowMat;
 
-        render_target_handle shadow_rt_handle;
+        render_target_handle g_gbuffer_handle;
 
         intrusive_ptr<scene> _currentScene;
     };

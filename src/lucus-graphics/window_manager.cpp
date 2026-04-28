@@ -42,7 +42,7 @@ void window_manager::createWindow(int width, int height, const std::string& titl
     }
 
     // TODO: this coupling is not ideal, but it allows us to initialize the renderer with the main window's handle
-    renderer::instance().init(new_window_handle);
+    renderer::instance().add_window(new_window_handle);
 }
 
 window_handle window_manager::getMainWindow() const

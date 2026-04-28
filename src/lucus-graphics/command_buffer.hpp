@@ -6,8 +6,8 @@
 
 namespace lucus
 {
-    static constexpr uint32_t COMMAND_FIXED_SIZE = 32;
-    static constexpr uint32_t COMMAND_ALIGNMENT  = alignof(std::max_align_t);
+    static constexpr u32 COMMAND_FIXED_SIZE = 32;
+    static constexpr u32 COMMAND_ALIGNMENT  = alignof(std::max_align_t);
 
     enum class gpu_command_type : u16
     {
@@ -73,20 +73,25 @@ namespace lucus
 
     struct gpu_render_pass_begin_command : public gpu_command_base
     {
-        gpu_render_pass_begin_command(render_pass_name in_pass, u32 _width, u32 _height, const render_target_handle& _rt_handle)
+        gpu_render_pass_begin_command(render_pass_name in_pass, u8 in_color, u8 in_depth, u32 _width, u32 _height)
         : gpu_command_base(gpu_command_type::RENDER_PASS_BEGIN)
         , pass(in_pass)
+        , colorTargetCount(in_color)
+        , depthTargetCount(in_depth)
         , width(_width)
         , height(_height)
-        , rt_handle(_rt_handle)
         {}
 
         render_pass_name pass;
+        u8 colorTargetCount; // 0 .. 1 .. 2 .. 3
+        u8 depthTargetCount; // 0 .. 1
+        u8 _pad;
 
         u32 width;
         u32 height;
 
-        render_target_handle rt_handle;
+        render_target_handle colorTargets[g_maxMrtColorTargets];
+        render_target_handle depthTarget;
     };
 
     struct gpu_render_pass_end_command : public gpu_command_base
@@ -98,18 +103,20 @@ namespace lucus
 
     struct gpu_image_barrier_command : public gpu_command_base
     {
-        gpu_image_barrier_command(const render_target_handle& _rt_handle, resource_state _src, resource_state _dst, image_barrier_aspect _aspect)
+        gpu_image_barrier_command(const render_target_handle& _rt_handle, resource_state _src, resource_state _dst, image_barrier_aspect _aspect, u8 _slot)
         : gpu_command_base(gpu_command_type::IMAGE_BARRIER)
         , rt_handle(_rt_handle)
         , src(_src)
         , dst(_dst)
         , aspect(_aspect)
+        , slot(_slot)
         {}
 
         render_target_handle rt_handle;
         resource_state src;
         resource_state dst;
         image_barrier_aspect aspect;
+        u8 slot{0};
     };
 
     struct gpu_set_viewport_command : public gpu_command_base
@@ -157,7 +164,7 @@ namespace lucus
 
         pipeline_state_handle pso_handle;
         uniform_buffer_handle ub_handle;
-        u8 position;
+        u8 position{0};
     };
 
     struct gpu_bind_texture_command : public gpu_command_base
@@ -166,17 +173,24 @@ namespace lucus
         
         pipeline_state_handle pso_handle;
         texture_handle tex_handle;
-        u8 position;
+        u8 position{0};
     };
 
     struct gpu_bind_render_target_command : public gpu_command_base
     {
-        gpu_bind_render_target_command(pipeline_state_handle _pso_handle, render_target_handle _rt_handle, render_target_binding _binding, u8 _position) : gpu_command_base(gpu_command_type::BIND_RENDER_TARGET), pso_handle(_pso_handle), rt_handle(_rt_handle), binding(_binding), position(_position) {}
+        gpu_bind_render_target_command(pipeline_state_handle _pso_handle, render_target_handle _rt_handle, render_target_type _type, u8 _position, u8 _slot)
+            : gpu_command_base(gpu_command_type::BIND_RENDER_TARGET)
+            , pso_handle(_pso_handle)
+            , rt_handle(_rt_handle)
+            , type(_type)
+            , position(_position)
+            , slot(_slot) {}
         
         pipeline_state_handle pso_handle;
         render_target_handle rt_handle;
-        render_target_binding binding;
-        u8 position;
+        render_target_type type;
+        u8 position{0};
+        u8 slot{0};
     };
 
     struct gpu_bind_sampler_command : public gpu_command_base
@@ -185,7 +199,7 @@ namespace lucus
         
         pipeline_state_handle pso_handle;
         sampler_handle smpl_handle;
-        u8 position;
+        u8 position{0};
     };
 
     struct gpu_bind_description_table_command : public gpu_command_base
@@ -198,7 +212,7 @@ namespace lucus
         gpu_bind_vertex_command(mesh_handle _msh_handle, u8 _position) : gpu_command_base(gpu_command_type::BIND_VERTEX_BUFFER), msh_handle(_msh_handle), position(_position) {}
 
         mesh_handle msh_handle;
-        u8 position;
+        u8 position{0};
     };
 
     struct gpu_draw_vertex_command : public gpu_command_base

@@ -13,22 +13,39 @@ using namespace lucus;
 
 u32 renderer::g_frameIndex{0};
 
-void renderer::init(window_handle handle)
+void renderer::init(render_mode in_mode)
 {
+    r_mode = in_mode;
+}
+
+void renderer::add_window(window_handle handle)
+{
+    bool bFirstInit = false;
     if (!_dynamicRHI)
     {
+        bFirstInit = true;
         _dynamicRHI = create_dynamic_rhi();
         _dynamicRHI->init(); // Device
-        initDefaultResources();
     }
     
-    if (_dynamicRHI) {
+    if (_dynamicRHI)
+    {
         auto window_context = _dynamicRHI->createWindowContext(handle);
         if (!window_context.is_valid())
         {
             // Handle error: Failed to create window context
             std::printf("Error: Failed to create window context for handle %u\n", handle.get());
         }
+    }
+    else
+    {
+        // Handle error: Renderer not initialized
+        std::printf("Error: Renderer not initialized. Call init() before adding windows.\n");
+    }
+
+    if (bFirstInit)
+    {
+        initDefaultResources();
     }
 }
 
@@ -54,17 +71,29 @@ void renderer::tick(float dt)
         return;
     }
 
-    for (const auto& context : _dynamicRHI->getWindowContexts())
+    if (r_mode != render_mode::NONE)
     {
-        if (_currentScene)
+        for (const auto& context : _dynamicRHI->getWindowContexts())
         {
-            gpu_command_buffer cmd;
+            if (_currentScene)
+            {
+                gpu_command_buffer cmd;
 
-            prepareScene(_currentScene.get());
-            shadowPass(_currentScene.get(), context, cmd);
-            mainPass(_currentScene.get(), context, cmd);
+                prepareScene(_currentScene.get());
+                shadowPass(_currentScene.get(), context, cmd);
 
-            _dynamicRHI->execute(context, g_frameIndex, cmd);
+                if (r_mode == render_mode::FORWARD)
+                {
+                    forwardPass(_currentScene.get(), context, cmd);
+                }
+                else if (r_mode == render_mode::DEFERRED)
+                {
+                    gbufferPass(_currentScene.get(), context, cmd);
+                    lightingPass(_currentScene.get(), context, cmd);
+                }
+
+                _dynamicRHI->execute(context, g_frameIndex, cmd);
+            }
         }
     }
 
@@ -108,7 +137,7 @@ void renderer::prepareScene(const scene* scn)
 
         pipeline_state_handle pso_handle = matInst->getPSOHandle();
         if (!pso_handle.is_valid()) {
-            pso_handle = _dynamicRHI->createPSO(matInst, render_pass_name::MAIN_PASS);
+            pso_handle = _dynamicRHI->createPSO(matInst, render_pass_name::FORWARD_PASS);
             matInst->setPSOHandle(pso_handle);
         }
 
@@ -117,7 +146,6 @@ void renderer::prepareScene(const scene* scn)
             msh_handle = _dynamicRHI->createMesh(meshInst);
             meshInst->setHandle(msh_handle);
         }
-
     }
 }
 
@@ -125,28 +153,23 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
 {
     // Steps:
     // 1. Create custom framebuffer and other - for shadow map
-    const u32 v_width = 1024, v_height = 1024;
-
+    const u32 width = shadow_map_width, height = shadow_map_height;
     if (!shadow_rt_handle.is_valid())
     {
-        shadow_rt_handle = _dynamicRHI->createRenderTarget(g_framesInFlight,
-            v_width,
-            v_height,
-            render_target_type::DEPTH_ONLY,
-            render_pass_name::SHADOW_PASS,
-            {});
+        // Error ?
     }
 
     cmd.emplaceCommand<gpu_image_barrier_command>(shadow_rt_handle,
         resource_state::UNDEFINED,
         resource_state::DEPTH_WRITE,
-        image_barrier_aspect::DEPTH);
+        image_barrier_aspect::DEPTH, 0);
 
     // 2. ShadowPass Begin
-    cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::SHADOW_PASS, v_width, v_height, shadow_rt_handle);
+    auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::SHADOW_PASS, 0, 1, width, height);
+    bpc.depthTarget = shadow_rt_handle;
 
-    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
-    cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, width, height);
+    cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, width, height);
 
     const directional_light* dir_light = scn->getDirectionalLight();
     uniform_buffer_handle view_handle = g_defaultViewBufferHandle;
@@ -239,10 +262,10 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
         shadow_rt_handle,
         resource_state::DEPTH_WRITE,
         resource_state::SHADER_READ,
-        image_barrier_aspect::DEPTH);
+        image_barrier_aspect::DEPTH, 0);
 }
 
-void renderer::mainPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
+void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
 {
     assert(scn);
 
@@ -263,16 +286,18 @@ void renderer::mainPass(const scene* scn, const window_context_handle& ctx_handl
         // on preserving its previous contents or layout across acquire/present.
         resource_state::UNDEFINED,
         resource_state::COLOR_WRITE,
-        image_barrier_aspect::COLOR);
+        image_barrier_aspect::COLOR, 0);
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
         fb_handle,
         // The window depth buffer is also cleared every frame before use.
         resource_state::UNDEFINED,
         resource_state::DEPTH_WRITE,
-        image_barrier_aspect::DEPTH);
+        image_barrier_aspect::DEPTH, 1);
 
-    cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::MAIN_PASS, v_width, v_height, fb_handle);
+    auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::FORWARD_PASS, 1, 1, v_width, v_height);
+    bpc.colorTargets[0] = fb_handle;
+    bpc.depthTarget = fb_handle;
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
@@ -352,7 +377,7 @@ void renderer::mainPass(const scene* scn, const window_context_handle& ctx_handl
         }
         cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex0, (u8)shader_binding::TEXTURE);
 
-        cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_binding::DEPTH, (u8)shader_binding::SHADOW_MAP);
+        cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
@@ -393,7 +418,17 @@ void renderer::mainPass(const scene* scn, const window_context_handle& ctx_handl
         fb_handle,
         resource_state::COLOR_WRITE,
         resource_state::PRESENT,
-        image_barrier_aspect::COLOR);
+        image_barrier_aspect::COLOR, 0);
+}
+
+void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
+{
+    //
+}
+
+void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
+{
+    //
 }
 
 void renderer::updateFrameUniformBuffer(const camera* cmr, float aspectRatio)
@@ -461,11 +496,37 @@ void renderer::initDefaultResources()
     g_defaultLightBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(light_uniform_buffer), shader_binding_stage::BOTH);
 
     g_defaultSamplerHandle = _dynamicRHI->createSampler();
-    g_shadowMapSamplerHandle = _dynamicRHI->createSampler(); // TODO: create new sampler
+    // TODO: create new sampler clamp, not repeat
+    g_shadowMapSamplerHandle = _dynamicRHI->createSampler(); 
 
     g_defaultWhiteTexture.reset(texture::create_one_factory(255, 255, 255, 255));
     g_defaultBlackTexture.reset(texture::create_one_factory(0, 0, 0, 255));
 
     g_shadowMat.reset(material::create_factory("shadow_map"));
     g_shadowMat->setUseVertexIndexBuffers(true);
+
+    render_target_info shadowRTInfo{
+        .frame_count = g_framesInFlight,
+        .width = shadow_map_width,
+        .height = shadow_map_height,
+        .target_count = 1,
+        .targets = { render_target_type::DEPTH },
+        .passName = render_pass_name::SHADOW_PASS
+    };
+    shadow_rt_handle = _dynamicRHI->createRenderTarget(shadowRTInfo);
+
+    if (r_mode == render_mode::DEFERRED)
+    {
+        u32 v_width, v_height;
+        _dynamicRHI->getWindowContextSize(_dynamicRHI->getWindowContexts()[0], v_width, v_height); // TODO
+        render_target_info gbufferRTInfo {
+            .frame_count = g_framesInFlight,
+            .width = v_width,
+            .height = v_height,
+            .target_count = 4, // TODO: Define the correct number of targets
+            .targets = { render_target_type::COLOR, render_target_type::COLOR, render_target_type::COLOR, render_target_type::DEPTH },
+            .passName = render_pass_name::SHADOW_PASS
+        };
+        g_gbuffer_handle = _dynamicRHI->createRenderTarget(gbufferRTInfo);
+    }
 }

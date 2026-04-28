@@ -65,33 +65,40 @@ void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
 
     _device = device;
 
-    std::vector<VkAttachmentDescription> attachments; //  = {colorAttachment, depthAttachment}
+    std::vector<VkAttachmentDescription> attachments;
 
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
-    VkAttachmentReference colorAttachmentRef{};
+    std::vector<VkAttachmentReference> colorRefs;
     VkAttachmentReference depthAttachmentRef{};
 
-    if (init_desc.bUseColor)
+    if (init_desc.colorAttachmentCount > 0)
     {
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = init_desc.colorFormat;
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        // Image layout transitions are driven explicitly by IMAGE_BARRIER commands.
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        for (u32 i = 0; i < init_desc.colorAttachmentCount; ++i)
+        {
+            VkAttachmentDescription colorAttachment{};
+            colorAttachment.format = init_desc.colorFormats[i];
+            colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            // Image layout transitions are driven explicitly by IMAGE_BARRIER commands.
+            colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        colorAttachmentRef.attachment = static_cast<uint32_t>(attachments.size());
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
+            VkAttachmentReference colorAttachmentRef{
+                .attachment = static_cast<u32>(attachments.size()),
+                .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            };
 
-        attachments.push_back(colorAttachment);
+            attachments.push_back(colorAttachment);
+            colorRefs.push_back(colorAttachmentRef);
+        }
+
+        subpass.colorAttachmentCount = static_cast<u32>(colorRefs.size());
+        subpass.pColorAttachments = colorRefs.data();
     }
     else
     {
@@ -99,19 +106,22 @@ void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
         subpass.pColorAttachments = nullptr;
     }
 
-    if (init_desc.bUseDepth)
+    if (init_desc.depthAttachmentCount > 0)
     {
+        assert(init_desc.depthAttachmentCount == 1); // currently only support one depth attachment
+
         VkAttachmentDescription depthAttachment{};
         depthAttachment.format = init_desc.depthFormat;
         depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
         depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depthAttachment.storeOp = name == render_pass_name::SHADOW_PASS ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        const bool needStore = name == render_pass_name::SHADOW_PASS || name == render_pass_name::GBUFFER_PASS;
+        depthAttachment.storeOp = needStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
         depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-        depthAttachmentRef.attachment = static_cast<uint32_t>(attachments.size());
+        depthAttachmentRef.attachment = static_cast<u32>(attachments.size());
         depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
@@ -133,7 +143,7 @@ void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
 
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.attachmentCount = static_cast<u32>(attachments.size());
     renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
@@ -159,6 +169,7 @@ void vk_render_pass::cleanup()
 void vk_images::init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc& init_desc)
 {
     _device = device;
+    aspectFlags = init_desc.aspectFlags;
 
     if (!bPreinitialized)
     {
@@ -166,6 +177,7 @@ void vk_images::init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc
         memories.resize(init_desc.count);
     }
     views.resize(init_desc.count);
+    states.assign(init_desc.count, resource_state::UNDEFINED);
     if (init_desc.bUseDescriptorSet)
     {
         descriptorSets.resize(init_desc.count);
@@ -238,41 +250,54 @@ void vk_render_target::init(VkDevice device, VkPhysicalDevice gpu, const vk_rend
 {
     _device = device;
 
-    bColor = init_desc.bUseColor;
-    if (bColor)
+    u32 total = static_cast<u32>(init_desc.infos.size());
+    for (u32 i = 0; i < total; ++i)
     {
-        vk_images_desc color_desc
-        {
-            .count = init_desc.count,
-            .format = init_desc.colorFormat,
-            .extent = init_desc.extent,
-            // TODO ?
-            // .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            // .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            .aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT,
-            .bUseDescriptorSet = init_desc.bUseColorDescriptorSet,
-            .descriptorPool = init_desc.descriptorPool,
-            .descriptorSetLayout = init_desc.descriptorSetLayout,
-        };
-        color.init(device, gpu, color_desc);
-    }
+        auto& attachInfo = init_desc.infos[i];
 
-    bDepth = init_desc.bUseDepth;
-    if (bDepth)
-    {
-        vk_images_desc depth_desc
+        vk_images_desc desc;
+        if (attachInfo.bIsColor)
         {
-            .count = init_desc.count,
-            .format = init_desc.depthFormat,
-            .extent = init_desc.extent,
-            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            .aspectFlags =VK_IMAGE_ASPECT_DEPTH_BIT,
-            .bUseDescriptorSet = init_desc.bUseDepthDescriptorSet,
-            .descriptorPool = init_desc.descriptorPool,
-            .descriptorSetLayout = init_desc.descriptorSetLayout,
-        };
-        depth.init(device, gpu, depth_desc);
+            vk_images_desc color_desc
+            {
+                .count = init_desc.count,
+                .format = attachInfo.format,
+                .extent = init_desc.extent,
+                // TODO ?
+                // .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                // .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                .aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT,
+                .bUseDescriptorSet = attachInfo.bNeedDescriptorSet,
+                .descriptorPool = init_desc.descriptorPool,
+                .descriptorSetLayout = init_desc.descriptorSetLayout,
+            };
+            desc = color_desc;
+        }
+        else
+        {
+            vk_images_desc depth_desc
+            {
+                .count = init_desc.count,
+                .format = attachInfo.format,
+                .extent = init_desc.extent,
+                .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                .aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .bUseDescriptorSet = attachInfo.bNeedDescriptorSet,
+                .descriptorPool = init_desc.descriptorPool,
+                .descriptorSetLayout = init_desc.descriptorSetLayout,
+            };
+            desc = depth_desc;
+        }
+        
+        if (attachments.size() > i)
+        {
+            attachments[i].init(device, gpu, desc);
+        }
+        else
+        {
+            attachments.emplace_back().init(device, gpu, desc);
+        }
     }
 
     bFramebuffer = init_desc.bUseFramebuffer;
@@ -284,15 +309,17 @@ void vk_render_target::init(VkDevice device, VkPhysicalDevice gpu, const vk_rend
 
         for (u32 i = 0; i < init_desc.count; ++i)
         {
-            std::vector<VkImageView> attachments;
-            if (bColor) attachments.push_back(color.views[i]);
-            if (bDepth) attachments.push_back(depth.views[i]);
+            std::vector<VkImageView> fb_attachments;
+            for (u32 attachmentIndex = 0; attachmentIndex < attachments.size(); ++attachmentIndex)
+            {
+                fb_attachments.push_back(attachments[attachmentIndex].views[i]);
+            }
 
             VkFramebufferCreateInfo framebufferInfo{};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             framebufferInfo.renderPass = init_desc.renderPass;
-            framebufferInfo.attachmentCount = static_cast<u32>(attachments.size());;
-            framebufferInfo.pAttachments = attachments.data();
+            framebufferInfo.attachmentCount = static_cast<u32>(fb_attachments.size());
+            framebufferInfo.pAttachments = fb_attachments.data();
             framebufferInfo.width = init_desc.extent.width;
             framebufferInfo.height = init_desc.extent.height;
             framebufferInfo.layers = 1;
@@ -306,12 +333,14 @@ void vk_render_target::init(VkDevice device, VkPhysicalDevice gpu, const vk_rend
 
 void vk_render_target::cleanup()
 {
-    for(auto& framebuffer : frameBuffers)
+    for (auto& framebuffer : frameBuffers)
     {
         vkDestroyFramebuffer(_device, framebuffer, nullptr);
     }
-    depth.cleanup();
-    color.cleanup();
+    for (auto& attach : attachments)
+    {
+        attach.cleanup();
+    }
 }
 
 void vk_image_sync::init(VkDevice device)

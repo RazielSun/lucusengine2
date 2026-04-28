@@ -36,9 +36,11 @@ namespace lucus
     struct vk_render_pass_desc
     {
         render_pass_name name;
-        bool bUseColor{true};
-        VkFormat colorFormat;
-        bool bUseDepth{false};
+
+        u32 colorAttachmentCount{0};
+        VkFormat colorFormats[g_maxMrtColorTargets];
+
+        u32 depthAttachmentCount{0};
         VkFormat depthFormat;
     };
 
@@ -71,10 +73,12 @@ namespace lucus
     struct vk_images
     {
         bool bPreinitialized { false };
+        VkImageAspectFlags aspectFlags;
         std::vector<VkImage> images;
         std::vector<VkImageView> views;
         std::vector<VkDeviceMemory> memories;
         std::vector<VkDescriptorSet> descriptorSets;
+        std::vector<resource_state> states;
 
         void init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc& init_desc);
         void cleanup();
@@ -83,18 +87,19 @@ namespace lucus
             VkDevice _device{ VK_NULL_HANDLE };
     };
 
+    struct vk_images_desc_info
+    {
+        VkFormat format;
+        bool bIsColor {true};
+        bool bNeedDescriptorSet { false };
+    };
+
     struct vk_render_target_desc
     {
         u32 count { 0 };
         VkExtent2D extent;
 
-        bool bUseColor {false};
-        bool bUseColorDescriptorSet { false };
-        VkFormat colorFormat;
-
-        bool bUseDepth {false};
-        bool bUseDepthDescriptorSet { false };
-        VkFormat depthFormat;
+        std::vector<vk_images_desc_info> infos;
 
         bool bUseFramebuffer{false};
         VkRenderPass renderPass;
@@ -105,11 +110,7 @@ namespace lucus
 
     struct vk_render_target
     {
-        bool bColor { true };
-        vk_images color;
-
-        bool bDepth { false };
-        vk_images depth;
+        std::vector<vk_images> attachments;
 
         bool bFramebuffer { false };
         bool bSwapChain { false };

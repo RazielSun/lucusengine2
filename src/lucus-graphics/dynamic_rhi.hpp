@@ -30,7 +30,7 @@ namespace lucus
         virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle) const = 0;
 
         virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) = 0;
-        virtual render_target_handle createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle) = 0;
+        virtual render_target_handle createRenderTarget(const render_target_info& info, const window_context_handle& ctx_handle = {}) = 0;
         
         virtual mesh_handle createMesh(mesh* msh) = 0;
 

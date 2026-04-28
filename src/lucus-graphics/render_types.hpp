@@ -14,18 +14,39 @@ namespace lucus
     constexpr u32 g_maxUniformBufferCount{ 32 };
     constexpr u32 g_maxTexturesCount{ 32 };
     constexpr u32 g_maxSamplersCount{ 32 };
+    constexpr u32 g_maxMrtColorTargets{ 3 };
+
+    enum class render_mode : u8
+    {
+        NONE = 0,
+        FORWARD = 1,
+        DEFERRED = 2,
+    };
+
+    enum class render_pass_name : u8
+    {
+        SHADOW_PASS = 0,
+        FORWARD_PASS = 1,
+        GBUFFER_PASS = 2,
+        DEFERRED_LIGHTING_PASS = 3,
+    };
 
     // STRICT SHADER BIND CONTRACT
     enum class shader_binding : u8
     {
-        VIEW = 0,
-        OBJECT,
-        LIGHT,
-        TEXTURE,
-        SHADOW_MAP,
-        SAMPLER,
-        SHADOW_MAP_SAMPLER,
-        VERTEX,
+        VIEW                = 0,
+        OBJECT              = 1,
+        LIGHT               = 2,
+        TEXTURE             = 3,
+        SHADOW_MAP          = 4,
+        SAMPLER             = 5,
+        SHADOW_MAP_SAMPLER  = 6,
+        VERTEX              = 7,
+        GBUFFER_A           = 8, // NORMAL + Flags
+        GBUFFER_B           = 9, // Metalness + Roughness + Specular + ShadingModel
+        GBUFFER_C           = 10, // ALBEDO + AO
+        GBUFFER_DEPTH       = 11,
+        GBUFFER_SAMPLER     = 12,
     };
 
     enum class shader_binding_stage : u8
@@ -46,21 +67,19 @@ namespace lucus
 
     enum class render_target_type : u8
     {
-        COLOR_ONLY = 0,
-        DEPTH_ONLY = 1,
-        COLOR_AND_DEPTH = 2,
+        NONE = 0,
+        COLOR = 1,
+        DEPTH = 2,
     };
 
-    enum class render_target_binding : u8
+    struct render_target_info
     {
-        COLOR = 0,
-        DEPTH = 1,
-    };
-
-    enum class render_pass_name : u8
-    {
-        MAIN_PASS = 0,
-        SHADOW_PASS = 1,
+        u32 frame_count{0};
+        u32 width{0};
+        u32 height{0};
+        u32 target_count{0};
+        render_target_type targets[g_maxMrtColorTargets + 1];
+        render_pass_name passName{render_pass_name::FORWARD_PASS};
     };
 
     enum class resource_state : u8
@@ -72,6 +91,7 @@ namespace lucus
         PRESENT,
         COPY_SRC,
         COPY_DST,
+        GBUFFER_WRITE,
     };
 
     enum class image_barrier_aspect : u8

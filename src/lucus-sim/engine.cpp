@@ -33,10 +33,12 @@ void engine::run(int argc, char** argv)
         throw std::runtime_error("Failed to build " + run_script + " script");
     }
 
+    renderer::instance().init(render_mode::FORWARD);
+
     if (!script_manager::instance().run_func("Entry", "void main()")) {
         throw std::runtime_error("Failed to run main() from Entry module");
     }
-
+    
     auto handle = window_manager::instance().getMainWindow();
     if (!handle.is_valid()) {
         throw std::runtime_error("Failed to get main window handle");

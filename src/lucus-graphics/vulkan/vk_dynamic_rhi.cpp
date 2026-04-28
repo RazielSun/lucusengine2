@@ -215,19 +215,18 @@ void vk_dynamic_rhi::createDevice()
 void vk_dynamic_rhi::createPasses()
 {
     vk_render_pass_desc main_desc{
-        .name = render_pass_name::MAIN_PASS,
-        .bUseColor = true,
-        .colorFormat = colorFormat,
-        .bUseDepth = true,
+        .name = render_pass_name::FORWARD_PASS,
+        .colorAttachmentCount = 1,
+        .colorFormats[0] = colorFormat,
+        .depthAttachmentCount = 1,
         .depthFormat = depthFormat
     };
     _renderPasses.emplace_back().init(_deviceHandle, main_desc);
 
     vk_render_pass_desc shadow_desc{
         .name = render_pass_name::SHADOW_PASS,
-        .bUseColor = false,
-        .colorFormat = colorFormat,
-        .bUseDepth = true,
+        .colorAttachmentCount = 0,
+        .depthAttachmentCount = 1,
         .depthFormat = depthFormat
     };
     _renderPasses.emplace_back().init(_deviceHandle, shadow_desc);
@@ -257,13 +256,16 @@ window_context_handle vk_dynamic_rhi::createWindowContext(const window_handle& h
     window_context_handle out_handle(static_cast<u32>(_contexts.size()));
     _contextHandles.push_back(out_handle);
 
-    context.rt_handle = createRenderTarget(
-        context.swapChain.imageCount,
-        context.swapChain.extent.width,
-        context.swapChain.extent.height,
-        render_target_type::COLOR_AND_DEPTH,
-        render_pass_name::MAIN_PASS,
-        out_handle);
+    render_target_info info{
+        .frame_count = context.swapChain.imageCount,
+        .width = context.swapChain.extent.width,
+        .height = context.swapChain.extent.height,
+        .target_count = 2,
+        .targets = { render_target_type::COLOR, render_target_type::DEPTH },
+        .passName = render_pass_name::FORWARD_PASS
+    };
+
+    context.rt_handle = createRenderTarget(info, out_handle);
 
     return out_handle;
 }
@@ -327,10 +329,6 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::RENDER_PASS_BEGIN:
                 {
                     const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
-                    auto rt_handle = rb_cmd->rt_handle;
-                    assert(rt_handle.is_valid());
-                    auto& rt = _renderTargets[rt_handle.as_index()];
-                    assert(rt.bFramebuffer);
 
                     VkRenderPassBeginInfo renderPassInfo{};
                     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -339,22 +337,54 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     });
                     assert(found != _renderPasses.end());
                     renderPassInfo.renderPass = found->renderPass;
-                    const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-                    assert(rt.frameBuffers.size() > index);
-                    renderPassInfo.framebuffer = rt.frameBuffers[index];
+
                     renderPassInfo.renderArea.offset = { 0, 0 };
                     renderPassInfo.renderArea.extent = { rb_cmd->width, rb_cmd->height };
                     
                     std::vector<VkClearValue> clearValues;
-                    if (rb_cmd->pass == render_pass_name::MAIN_PASS)
+                    std::set<render_target_handle> uniqueRenderTargets;
+                    if (rb_cmd->colorTargetCount > 0)
                     {
+                        assert(rb_cmd->colorTargetCount <= g_maxMrtColorTargets);
+
+                        // TODO: support multiple render targets
                         clearValues.emplace_back().color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+
+                        auto rt_handle = rb_cmd->colorTargets[0];
+                        assert(rt_handle.is_valid());
+
+                        // uniqueRenderTargets.insert(rt_handle);
+
+                        auto& rt = _renderTargets[rt_handle.as_index()];
+                        assert(rt.bFramebuffer);
+
+                        const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
+
+                        assert(rt.frameBuffers.size() > index);
+                        renderPassInfo.framebuffer = rt.frameBuffers[index];
                     }
-                    // else if (rb_cmd->pass == render_pass_name::SHADOW_PASS)
-                    // {
-                    //     //
-                    // }
-                    clearValues.emplace_back().depthStencil = {1.0f, 0};
+
+                    if (rb_cmd->depthTargetCount > 0)
+                    {
+                        assert(rb_cmd->depthTargetCount == 1);
+
+                        clearValues.emplace_back().depthStencil = {1.0f, 0};
+
+                        auto rt_handle = rb_cmd->depthTarget;
+                        assert(rt_handle.is_valid());
+
+                        // if (uniqueRenderTargets.find(rt_handle) == uniqueRenderTargets.end())
+                        {
+                            // uniqueRenderTargets.insert(rt_handle);
+                            auto& rt = _renderTargets[rt_handle.as_index()];
+                            assert(rt.bFramebuffer);
+
+                            const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
+
+                            assert(rt.frameBuffers.size() > index);
+                            renderPassInfo.framebuffer = rt.frameBuffers[index];
+                        }
+                    }
 
                     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
                     renderPassInfo.pClearValues = clearValues.data();
@@ -429,15 +459,14 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     assert(rt_handle.is_valid());
                     auto& rt = _renderTargets[rt_handle.as_index()];
                     const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-                    VkDescriptorSet descriptorSet { VK_NULL_HANDLE };
-                    if (br_cmd->binding == render_target_binding::COLOR)
-                    {
-                        descriptorSet = rt.color.descriptorSets[index];
-                    }
-                    else if (br_cmd->binding == render_target_binding::DEPTH)
-                    {
-                        descriptorSet = rt.depth.descriptorSets[index];
-                    }
+                    
+                    assert(rt.attachments.size() > br_cmd->slot);
+                    auto& attachment = rt.attachments[br_cmd->slot];
+                    VkDescriptorSet descriptorSet = attachment.descriptorSets[index];
+                    // check for COLOR or DEPTH?
+                    // if (br_cmd->type == render_target_type::COLOR)
+                    // else if (br_cmd->type == render_target_type::DEPTH)
+
                     assert(descriptorSet);
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)br_cmd->position, 1, &descriptorSet, 0, nullptr);
                 }
@@ -490,23 +519,18 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto rt_handle = ti_cmd->rt_handle;
                     assert(rt_handle.is_valid());
                     auto& rt = _renderTargets[rt_handle.as_index()];
-                    
-                    VkImage image { VK_NULL_HANDLE };
-                    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_NONE;
+
+                    assert(rt.attachments.size() > ti_cmd->slot);
+                    auto& attachment = rt.attachments[ti_cmd->slot];
 
                     const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-                    if (ti_cmd->aspect == image_barrier_aspect::COLOR)
-                    {
-                        image = rt.color.images[index];
-                        aspect |= VK_IMAGE_ASPECT_COLOR_BIT;
-                    }
-                    else if (ti_cmd->aspect == image_barrier_aspect::DEPTH)
-                    {
-                        image = rt.depth.images[index];
-                        aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-                    }
+                    VkImage image = attachment.images[index];
+                    VkImageAspectFlags aspect = attachment.aspectFlags;
 
-                    const auto src = utils::toVkBarrierState(ti_cmd->src);
+                    assert(attachment.states.size() > index);
+
+                    const resource_state trackedState = attachment.states[index];
+                    const auto src = utils::toVkBarrierState(trackedState);
                     const auto dst = utils::toVkBarrierState(ti_cmd->dst);
 
                     VkImageMemoryBarrier barrier{};
@@ -532,6 +556,8 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                         0, nullptr,
                         0, nullptr,
                         1, &barrier);
+
+                    attachment.states[index] = ti_cmd->dst;
                 }
                 break;
             default:
@@ -713,7 +739,7 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
     return pso_handle;
 }
 
-render_target_handle vk_dynamic_rhi::createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle)
+render_target_handle vk_dynamic_rhi::createRenderTarget(const const render_target_info& info, const window_context_handle& ctx_handle)
 {
     auto& rt = _renderTargets.emplace_back();
     render_target_handle rt_handle(static_cast<u32>(_renderTargets.size()));
@@ -727,28 +753,33 @@ render_target_handle vk_dynamic_rhi::createRenderTarget(u32 count, u32 width, u3
         bNeedDescritors = false;
     }
 
-    auto found = std::find_if(_renderPasses.begin(), _renderPasses.end(), [passName](const vk_render_pass& pass) {
+    auto found = std::find_if(_renderPasses.begin(), _renderPasses.end(), [passName = info.passName](const vk_render_pass& pass) {
         return passName == pass.name;
     });
     assert(found != _renderPasses.end());
 
-    bool bUseColor = type == render_target_type::COLOR_ONLY || type == render_target_type::COLOR_AND_DEPTH;
-    bool bUseDepth = type == render_target_type::DEPTH_ONLY || type == render_target_type::COLOR_AND_DEPTH;
+    // bool bUseColor = type == render_target_type::COLOR_ONLY || type == render_target_type::COLOR_AND_DEPTH;
+    // bool bUseDepth = type == render_target_type::DEPTH_ONLY || type == render_target_type::COLOR_AND_DEPTH;
     auto textureDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT);
 	vk_render_target_desc init_desc {
-		.count = count,
-		.extent = VkExtent2D{width, height},
-		.bUseColor = bUseColor,
-        .bUseColorDescriptorSet = bUseColor && bNeedDescritors,
-		.colorFormat = colorFormat,
-		.bUseDepth = bUseDepth,
-        .bUseDepthDescriptorSet = bUseDepth && bNeedDescritors,
-		.depthFormat = depthFormat,
+		.count = info.frame_count,
+		.extent = VkExtent2D{info.width, info.height},
 		.bUseFramebuffer = true,
 		.renderPass = found->renderPass,
         .descriptorPool = _descriptorPool,
         .descriptorSetLayout = textureDSL
 	};
+
+    for (u32 i = 0; i < info.target_count; i++)
+    {
+        vk_images_desc_info img_desc{
+            .bIsColor = info.targets[i] == render_target_type::COLOR,
+            .bNeedDescriptorSet = bNeedDescritors,
+            .format = info.targets[i] == render_target_type::COLOR ? colorFormat : depthFormat,
+        };
+        init_desc.infos.push_back(img_desc);
+    }
+
 	rt.init(_deviceHandle, _device->getGPU(), init_desc);
 
     std::printf("Render Target %u created successfully\n", rt_handle.get());
