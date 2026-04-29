@@ -272,32 +272,30 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
     u32 v_width, v_height;
     _dynamicRHI->getWindowContextSize(ctx_handle, v_width, v_height);
 
-    render_target_handle fb_handle = _dynamicRHI->getWindowContextRenderTarget(ctx_handle);
+    render_target_handle fb_color_handle = _dynamicRHI->getWindowContextRenderTarget(ctx_handle, render_target_type::COLOR);
+    render_target_handle fb_depth_handle = _dynamicRHI->getWindowContextRenderTarget(ctx_handle, render_target_type::DEPTH);
 
-    if (v_width == 0 || v_height == 0 || !fb_handle.is_valid())
+    if (v_width == 0 || v_height == 0 || !fb_color_handle.is_valid())
     {
         // TODO: error
         return;
     }
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        fb_handle,
-        // The backbuffer is cleared at the start of the pass, so we don't depend
-        // on preserving its previous contents or layout across acquire/present.
+        fb_color_handle,
         resource_state::UNDEFINED,
         resource_state::COLOR_WRITE,
         image_barrier_aspect::COLOR, 0);
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        fb_handle,
-        // The window depth buffer is also cleared every frame before use.
+        fb_depth_handle,
         resource_state::UNDEFINED,
         resource_state::DEPTH_WRITE,
-        image_barrier_aspect::DEPTH, 1);
+        image_barrier_aspect::DEPTH, 0);
 
     auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::FORWARD_PASS, 1, 1, v_width, v_height);
-    bpc.colorTargets[0] = fb_handle;
-    bpc.depthTarget = fb_handle;
+    bpc.colorTargets[0] = fb_color_handle;
+    bpc.depthTarget = fb_depth_handle;
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
@@ -348,6 +346,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
             continue;
         }
 
+        // TODO: Implement logic to skip rendering certain objects in shadow pass based on material properties or object flags
         // if (meshInst->getName().find("Plane") == std::string::npos)
         // {
         //     continue;
@@ -415,7 +414,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
     cmd.emplaceCommand<gpu_render_pass_end_command>();
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        fb_handle,
+        fb_color_handle,
         resource_state::COLOR_WRITE,
         resource_state::PRESENT,
         image_barrier_aspect::COLOR, 0);
@@ -505,28 +504,16 @@ void renderer::initDefaultResources()
     g_shadowMat.reset(material::create_factory("shadow_map"));
     g_shadowMat->setUseVertexIndexBuffers(true);
 
-    render_target_info shadowRTInfo{
-        .frame_count = g_framesInFlight,
-        .width = shadow_map_width,
-        .height = shadow_map_height,
-        .target_count = 1,
-        .targets = { render_target_type::DEPTH },
-        .passName = render_pass_name::SHADOW_PASS
-    };
-    shadow_rt_handle = _dynamicRHI->createRenderTarget(shadowRTInfo);
+    shadow_rt_handle = _dynamicRHI->createRenderTarget(shadow_map_width, shadow_map_height, render_target_type::DEPTH, g_framesInFlight);
 
     if (r_mode == render_mode::DEFERRED)
     {
         u32 v_width, v_height;
-        _dynamicRHI->getWindowContextSize(_dynamicRHI->getWindowContexts()[0], v_width, v_height); // TODO
-        render_target_info gbufferRTInfo {
-            .frame_count = g_framesInFlight,
-            .width = v_width,
-            .height = v_height,
-            .target_count = 4, // TODO: Define the correct number of targets
-            .targets = { render_target_type::COLOR, render_target_type::COLOR, render_target_type::COLOR, render_target_type::DEPTH },
-            .passName = render_pass_name::SHADOW_PASS
-        };
-        g_gbuffer_handle = _dynamicRHI->createRenderTarget(gbufferRTInfo);
+        // TODO: 0 index from window contexts is not good, need to find better way to get main window size
+        _dynamicRHI->getWindowContextSize(_dynamicRHI->getWindowContexts()[0], v_width, v_height);
+        g_gbufferA = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
+        g_gbufferB = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
+        g_gbufferC = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
+        g_gbufferDepth = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::DEPTH, g_framesInFlight);
     }
 }

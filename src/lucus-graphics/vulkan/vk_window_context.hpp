@@ -37,7 +37,8 @@ namespace lucus
         uint32_t currentImageIndex = 0;
         std::array<vk_image_sync, g_swapchainImageCount> imageSync{};
 
-        render_target_handle rt_handle;
+        render_target_handle color_handle;
+        render_target_handle depth_handle;
 
         void init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window);
         void init_images(vk_render_target& render_target);

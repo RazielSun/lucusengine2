@@ -23,10 +23,10 @@ namespace lucus
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
-            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle) const override;
+            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle, render_target_type rt_type) const override;
 
             virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
-            virtual render_target_handle createRenderTarget(const render_target_info& info, const window_context_handle& ctx_handle = {}) override;
+            virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) override;
 
             virtual mesh_handle createMesh(mesh* msh) override;
 
@@ -59,6 +59,8 @@ namespace lucus
 
             VkDescriptorSetLayout findDescriptor(VkDescriptorType in_type, shader_binding_stage in_stage) const;
 
+            const vk_framebuffer& findOrCreateFramebuffer(const vk_framebuffer_key& key);
+
         private:
             VkInstance _instance;
 
@@ -80,8 +82,8 @@ namespace lucus
 
             //
             std::vector<vk_render_target> _renderTargets;
+            std::unordered_map<u64, vk_framebuffer> _framebuffers;
             
-
             vk_commandbuffer_pool _commandbuffer_pool;
 
             VkQueue _graphicsQueue;

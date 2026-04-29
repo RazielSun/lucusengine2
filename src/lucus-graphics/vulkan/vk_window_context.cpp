@@ -33,13 +33,14 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
 
 void vk_window_context::init_images(vk_render_target& render_target)
 {
+	render_target.bFromSwapChain = true;
+
 	u32 imageCount = swapChain.imageCount;
+	render_target.images.resize(imageCount);
+    vkGetSwapchainImagesKHR(_device, swapChain.swapChain, &imageCount, render_target.images.data());
 
-	auto& attachment = render_target.attachments.emplace_back();
-
-	attachment.bPreinitialized = true;
-	attachment.images.resize(imageCount);
-    vkGetSwapchainImagesKHR(_device, swapChain.swapChain, &imageCount, attachment.images.data());
+	render_target.desc.bUseDescriptorSet = false;
+	render_target.createResources();
 }
 
 void vk_window_context::cleanup()

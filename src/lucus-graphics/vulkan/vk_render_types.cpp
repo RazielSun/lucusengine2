@@ -6,6 +6,18 @@
 
 using namespace lucus;
 
+u64 vk_framebuffer_key::hash() const
+{
+    u64 h = (u64)pass;
+    h = h * 31 + colorCount;
+    for (u8 c = 0; c < colorCount; ++c)
+        h = h * 31 + colorTargets[c].get();
+    h = h * 31 + depthTarget.get();
+    h = h * 31 + width;
+    h = h * 31 + height;
+    return h;
+}
+
 void vk_commandbuffer_pool::init(VkDevice device, uint32_t queueFamilyIndex)
 {
     _device = device;
@@ -118,7 +130,7 @@ void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
         depthAttachment.storeOp = needStore ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
         depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         depthAttachmentRef.attachment = static_cast<u32>(attachments.size());
@@ -166,43 +178,47 @@ void vk_render_pass::cleanup()
     }
 }
 
-void vk_images::init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc& init_desc)
+void vk_render_target::init(VkDevice device, VkPhysicalDevice gpu, const vk_render_target_desc& init_desc)
 {
     _device = device;
-    aspectFlags = init_desc.aspectFlags;
+    _gpu = gpu;
+    desc = init_desc;
+}
 
-    if (!bPreinitialized)
+void lucus::vk_render_target::createResources()
+{
+    if (!bFromSwapChain)
     {
-        images.resize(init_desc.count);
-        memories.resize(init_desc.count);
+        images.resize(desc.count);
+        memories.resize(desc.count);
     }
-    views.resize(init_desc.count);
-    states.assign(init_desc.count, resource_state::UNDEFINED);
-    if (init_desc.bUseDescriptorSet)
+    views.resize(desc.count);
+    states.assign(desc.count, resource_state::UNDEFINED);
+    if (desc.bUseDescriptorSet)
     {
-        descriptorSets.resize(init_desc.count);
+        descriptorSets.resize(desc.count);
     }
 
-    for (u32 i = 0; i < init_desc.count; ++i)
+    for (u32 i = 0; i < desc.count; ++i)
     {
-        if (!bPreinitialized)
+        if (!bFromSwapChain)
         {
-            utils::createImage(device, gpu, init_desc.extent, init_desc.format, init_desc.usage, init_desc.properties, images[i], memories[i]);
+            utils::createImage(_device, _gpu, desc.extent, desc.format, desc.usage, desc.properties, images[i], memories[i]);
         }
-        utils::createImageView(device, images[i], init_desc.format, init_desc.aspectFlags, views[i]);
+        utils::createImageView(_device, images[i], desc.format, desc.aspectFlags, views[i]);
 
-        if (init_desc.bUseDescriptorSet)
+        if (desc.bUseDescriptorSet)
         {
-            assert(init_desc.descriptorPool);
-            assert(init_desc.descriptorSetLayout);
+            assert(desc.descriptorPool);
+            assert(desc.descriptorSetLayout);
 
             VkDescriptorSetAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            allocInfo.descriptorPool = init_desc.descriptorPool;
+            allocInfo.descriptorPool = desc.descriptorPool;
             allocInfo.descriptorSetCount = 1;
-            allocInfo.pSetLayouts = &init_desc.descriptorSetLayout;
+            allocInfo.pSetLayouts = &desc.descriptorSetLayout;
 
-            if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSets[i]) != VK_SUCCESS) {
+            if (vkAllocateDescriptorSets(_device, &allocInfo, &descriptorSets[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
             
@@ -219,19 +235,19 @@ void vk_images::init(VkDevice device, VkPhysicalDevice gpu, const vk_images_desc
             write.descriptorCount = 1;
             write.pImageInfo = &dsInfo;
 
-            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+            vkUpdateDescriptorSets(_device, 1, &write, 0, nullptr);
         }
     }
 }
 
-void vk_images::cleanup()
+void vk_render_target::cleanup()
 {
     for (auto& view : views)
     {
         vkDestroyImageView(_device, view, nullptr);
     }
     views.clear();
-    if (!bPreinitialized)
+    if (!bFromSwapChain)
     {
         for (auto& image : images)
         {
@@ -243,103 +259,6 @@ void vk_images::cleanup()
             vkFreeMemory(_device, memory, nullptr);
         }
         memories.clear();
-    }
-}
-
-void vk_render_target::init(VkDevice device, VkPhysicalDevice gpu, const vk_render_target_desc& init_desc)
-{
-    _device = device;
-
-    u32 total = static_cast<u32>(init_desc.infos.size());
-    for (u32 i = 0; i < total; ++i)
-    {
-        auto& attachInfo = init_desc.infos[i];
-
-        vk_images_desc desc;
-        if (attachInfo.bIsColor)
-        {
-            vk_images_desc color_desc
-            {
-                .count = init_desc.count,
-                .format = attachInfo.format,
-                .extent = init_desc.extent,
-                // TODO ?
-                // .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                // .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                .aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT,
-                .bUseDescriptorSet = attachInfo.bNeedDescriptorSet,
-                .descriptorPool = init_desc.descriptorPool,
-                .descriptorSetLayout = init_desc.descriptorSetLayout,
-            };
-            desc = color_desc;
-        }
-        else
-        {
-            vk_images_desc depth_desc
-            {
-                .count = init_desc.count,
-                .format = attachInfo.format,
-                .extent = init_desc.extent,
-                .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                .aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .bUseDescriptorSet = attachInfo.bNeedDescriptorSet,
-                .descriptorPool = init_desc.descriptorPool,
-                .descriptorSetLayout = init_desc.descriptorSetLayout,
-            };
-            desc = depth_desc;
-        }
-        
-        if (attachments.size() > i)
-        {
-            attachments[i].init(device, gpu, desc);
-        }
-        else
-        {
-            attachments.emplace_back().init(device, gpu, desc);
-        }
-    }
-
-    bFramebuffer = init_desc.bUseFramebuffer;
-    if (bFramebuffer)
-    {
-        assert(init_desc.renderPass);
-        
-        frameBuffers.resize(init_desc.count);
-
-        for (u32 i = 0; i < init_desc.count; ++i)
-        {
-            std::vector<VkImageView> fb_attachments;
-            for (u32 attachmentIndex = 0; attachmentIndex < attachments.size(); ++attachmentIndex)
-            {
-                fb_attachments.push_back(attachments[attachmentIndex].views[i]);
-            }
-
-            VkFramebufferCreateInfo framebufferInfo{};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = init_desc.renderPass;
-            framebufferInfo.attachmentCount = static_cast<u32>(fb_attachments.size());
-            framebufferInfo.pAttachments = fb_attachments.data();
-            framebufferInfo.width = init_desc.extent.width;
-            framebufferInfo.height = init_desc.extent.height;
-            framebufferInfo.layers = 1;
-
-            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create framebuffer!");
-            }
-        }
-    }
-}
-
-void vk_render_target::cleanup()
-{
-    for (auto& framebuffer : frameBuffers)
-    {
-        vkDestroyFramebuffer(_device, framebuffer, nullptr);
-    }
-    for (auto& attach : attachments)
-    {
-        attach.cleanup();
     }
 }
 
@@ -603,4 +522,39 @@ void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_bindi
 void vk_descriptor::cleanup()
 {
     vkDestroyDescriptorSetLayout(_device, descriptorSetLayout, nullptr);
+}
+
+void lucus::vk_framebuffer::init(VkDevice device, VkPhysicalDevice gpu, const vk_framebuffer_desc &init_desc)
+{
+    _device = device;
+
+    assert(init_desc.renderPass);
+    
+    frameBuffers.resize(init_desc.count);
+
+    for (u32 i = 0; i < init_desc.count; ++i)
+    {
+        const std::vector<VkImageView>& fb_attachments = init_desc.viewsPerFrame[i];
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = init_desc.renderPass;
+        framebufferInfo.attachmentCount = static_cast<u32>(fb_attachments.size());
+        framebufferInfo.pAttachments = fb_attachments.data();
+        framebufferInfo.width = init_desc.extent.width;
+        framebufferInfo.height = init_desc.extent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create framebuffer!");
+        }
+    }
+}
+
+void lucus::vk_framebuffer::cleanup()
+{
+    for (auto& framebuffer : frameBuffers)
+    {
+        vkDestroyFramebuffer(_device, framebuffer, nullptr);
+    }
 }

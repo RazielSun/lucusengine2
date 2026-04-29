@@ -67,6 +67,12 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     }
     _renderTargets.clear();
 
+    for (auto& fb_pair : _framebuffers)
+    {
+        fb_pair.second.cleanup();
+    }
+    _framebuffers.clear();
+
     _commandbuffer_pool.cleanup();
 
     for (auto& frame_sync : frameSync)
@@ -217,10 +223,10 @@ void vk_dynamic_rhi::createPasses()
     vk_render_pass_desc main_desc{
         .name = render_pass_name::FORWARD_PASS,
         .colorAttachmentCount = 1,
-        .colorFormats[0] = colorFormat,
         .depthAttachmentCount = 1,
         .depthFormat = depthFormat
     };
+    main_desc.colorFormats[0] = colorFormat;
     _renderPasses.emplace_back().init(_deviceHandle, main_desc);
 
     vk_render_pass_desc shadow_desc{
@@ -250,22 +256,25 @@ window_context_handle vk_dynamic_rhi::createWindowContext(const window_handle& h
         createPasses();
     }
 
-    auto& rt = _renderTargets.emplace_back();
-    render_target_handle rt_handle(static_cast<u32>(_renderTargets.size()));
-
     window_context_handle out_handle(static_cast<u32>(_contexts.size()));
     _contextHandles.push_back(out_handle);
 
-    render_target_info info{
-        .frame_count = context.swapChain.imageCount,
-        .width = context.swapChain.extent.width,
-        .height = context.swapChain.extent.height,
-        .target_count = 2,
-        .targets = { render_target_type::COLOR, render_target_type::DEPTH },
-        .passName = render_pass_name::FORWARD_PASS
-    };
+    context.color_handle = createRenderTarget(
+        context.swapChain.extent.width,
+        context.swapChain.extent.height,
+        render_target_type::COLOR,
+        context.swapChain.imageCount,
+        true);
 
-    context.rt_handle = createRenderTarget(info, out_handle);
+    auto& rt = _renderTargets[context.color_handle.as_index()];
+    context.init_images(rt);
+
+    context.depth_handle = createRenderTarget(
+        context.swapChain.extent.width,
+        context.swapChain.extent.height,
+        render_target_type::DEPTH,
+        context.swapChain.imageCount,
+        false);
 
     return out_handle;
 }
@@ -283,14 +292,19 @@ void vk_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handl
     height = ctx.swapChain.extent.height;
 }
 
-render_target_handle vk_dynamic_rhi::getWindowContextRenderTarget(const window_context_handle& ctx_handle) const
+render_target_handle vk_dynamic_rhi::getWindowContextRenderTarget(const window_context_handle& ctx_handle, render_target_type rt_type) const
 {
     if (!ctx_handle.is_valid())
     {
         throw std::runtime_error("getWindowContextRenderTarget:: we have invalid window context!");
     }
     const auto& ctx = _contexts[ctx_handle.as_index()];
-    return ctx.rt_handle;
+    
+    if (rt_type == render_target_type::DEPTH)
+    {
+        return ctx.depth_handle;
+    }
+    return ctx.color_handle;
 }
 
 void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
@@ -342,49 +356,45 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     renderPassInfo.renderArea.extent = { rb_cmd->width, rb_cmd->height };
                     
                     std::vector<VkClearValue> clearValues;
-                    std::set<render_target_handle> uniqueRenderTargets;
-                    if (rb_cmd->colorTargetCount > 0)
+
+                    assert(rb_cmd->colorTargetCount <= g_maxMrtColorTargets);
+                    for (u8 c = 0; c < rb_cmd->colorTargetCount; ++c)
                     {
-                        assert(rb_cmd->colorTargetCount <= g_maxMrtColorTargets);
-
-                        // TODO: support multiple render targets
                         clearValues.emplace_back().color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-
-                        auto rt_handle = rb_cmd->colorTargets[0];
-                        assert(rt_handle.is_valid());
-
-                        // uniqueRenderTargets.insert(rt_handle);
-
-                        auto& rt = _renderTargets[rt_handle.as_index()];
-                        assert(rt.bFramebuffer);
-
-                        const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-
-                        assert(rt.frameBuffers.size() > index);
-                        renderPassInfo.framebuffer = rt.frameBuffers[index];
                     }
-
                     if (rb_cmd->depthTargetCount > 0)
                     {
                         assert(rb_cmd->depthTargetCount == 1);
-
                         clearValues.emplace_back().depthStencil = {1.0f, 0};
-
-                        auto rt_handle = rb_cmd->depthTarget;
-                        assert(rt_handle.is_valid());
-
-                        // if (uniqueRenderTargets.find(rt_handle) == uniqueRenderTargets.end())
-                        {
-                            // uniqueRenderTargets.insert(rt_handle);
-                            auto& rt = _renderTargets[rt_handle.as_index()];
-                            assert(rt.bFramebuffer);
-
-                            const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-
-                            assert(rt.frameBuffers.size() > index);
-                            renderPassInfo.framebuffer = rt.frameBuffers[index];
-                        }
                     }
+
+                    vk_framebuffer_key fb_key{};
+                    fb_key.pass = rb_cmd->pass;
+                    fb_key.colorCount = rb_cmd->colorTargetCount;
+                    for (u8 c = 0; c < rb_cmd->colorTargetCount; ++c)
+                    {
+                        fb_key.colorTargets[c] = rb_cmd->colorTargets[c];
+                    }
+                    fb_key.depthTarget = rb_cmd->depthTargetCount > 0 ? rb_cmd->depthTarget : render_target_handle{};
+                    fb_key.width = rb_cmd->width;
+                    fb_key.height = rb_cmd->height;
+
+                    const vk_framebuffer& fb = findOrCreateFramebuffer(fb_key);
+
+                    u32 fb_index = currentFrame;
+                    if (rb_cmd->colorTargetCount > 0)
+                    {
+                        auto& rt = _renderTargets[rb_cmd->colorTargets[0].as_index()];
+                        fb_index = rt.bFromSwapChain ? ctx.currentImageIndex : currentFrame;
+                    }
+                    else if (rb_cmd->depthTargetCount > 0)
+                    {
+                        auto& rt = _renderTargets[rb_cmd->depthTarget.as_index()];
+                        fb_index = rt.bFromSwapChain ? ctx.currentImageIndex : currentFrame;
+                    }
+
+                    assert(fb.frameBuffers.size() > fb_index);
+                    renderPassInfo.framebuffer = fb.frameBuffers[fb_index];
 
                     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
                     renderPassInfo.pClearValues = clearValues.data();
@@ -458,14 +468,10 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     auto rt_handle = br_cmd->rt_handle;
                     assert(rt_handle.is_valid());
                     auto& rt = _renderTargets[rt_handle.as_index()];
-                    const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-                    
-                    assert(rt.attachments.size() > br_cmd->slot);
-                    auto& attachment = rt.attachments[br_cmd->slot];
-                    VkDescriptorSet descriptorSet = attachment.descriptorSets[index];
-                    // check for COLOR or DEPTH?
-                    // if (br_cmd->type == render_target_type::COLOR)
-                    // else if (br_cmd->type == render_target_type::DEPTH)
+                    const u32 index = rt.bFromSwapChain ? ctx.currentImageIndex : currentFrame;
+
+                    assert(rt.descriptorSets.size() > index);
+                    VkDescriptorSet descriptorSet = rt.descriptorSets[index];
 
                     assert(descriptorSet);
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)br_cmd->position, 1, &descriptorSet, 0, nullptr);
@@ -520,16 +526,13 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     assert(rt_handle.is_valid());
                     auto& rt = _renderTargets[rt_handle.as_index()];
 
-                    assert(rt.attachments.size() > ti_cmd->slot);
-                    auto& attachment = rt.attachments[ti_cmd->slot];
+                    const u32 index = rt.bFromSwapChain ? ctx.currentImageIndex : currentFrame;
+                    VkImage image = rt.images[index];
+                    VkImageAspectFlags aspect = rt.desc.aspectFlags;
 
-                    const u32 index = rt.bSwapChain ? ctx.currentImageIndex : currentFrame;
-                    VkImage image = attachment.images[index];
-                    VkImageAspectFlags aspect = attachment.aspectFlags;
+                    assert(rt.states.size() > index);
 
-                    assert(attachment.states.size() > index);
-
-                    const resource_state trackedState = attachment.states[index];
+                    const resource_state trackedState = rt.states[index];
                     const auto src = utils::toVkBarrierState(trackedState);
                     const auto dst = utils::toVkBarrierState(ti_cmd->dst);
 
@@ -557,7 +560,7 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                         0, nullptr,
                         1, &barrier);
 
-                    attachment.states[index] = ti_cmd->dst;
+                    rt.states[index] = ti_cmd->dst;
                 }
                 break;
             default:
@@ -739,48 +742,47 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
     return pso_handle;
 }
 
-render_target_handle vk_dynamic_rhi::createRenderTarget(const const render_target_info& info, const window_context_handle& ctx_handle)
+render_target_handle vk_dynamic_rhi::createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count, bool skip_resources)
 {
     auto& rt = _renderTargets.emplace_back();
     render_target_handle rt_handle(static_cast<u32>(_renderTargets.size()));
 
-    bool bNeedDescritors = true;
-    if (ctx_handle.is_valid())
-    {
-        auto& ctx = _contexts[ctx_handle.as_index()];
-        ctx.init_images(rt);
-        rt.bSwapChain = true;
-        bNeedDescritors = false;
-    }
+    // bool bNeedDescritors = true;
+    // if (ctx_handle.is_valid())
+    // {
+    //     auto& ctx = _contexts[ctx_handle.as_index()];
+    //     ctx.init_images(rt);
+    //     rt.bSwapChain = true;
+    //     bNeedDescritors = false;
+    // }
 
-    auto found = std::find_if(_renderPasses.begin(), _renderPasses.end(), [passName = info.passName](const vk_render_pass& pass) {
-        return passName == pass.name;
-    });
-    assert(found != _renderPasses.end());
+    // auto found = std::find_if(_renderPasses.begin(), _renderPasses.end(), [passName = info.passName](const vk_render_pass& pass) {
+    //     return passName == pass.name;
+    // });
+    // assert(found != _renderPasses.end());
 
-    // bool bUseColor = type == render_target_type::COLOR_ONLY || type == render_target_type::COLOR_AND_DEPTH;
-    // bool bUseDepth = type == render_target_type::DEPTH_ONLY || type == render_target_type::COLOR_AND_DEPTH;
     auto textureDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT);
-	vk_render_target_desc init_desc {
-		.count = info.frame_count,
-		.extent = VkExtent2D{info.width, info.height},
-		.bUseFramebuffer = true,
-		.renderPass = found->renderPass,
+    const bool bIsColor = rt_type == render_target_type::COLOR;
+    vk_render_target_desc init_desc {
+        .count = count,
+        .format = bIsColor ? colorFormat : depthFormat,
+        .extent = VkExtent2D{width, height},
+        .usage = bIsColor
+            ? VkImageUsageFlags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)
+            : VkImageUsageFlags(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT),
+        .properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        .aspectFlags = bIsColor ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT,
+        .bUseDescriptorSet = true,
         .descriptorPool = _descriptorPool,
         .descriptorSetLayout = textureDSL
-	};
+    };
 
-    for (u32 i = 0; i < info.target_count; i++)
+    rt.init(_deviceHandle, _device->getGPU(), init_desc);
+
+    if (!skip_resources)
     {
-        vk_images_desc_info img_desc{
-            .bIsColor = info.targets[i] == render_target_type::COLOR,
-            .bNeedDescriptorSet = bNeedDescritors,
-            .format = info.targets[i] == render_target_type::COLOR ? colorFormat : depthFormat,
-        };
-        init_desc.infos.push_back(img_desc);
+        rt.createResources();
     }
-
-	rt.init(_deviceHandle, _device->getGPU(), init_desc);
 
     std::printf("Render Target %u created successfully\n", rt_handle.get());
 
@@ -1039,4 +1041,74 @@ VkDescriptorSetLayout vk_dynamic_rhi::findDescriptor(VkDescriptorType in_type, s
         return it->descriptorSetLayout;
     }
     return VK_NULL_HANDLE;
+}
+
+const vk_framebuffer& vk_dynamic_rhi::findOrCreateFramebuffer(const vk_framebuffer_key &key)
+{
+    u64 h = key.hash();
+    auto it = _framebuffers.find(h);
+    if (it != _framebuffers.end())
+        return it->second;
+
+    auto found = std::find_if(_renderPasses.begin(), _renderPasses.end(), [passName = key.pass](const vk_render_pass& pass) {
+        return passName == pass.name;
+    });
+    assert(found != _renderPasses.end());
+
+    u32 count = 0;
+    for (u8 c = 0; c < key.colorCount; ++c)
+    {
+        auto& rt = _renderTargets[key.colorTargets[c].as_index()];
+        if (count == 0)
+        {
+            count = rt.desc.count;
+        }
+        else
+        {
+            assert(count == rt.desc.count);
+        }
+    }
+    if (key.depthTarget.is_valid())
+    {
+        auto& rt = _renderTargets[key.depthTarget.as_index()];
+        if (count == 0)
+        {
+            count = rt.desc.count;
+        }
+        else
+        {
+            assert(count == rt.desc.count);
+        }
+    }
+
+    VkExtent2D extent{ key.width, key.height };
+    vk_framebuffer_desc fb_desc
+    {
+        .count = count,
+        .extent = extent,
+        .renderPass = found->renderPass,
+    };
+
+    fb_desc.viewsPerFrame.resize(g_swapchainImageCount);
+    for (u32 slot = 0; slot < count; ++slot)
+    {
+        for (u8 c = 0; c < key.colorCount; ++c)
+        {
+            auto& rt = _renderTargets[key.colorTargets[c].as_index()];
+            fb_desc.viewsPerFrame[slot].push_back(rt.views[slot]);
+        }
+        if (key.depthTarget.is_valid())
+        {
+            auto& rt = _renderTargets[key.depthTarget.as_index()];
+            fb_desc.viewsPerFrame[slot].push_back(rt.views[slot]);
+        }
+    }
+
+    auto pair = _framebuffers.emplace(h, vk_framebuffer());
+    assert(pair.second);
+
+    vk_framebuffer& fb = pair.first->second;
+    fb.init(_deviceHandle, _device->getGPU(), fb_desc);
+
+    return fb;
 }
