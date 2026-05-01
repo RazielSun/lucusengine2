@@ -293,12 +293,12 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     const u32 index = rt.bSwapChain ? ctx.backBufferIndex : currentFrame;
 
                     const dx_images* images = nullptr;
-                    if (br_cmd->binding == render_target_binding::COLOR)
+                    if (br_cmd->type == render_target_type::COLOR)
                     {
                         assert(rt.bColor);
                         images = &rt.color;
                     }
-                    else if (br_cmd->binding == render_target_binding::DEPTH)
+                    else if (br_cmd->type == render_target_type::DEPTH)
                     {
                         assert(rt.bDepth);
                         images = &rt.depth;
