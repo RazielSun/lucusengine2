@@ -204,7 +204,9 @@ namespace lucus
 
     struct gpu_bind_description_table_command : public gpu_command_base
     {
-        gpu_bind_description_table_command() : gpu_command_base(gpu_command_type::BIND_DESCRIPTION_TABLE) {}
+        gpu_bind_description_table_command(render_pass_name in_pass) : gpu_command_base(gpu_command_type::BIND_DESCRIPTION_TABLE), pass(in_pass) {}
+
+        render_pass_name pass;
     };
 
     struct gpu_bind_vertex_command : public gpu_command_base

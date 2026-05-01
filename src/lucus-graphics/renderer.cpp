@@ -238,7 +238,7 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::SHADOW_PASS); // FINISH BIND for DX12
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -382,7 +382,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::FORWARD_PASS); // FINISH BIND for DX12
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -538,7 +538,7 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::GBUFFER_PASS); // FINISH BIND for DX12
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -681,7 +681,7 @@ void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_h
     cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
     cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_gbufferSamplerHandle, (u8)shader_binding::GBUFFER_SAMPLER);
 
-    cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+    cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::DEFERRED_LIGHTING_PASS); // FINISH BIND for DX12
 
     // FULLSCREEN TRIANGLE - we can use vertex shader to generate vertices, so no need to bind vertex/index buffers
     cmd.emplaceCommand<gpu_draw_vertex_command>(3);

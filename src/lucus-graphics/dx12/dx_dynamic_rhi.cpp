@@ -320,12 +320,14 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP,         srvHeapDesc.getShaderHeadHandle(frameIndex, 1));
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER,            samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP_SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex, 1));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_A,          srvHeapDesc.getShaderHeadHandle(frameIndex, 2));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_B,          srvHeapDesc.getShaderHeadHandle(frameIndex, 3));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_C,          srvHeapDesc.getShaderHeadHandle(frameIndex, 4));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_DEPTH,      srvHeapDesc.getShaderHeadHandle(frameIndex, 5));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_SAMPLER,    samplerHeapDesc.getShaderHeadHandle(frameIndex, 2));
-
+                    if (bd_cmd->pass == render_pass_name::DEFERRED_LIGHTING_PASS)
+                    {
+                        commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_A,          srvHeapDesc.getShaderHeadHandle(frameIndex, 2));
+                        commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_B,          srvHeapDesc.getShaderHeadHandle(frameIndex, 3));
+                        commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_C,          srvHeapDesc.getShaderHeadHandle(frameIndex, 4));
+                        commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_DEPTH,      srvHeapDesc.getShaderHeadHandle(frameIndex, 5));
+                        commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_SAMPLER,    samplerHeapDesc.getShaderHeadHandle(frameIndex, 2));
+                    }
                     srvHeapDesc.head_to_current(frameIndex);
                     samplerHeapDesc.head_to_current(frameIndex);
                 }
