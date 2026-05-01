@@ -24,7 +24,8 @@ namespace lucus
 
         uint32_t backBufferIndex{ 0 };
 
-        render_target_handle rt_handle;
+        render_target_handle color_handle;
+        render_target_handle depth_handle;
         
         private:
             Com<IDXGIFactory4> mDXGIFactory;

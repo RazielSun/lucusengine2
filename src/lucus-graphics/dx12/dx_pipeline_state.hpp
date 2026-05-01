@@ -3,12 +3,14 @@
 #include "dx_pch.hpp"
 
 #include "core_types.hpp"
+#include "render_types.hpp"
 
 namespace lucus
 {
     struct dx_pipeline_state_desc
     {
         DXGI_FORMAT depthFormat;
+        render_pass_name pass = render_pass_name::FORWARD_PASS;
 
         std::vector<CD3DX12_ROOT_PARAMETER1> layouts;
         std::vector<D3D12_INPUT_ELEMENT_DESC> vertexLayouts;

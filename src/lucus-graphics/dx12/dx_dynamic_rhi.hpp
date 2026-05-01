@@ -21,10 +21,10 @@ namespace lucus
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
-            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle) const override;
+            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle, render_target_type rt_type) const override;
 
             virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
-            virtual render_target_handle createRenderTarget(u32 count, u32 width, u32 height, render_target_type type, render_pass_name passName, const window_context_handle& ctx_handle) override;
+            virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) override;
 
             virtual mesh_handle createMesh(mesh* msh) override;
 

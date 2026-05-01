@@ -80,17 +80,39 @@ void dx_pipeline_state::init(const std::string& shaderName, const dx_pipeline_st
 
     if (init_desc.vertexLayouts.empty())
     {
-        pso.InputLayout = { nullptr, 0 }; 
+        pso.InputLayout = { nullptr, 0 };
     }
     else
     {
         pso.InputLayout = { init_desc.vertexLayouts.data(), (u32)init_desc.vertexLayouts.size() };
     }
-    
+
     pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    pso.NumRenderTargets = 1;
-    pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
     pso.SampleDesc.Count = 1;
+
+    switch (init_desc.pass)
+    {
+    case render_pass_name::SHADOW_PASS:
+        pso.NumRenderTargets = 0;
+        pso.DepthStencilState.DepthEnable = TRUE;
+        break;
+    case render_pass_name::GBUFFER_PASS:
+        pso.NumRenderTargets = 3;
+        pso.RTVFormats[0] = pso.RTVFormats[1] = pso.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        pso.DepthStencilState.DepthEnable = TRUE;
+        break;
+    case render_pass_name::DEFERRED_LIGHTING_PASS:
+        pso.NumRenderTargets = 1;
+        pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        pso.DepthStencilState.DepthEnable = FALSE;
+        pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        break;
+    default: // FORWARD_PASS
+        pso.NumRenderTargets = 1;
+        pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        pso.DepthStencilState.DepthEnable = TRUE;
+        break;
+    }
 
     ThrowIfFailed(_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&_pipelineState)), "Failed Create Graphics Pipeline State");
 

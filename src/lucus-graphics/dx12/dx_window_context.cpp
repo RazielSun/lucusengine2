@@ -54,11 +54,30 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
 void lucus::dx_window_context::init_images(dx_render_target &rt)
 {
     rt.color.images.resize(imageCount);
+    rt.color.states.assign(imageCount, D3D12_RESOURCE_STATE_PRESENT);
     for (u32 i = 0; i < imageCount; ++i)
     {
-        auto& image = rt.color.images[i];
-        ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&image)), "Failed Get Buffer for Render Targets");
+        ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&rt.color.images[i])), "Failed Get Buffer for Render Targets");
     }
+
+    rt.color.descriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    rt.color.initialState = D3D12_RESOURCE_STATE_PRESENT;
+    rt.color.bPreinitialized = true;
+
+    D3D12_DESCRIPTOR_HEAP_DESC heap_desc{};
+    heap_desc.NumDescriptors = imageCount;
+    heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    ThrowIfFailed(mDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&rt.color.heap)), "Failed Create RTV Heap for SwapChain");
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE handle(rt.color.heap->GetCPUDescriptorHandleForHeapStart());
+    for (u32 i = 0; i < imageCount; ++i)
+    {
+        mDevice->CreateRenderTargetView(rt.color.images[i].Get(), nullptr, handle);
+        handle.ptr += rt.color.descriptorSize;
+    }
+
+    std::printf("SwapChain RTV images initialized (%u)\n", imageCount);
 }
 
 void dx_window_context::cleanup()
