@@ -408,11 +408,16 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
         init_desc.depthFormat = mDepthFormat;
         init_desc.pass = passName;
 
+        // deferred_lighting reads gFrame (b0) in the pixel shader only; other passes use it in VS.
+        const D3D12_SHADER_VISIBILITY viewCbvVisibility =
+            (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
+                ? D3D12_SHADER_VISIBILITY_ALL
+                : D3D12_SHADER_VISIBILITY_VERTEX;
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
             (u32)shader_binding::VIEW, // b0
             0,
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
-            D3D12_SHADER_VISIBILITY_VERTEX);
+            viewCbvVisibility);
 
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
             (u32)shader_binding::OBJECT, // b1
@@ -441,11 +446,14 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL); // SAMPLER
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP_SAMPLER
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_A
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_B
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_C
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_DEPTH
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[8], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_SAMPLER
+        if (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
+        {
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_A
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_B
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_C
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_DEPTH
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[8], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_SAMPLER
+        }
 
         if (mat->useVertexIndexBuffers())
         {
