@@ -18,9 +18,8 @@ namespace lucus
 
     enum class render_mode : u8
     {
-        NONE = 0,
-        FORWARD = 1,
-        DEFERRED = 2,
+        FORWARD = 0,
+        DEFERRED = 1,
     };
 
     enum class render_pass_name : u8
@@ -41,12 +40,11 @@ namespace lucus
         SHADOW_MAP          = 4,
         SAMPLER             = 5,
         SHADOW_MAP_SAMPLER  = 6,
-        VERTEX              = 7,
-        GBUFFER_A           = 8, // NORMAL + Flags
-        GBUFFER_B           = 9, // Metalness + Roughness + Specular + ShadingModel
-        GBUFFER_C           = 10, // ALBEDO + AO
-        GBUFFER_DEPTH       = 11,
-        GBUFFER_SAMPLER     = 12,
+        GBUFFER_A           = 7, // NORMAL + Flags
+        GBUFFER_B           = 8, // Metalness + Roughness + Specular + ShadingModel
+        GBUFFER_C           = 9, // ALBEDO + AO
+        GBUFFER_DEPTH       = 10,
+        GBUFFER_SAMPLER     = 11,
     };
 
     enum class shader_binding_stage : u8
@@ -72,16 +70,6 @@ namespace lucus
         DEPTH = 2,
     };
 
-    struct render_target_info
-    {
-        u32 frame_count{0};
-        u32 width{0};
-        u32 height{0};
-        u32 target_count{0};
-        render_target_type targets[g_maxMrtColorTargets + 1];
-        render_pass_name passName{render_pass_name::FORWARD_PASS};
-    };
-
     enum class resource_state : u8
     {
         UNDEFINED,
@@ -96,8 +84,9 @@ namespace lucus
 
     enum class image_barrier_aspect : u8
     {
-        COLOR = 0,
-        DEPTH = 1,
+        NONE = 0,
+        COLOR = 1,
+        DEPTH = 2,
     };
 
     struct resource_handle
@@ -133,9 +122,11 @@ namespace lucus
 
     struct frame_uniform_buffer
     {
-        glm::vec4 position;
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 proj;
+        alignas(16) glm::mat4 invViewProj;
+        glm::vec4 position;
+        glm::vec4 other; // xy - screen size
     };
 
     struct object_uniform_buffer

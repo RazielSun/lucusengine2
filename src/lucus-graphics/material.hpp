@@ -22,8 +22,8 @@ namespace lucus
     public:
         static material* create_factory(const std::string& shaderName);
 
-        void setShaderName(const std::string& shaderName) { _shaderName = shaderName; }
-        const std::string& getShaderName() const { return _shaderName; }
+        void setShaderName(const std::string& shaderName);
+        const std::string& getShaderName() const;
 
         bool useFrameUniformBuffer() const { return _useFrameUniformBuffer; }
         void setUseFrameUniformBuffer(bool useUniformBuffers) { _useFrameUniformBuffer = useUniformBuffers; }
@@ -38,6 +38,8 @@ namespace lucus
         const std::vector<texture_slot>& getTextures() const { return _textures; }
         u32 getTexturesCount() const { return _textures.size(); }
 
+        void setDeferredMode(bool bInDeferred);
+
         u32 getHash() const;
 
     protected:
@@ -46,6 +48,8 @@ namespace lucus
 
     private:
         std::string _shaderName;
+        bool bDeferred{true};
+        std::string _shaderNameDeferred;
 
         bool _useFrameUniformBuffer{false};
         bool _useObjectUniformBuffer{false};

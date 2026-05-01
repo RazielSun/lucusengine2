@@ -3,9 +3,11 @@
 
 struct FrameUniforms
 {
-    float4 position;
     float4x4 view;
     float4x4 proj;
+    float4x4 invViewProj;
+    float4 position;
+    float4 other; // xy - screen size
 };
 
 struct ObjectUniforms
@@ -36,6 +38,13 @@ struct VSOutput
     float2 texCoords0 : TEXCOORD0;
     float3 color : COLOR0;
     float4 lightClipPos : TEXCOORD1;
+};
+
+struct GBufferOutput
+{
+    float4 normal_flags : SV_Target0; // NORMAL + Flags
+    float4 met_rgh_spc_shd : SV_Target1; // Metalness + Roughness + Specular + ShadingModel
+    float4 albedo_ao : SV_Target2; // ALBEDO + AO
 };
 
 #endif /* STRUCTS_SLANG */

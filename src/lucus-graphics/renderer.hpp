@@ -20,13 +20,15 @@ namespace lucus
     public:
         static u32 g_frameIndex;
 
-        void init(render_mode in_mode);
         void add_window(window_handle handle);
 
         void tick(float dt);
         void cleanup();
 
+        void setRenderMode(render_mode mode) { r_mode = mode; }
         void setCurrentScene(scene* scn) { _currentScene.reset(scn); }
+
+        render_mode getMode() const { return r_mode; }
 
     protected:
         void prepareScene(const scene* scn);
@@ -35,15 +37,16 @@ namespace lucus
         void gbufferPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
         void lightingPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
 
-        void updateFrameUniformBuffer(const camera* cmr, float aspectRatio);
-        void updateFrameUniformBuffer(const directional_light* dir_light);
+        void updateFrameUniformBuffer(const uniform_buffer_handle& handle, u32 width, u32 height);
+        void updateFrameUniformBuffer(const camera* cmr, u32 width, u32 height);
+        void updateFrameUniformBuffer(const directional_light* dir_light, u32 width, u32 height);
         void updateLightUniformBuffer(const directional_light* dir_light);
         void updateObjectUniformBuffer(const render_object* obj);
 
         void initDefaultResources();
 
     private:
-        render_mode r_mode = render_mode::NONE;
+        render_mode r_mode = render_mode::FORWARD;
         std::shared_ptr<dynamic_rhi> _dynamicRHI;
 
         // default ub & tex
@@ -66,6 +69,8 @@ namespace lucus
         render_target_handle g_gbufferB;
         render_target_handle g_gbufferC;
         render_target_handle g_gbufferDepth;
+        intrusive_ptr<material> g_deferredLightingMat;
+        sampler_handle g_gbufferSamplerHandle{};
 
         intrusive_ptr<scene> _currentScene;
     };

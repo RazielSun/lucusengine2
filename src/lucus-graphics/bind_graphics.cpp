@@ -43,6 +43,8 @@ namespace lucus
     void bind_dir_light_class();
     void bind_scene_class();
 
+    void bind_render_mode_enum();
+
     void bind_window_manager_class_and_object();
     void bind_renderer_class_and_object();
     void bind_texture_manager_class_and_object();
@@ -51,6 +53,8 @@ namespace lucus
 void lucus::bind_graphics_module()
 {
     bind_window_manager_class_and_object();
+
+    bind_render_mode_enum();
 
     bind_mesh_class();
     bind_texture_class();
@@ -62,6 +66,17 @@ void lucus::bind_graphics_module()
 
     bind_renderer_class_and_object();
     // bind_texture_manager_class_and_object();
+}
+
+void lucus::bind_render_mode_enum()
+{
+    asIScriptEngine* engine = script_manager::instance().get_engine();
+
+    int r = 0;
+
+    r = engine->RegisterEnum("RenderMode"); assert(r >= 0);
+    r = engine->RegisterEnumValue("RenderMode", "FORWARD",  (int)render_mode::FORWARD);  assert(r >= 0);
+    r = engine->RegisterEnumValue("RenderMode", "DEFERRED", (int)render_mode::DEFERRED); assert(r >= 0);
 }
 
 void lucus::bind_window_manager_class_and_object()
@@ -100,6 +115,13 @@ void lucus::bind_renderer_class_and_object()
         renderer_class_name,
         method_set_current_scene.c_str(),
         asMETHOD(renderer, setCurrentScene),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        renderer_class_name,
+        "void SetRenderMode(RenderMode)",
+        asMETHOD(renderer, setRenderMode),
         asCALL_THISCALL
     ); assert(r >= 0);
 

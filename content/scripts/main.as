@@ -1,5 +1,7 @@
 void main()
 {
+    g_renderer.SetRenderMode(RenderMode::DEFERRED);
+    
     g_window_manager.CreateWindow(1280, 720, "Lucus Engine 2");
 
     Material@ cube_mat = Material("simple_lit");

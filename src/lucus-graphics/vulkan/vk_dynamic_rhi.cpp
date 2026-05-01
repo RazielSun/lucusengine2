@@ -220,14 +220,14 @@ void vk_dynamic_rhi::createDevice()
 
 void vk_dynamic_rhi::createPasses()
 {
-    vk_render_pass_desc main_desc{
+    vk_render_pass_desc fwd_desc{
         .name = render_pass_name::FORWARD_PASS,
         .colorAttachmentCount = 1,
         .depthAttachmentCount = 1,
         .depthFormat = depthFormat
     };
-    main_desc.colorFormats[0] = colorFormat;
-    _renderPasses.emplace_back().init(_deviceHandle, main_desc);
+    fwd_desc.colorFormats[0] = colorFormat;
+    _renderPasses.emplace_back().init(_deviceHandle, fwd_desc);
 
     vk_render_pass_desc shadow_desc{
         .name = render_pass_name::SHADOW_PASS,
@@ -236,6 +236,26 @@ void vk_dynamic_rhi::createPasses()
         .depthFormat = depthFormat
     };
     _renderPasses.emplace_back().init(_deviceHandle, shadow_desc);
+
+    vk_render_pass_desc gbuffer_desc{
+        .name = render_pass_name::GBUFFER_PASS,
+        .colorAttachmentCount = 3,
+        .depthAttachmentCount = 1,
+        .depthFormat = depthFormat
+    };
+    gbuffer_desc.colorFormats[0] = colorFormat;
+    gbuffer_desc.colorFormats[1] = colorFormat;
+    gbuffer_desc.colorFormats[2] = colorFormat;
+    _renderPasses.emplace_back().init(_deviceHandle, gbuffer_desc);
+
+    vk_render_pass_desc lighting_desc{
+        .name = render_pass_name::DEFERRED_LIGHTING_PASS,
+        .colorAttachmentCount = 1,
+        .depthAttachmentCount = 1,
+        .depthFormat = depthFormat
+    };
+    lighting_desc.colorFormats[0] = colorFormat;
+    _renderPasses.emplace_back().init(_deviceHandle, lighting_desc);
 
     bPassesInitialized = true;
 }
@@ -671,7 +691,10 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
         });
         assert(found != _renderPasses.end());
         init_desc.renderPass = found->renderPass;
-        init_desc.bUseColor = passName != render_pass_name::SHADOW_PASS;
+        u32 colorCount = 1;
+        if (passName == render_pass_name::SHADOW_PASS) colorCount = 0;
+        else if (passName == render_pass_name::GBUFFER_PASS) colorCount = 3;
+        init_desc.colorAttachmentsCount = colorCount;
 
         auto bufferDSLVertex = findDescriptor(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::VERTEX);
         assert(bufferDSLVertex != VK_NULL_HANDLE);
@@ -687,7 +710,7 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
 
         // this is strict layouts shader contract
         init_desc.layouts = {
-            bufferDSLVertex, // VIEW
+            bufferDSLBoth, // VIEW
             bufferDSLVertex, // OBJECT
             bufferDSLBoth, // LIGHT
             textureDSL, // TEXTURE
@@ -695,6 +718,15 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
             samplerDSL, // SAMPLER
             samplerDSL // SHADOW_MAP SAMPLER
         };
+
+        if (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
+        {
+            init_desc.layouts.push_back(textureDSL); // GBUFFER A
+            init_desc.layouts.push_back(textureDSL); // GBUFFER B
+            init_desc.layouts.push_back(textureDSL); // GBUFFER C
+            init_desc.layouts.push_back(textureDSL); // GBUFFER DEPTH
+            init_desc.layouts.push_back(samplerDSL); // GBUFFER SAMPLER
+        }
 
         if (mat->useVertexIndexBuffers())
         {

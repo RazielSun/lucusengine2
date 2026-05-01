@@ -13,11 +13,6 @@ using namespace lucus;
 
 u32 renderer::g_frameIndex{0};
 
-void renderer::init(render_mode in_mode)
-{
-    r_mode = in_mode;
-}
-
 void renderer::add_window(window_handle handle)
 {
     bool bFirstInit = false;
@@ -71,29 +66,26 @@ void renderer::tick(float dt)
         return;
     }
 
-    if (r_mode != render_mode::NONE)
+    for (const auto& context : _dynamicRHI->getWindowContexts())
     {
-        for (const auto& context : _dynamicRHI->getWindowContexts())
+        if (_currentScene)
         {
-            if (_currentScene)
+            gpu_command_buffer cmd;
+
+            prepareScene(_currentScene.get());
+            shadowPass(_currentScene.get(), context, cmd);
+
+            if (r_mode == render_mode::FORWARD)
             {
-                gpu_command_buffer cmd;
-
-                prepareScene(_currentScene.get());
-                shadowPass(_currentScene.get(), context, cmd);
-
-                if (r_mode == render_mode::FORWARD)
-                {
-                    forwardPass(_currentScene.get(), context, cmd);
-                }
-                else if (r_mode == render_mode::DEFERRED)
-                {
-                    gbufferPass(_currentScene.get(), context, cmd);
-                    lightingPass(_currentScene.get(), context, cmd);
-                }
-
-                _dynamicRHI->execute(context, g_frameIndex, cmd);
+                forwardPass(_currentScene.get(), context, cmd);
             }
+            else if (r_mode == render_mode::DEFERRED)
+            {
+                gbufferPass(_currentScene.get(), context, cmd);
+                lightingPass(_currentScene.get(), context, cmd);
+            }
+
+            _dynamicRHI->execute(context, g_frameIndex, cmd);
         }
     }
 
@@ -112,6 +104,17 @@ void renderer::prepareScene(const scene* scn)
         if (!pso_handle.is_valid()) {
             pso_handle = _dynamicRHI->createPSO(g_shadowMat.get(), render_pass_name::SHADOW_PASS);
             g_shadowMat->setPSOHandle(pso_handle);
+        }
+    }
+
+    {
+        if (r_mode == render_mode::DEFERRED)
+        {
+            pipeline_state_handle pso_handle = g_deferredLightingMat->getPSOHandle();
+            if (!pso_handle.is_valid()) {
+                pso_handle = _dynamicRHI->createPSO(g_deferredLightingMat.get(), render_pass_name::DEFERRED_LIGHTING_PASS);
+                g_deferredLightingMat->setPSOHandle(pso_handle);
+            }
         }
     }
 
@@ -137,7 +140,7 @@ void renderer::prepareScene(const scene* scn)
 
         pipeline_state_handle pso_handle = matInst->getPSOHandle();
         if (!pso_handle.is_valid()) {
-            pso_handle = _dynamicRHI->createPSO(matInst, render_pass_name::FORWARD_PASS);
+            pso_handle = _dynamicRHI->createPSO(matInst, (r_mode == render_mode::FORWARD) ? render_pass_name::FORWARD_PASS : render_pass_name::GBUFFER_PASS);
             matInst->setPSOHandle(pso_handle);
         }
 
@@ -156,7 +159,7 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
     const u32 width = shadow_map_width, height = shadow_map_height;
     if (!shadow_rt_handle.is_valid())
     {
-        // Error ?
+        throw std::runtime_error("shadowPass:: shadow render target is not valid!");
     }
 
     cmd.emplaceCommand<gpu_image_barrier_command>(shadow_rt_handle,
@@ -178,11 +181,11 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
         view_handle = dir_light->getViewProjHandle();
         if (!view_handle.is_valid())
         {
-            view_handle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer));
+            view_handle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
             const_cast<directional_light*>(dir_light)->setViewProjHandle(view_handle);
         }
 
-        updateFrameUniformBuffer(dir_light);
+        updateFrameUniformBuffer(dir_light, width, height);
     }
 
     // 3. Bind Commands
@@ -240,8 +243,8 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
 
-        cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle, (u8)shader_binding::VERTEX);
-        
+        cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle, 0);
+
         const u32 indexCount = meshInst->getIndexCount();
         if (indexCount > 0)
         {
@@ -277,8 +280,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
 
     if (v_width == 0 || v_height == 0 || !fb_color_handle.is_valid())
     {
-        // TODO: error
-        return;
+        throw std::runtime_error("forwardPass:: forward render target is not valid!");
     }
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
@@ -307,12 +309,11 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
         view_handle = cam->getHandle();
         if (!view_handle.is_valid())
         {
-            view_handle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer));
+            view_handle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
             const_cast<camera*>(cam)->setHandle(view_handle);
         }
 
-        const float aspectRatio = static_cast<float>(v_width) / static_cast<float>(v_height);
-        updateFrameUniformBuffer(cam, aspectRatio);
+        updateFrameUniformBuffer(cam, v_width, v_height);
     }
 
     const directional_light* dir_light = scn->getDirectionalLight();
@@ -396,9 +397,9 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
 
         if (meshInst->hasVertices())
         {
-            cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle, (u8)shader_binding::VERTEX);
+            cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle, 0);
         }
-        
+
         const u32 indexCount = meshInst->getIndexCount();
         if (indexCount > 0)
         {
@@ -422,21 +423,298 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
 
 void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
 {
-    //
+    // Mental map for deferred rendering implementation:
+    // Barrier: Transition main framebuffer to be writable
+    // RenderPass Begin: GBuffer Pass - bind gbuffer render targets
+    // Set viewport/scissor
+    // For each render object:
+    //   - Update object uniform buffer if needed
+    //   - Bind PSO, descriptor sets, vertex/index buffers
+    //   - Issue draw call
+    // RenderPass End
+    // Barrier: Transition gbuffer render targets to be readable for lighting pass
+
+    assert(scn);
+
+    u32 v_width, v_height;
+    _dynamicRHI->getWindowContextSize(ctx_handle, v_width, v_height);
+
+    if (v_width == 0 || v_height == 0)
+    {
+        throw std::runtime_error("gbufferPass:: gBuffer render target is not valid!");
+    }
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferA,
+        resource_state::UNDEFINED,
+        resource_state::COLOR_WRITE,
+        image_barrier_aspect::COLOR, 0);
+    
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferB,
+        resource_state::UNDEFINED,
+        resource_state::COLOR_WRITE,
+        image_barrier_aspect::COLOR, 0);
+    
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferC,
+        resource_state::UNDEFINED,
+        resource_state::COLOR_WRITE,
+        image_barrier_aspect::COLOR, 0);
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferDepth,
+        resource_state::UNDEFINED,
+        resource_state::DEPTH_WRITE,
+        image_barrier_aspect::DEPTH, 0);
+
+    auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::GBUFFER_PASS, 3, 1, v_width, v_height);
+    bpc.colorTargets[0] = g_gbufferA;
+    bpc.colorTargets[1] = g_gbufferB;
+    bpc.colorTargets[2] = g_gbufferC;
+    bpc.depthTarget = g_gbufferDepth;
+
+    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
+    cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+
+    const camera* cam = scn->getCamera();
+    uniform_buffer_handle view_handle = g_defaultViewBufferHandle;
+    if (cam)
+    {
+        view_handle = cam->getHandle();
+        if (!view_handle.is_valid())
+        {
+            view_handle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
+            const_cast<camera*>(cam)->setHandle(view_handle);
+        }
+
+        updateFrameUniformBuffer(cam, v_width, v_height);
+    }
+
+    for (const auto& obj_ptr : scn->objects())
+    {
+        if (!obj_ptr)
+        {
+            std::printf("Warning: Null render object found in renderer's render object list.\n");
+            continue;
+        }
+
+        render_object* obj = obj_ptr.get();
+        material* matInst = obj->getMaterial();
+        mesh* meshInst = obj->getMesh();
+        if (!obj || !matInst || !meshInst)
+        {
+            std::printf("Warning: Render object / Mesh / Material is not valid.\n");
+            continue;
+        }
+
+        uniform_buffer_handle obj_handle = obj->getHandle();
+        assert(obj_handle.is_valid());
+        
+        pipeline_state_handle pso_handle = matInst->getPSOHandle();
+        assert(pso_handle.is_valid());
+        
+        cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
+
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, view_handle, (u8)shader_binding::VIEW);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
+
+        texture_handle tex0{};
+        if (matInst->getTexturesCount() > 0)
+        {
+            const auto& tex_slot = matInst->getTextures()[0];
+            tex0 = tex_slot.texture->getHandle();
+        }
+        else
+        {
+            tex0 = g_defaultWhiteTexture->getHandle();
+        }
+        cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex0, (u8)shader_binding::TEXTURE);
+
+        // we don't need it
+        cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
+
+        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
+
+        cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+
+        mesh_handle msh_handle = meshInst->getHandle();
+        assert(msh_handle.is_valid());
+
+        if (matInst->useVertexIndexBuffers() && !meshInst->hasVertices())
+        {
+            std::printf("Warning: Material '%s' expects vertex/index buffers, but mesh '%s' has no vertices.\n",
+                matInst->getShaderName().c_str(),
+                meshInst->getName().c_str());
+            continue;
+        }
+
+        if (meshInst->hasVertices())
+        {
+            cmd.emplaceCommand<gpu_bind_vertex_command>(msh_handle, 0);
+        }
+
+        const u32 indexCount = meshInst->getIndexCount();
+        if (indexCount > 0)
+        {
+            cmd.emplaceCommand<gpu_draw_indexed_command>(msh_handle, indexCount);
+        }
+        else
+        {
+            const u32 vertexCount = meshInst->getVertexCount();
+            cmd.emplaceCommand<gpu_draw_vertex_command>(vertexCount);
+        }
+    }
+
+    cmd.emplaceCommand<gpu_render_pass_end_command>();
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferA,
+        resource_state::COLOR_WRITE,
+        resource_state::SHADER_READ,
+        image_barrier_aspect::COLOR, 0);
+    
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferB,
+        resource_state::COLOR_WRITE,
+        resource_state::SHADER_READ,
+        image_barrier_aspect::COLOR, 0);
+    
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferC,
+        resource_state::COLOR_WRITE,
+        resource_state::SHADER_READ,
+        image_barrier_aspect::COLOR, 0);
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        g_gbufferDepth,
+        resource_state::DEPTH_WRITE,
+        resource_state::SHADER_READ,
+        image_barrier_aspect::DEPTH, 0);
 }
 
 void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd)
 {
-    //
+    // Metntal map for deferred rendering implementation:
+    // Barrier: Transition main framebuffer to be writable, gbuffer render targets to be readable
+    // RenderPass Begin: Lighting Pass - bind main framebuffer render target
+    // Set viewport/scissor
+    // Bind fullscreen quad pipeline state and descriptor sets (gbuffer textures, shadow map, etc.)
+    // Issue draw call for fullscreen quad
+    // RenderPass End
+
+    assert(scn);
+
+    u32 v_width, v_height;
+    _dynamicRHI->getWindowContextSize(ctx_handle, v_width, v_height);
+
+    render_target_handle fb_color_handle = _dynamicRHI->getWindowContextRenderTarget(ctx_handle, render_target_type::COLOR);
+    render_target_handle fb_depth_handle = _dynamicRHI->getWindowContextRenderTarget(ctx_handle, render_target_type::DEPTH);
+
+    if (v_width == 0 || v_height == 0 || !fb_color_handle.is_valid())
+    {
+        throw std::runtime_error("lightingPass:: render target is not valid!");
+    }
+
+    const camera* cam = scn->getCamera();
+    uniform_buffer_handle view_handle = g_defaultViewBufferHandle;
+    if (cam)
+    {
+        view_handle = cam->getHandle();
+        // We updated it in gbuffer pass
+    }
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        fb_color_handle,
+        resource_state::UNDEFINED,
+        resource_state::COLOR_WRITE,
+        image_barrier_aspect::COLOR, 0);
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        fb_depth_handle,
+        resource_state::UNDEFINED,
+        resource_state::DEPTH_WRITE,
+        image_barrier_aspect::DEPTH, 0);
+
+    auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::DEFERRED_LIGHTING_PASS, 1, 1, v_width, v_height);
+    bpc.colorTargets[0] = fb_color_handle;
+    bpc.depthTarget = fb_depth_handle;
+
+    cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
+    cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+
+    const directional_light* dir_light = scn->getDirectionalLight();
+    uniform_buffer_handle light_handle = g_defaultLightBufferHandle;
+    if (dir_light)
+    {
+        light_handle = dir_light->getHandle();
+        if (!light_handle.is_valid())
+        {
+            light_handle = _dynamicRHI->createUniformBuffer(sizeof(light_uniform_buffer), shader_binding_stage::BOTH);
+            const_cast<directional_light*>(dir_light)->setHandle(light_handle);
+        }
+
+        updateLightUniformBuffer(dir_light);
+    }
+
+    pipeline_state_handle pso_handle = g_deferredLightingMat->getPSOHandle();
+    assert(pso_handle.is_valid());
+
+    cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
+
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, view_handle, (u8)shader_binding::VIEW);
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, light_handle, (u8)shader_binding::LIGHT);
+
+    cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, g_defaultWhiteTexture->getHandle(), (u8)shader_binding::TEXTURE);
+
+    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
+
+    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferA, render_target_type::COLOR, (u8)shader_binding::GBUFFER_A, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferB, render_target_type::COLOR, (u8)shader_binding::GBUFFER_B, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferC, render_target_type::COLOR, (u8)shader_binding::GBUFFER_C, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferDepth, render_target_type::DEPTH, (u8)shader_binding::GBUFFER_DEPTH, 0);
+
+    cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
+    cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
+    cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_gbufferSamplerHandle, (u8)shader_binding::GBUFFER_SAMPLER);
+
+    cmd.emplaceCommand<gpu_bind_description_table_command>(); // FINISH BIND for DX12
+
+    // FULLSCREEN TRIANGLE - we can use vertex shader to generate vertices, so no need to bind vertex/index buffers
+    cmd.emplaceCommand<gpu_draw_vertex_command>(3);
+
+    cmd.emplaceCommand<gpu_render_pass_end_command>();
+
+    cmd.emplaceCommand<gpu_image_barrier_command>(
+        fb_color_handle,
+        resource_state::COLOR_WRITE,
+        resource_state::PRESENT,
+        image_barrier_aspect::COLOR, 0);
 }
 
-void renderer::updateFrameUniformBuffer(const camera* cmr, float aspectRatio)
+void renderer::updateFrameUniformBuffer(const uniform_buffer_handle &handle, u32 width, u32 height)
+{
+    frame_uniform_buffer buffer;
+    buffer.other = glm::vec4((float)width, (float)height, 0.0f, 0.0f);
+
+    void* buffer_memory;
+    _dynamicRHI->getUniformBufferMemory(handle, g_frameIndex, buffer_memory);
+    std::memcpy(static_cast<u8*>(buffer_memory), &buffer, sizeof(buffer));
+}
+
+void renderer::updateFrameUniformBuffer(const camera *cmr, u32 width, u32 height)
 {
     if (cmr)
     {
         frame_uniform_buffer buffer;
         buffer.view = cmr->getViewMatrix();
-        buffer.proj = cmr->getProjectionMatrix(aspectRatio);
+        buffer.proj = cmr->getProjectionMatrix((float)width / (float)height);
+        buffer.invViewProj = glm::inverse(buffer.proj * buffer.view);
+        buffer.position = glm::vec4(cmr->getPosition(), 1.0f);
+        buffer.other = glm::vec4((float)width, (float)height, 0.0f, 0.0f);
 
         void* buffer_memory;
         _dynamicRHI->getUniformBufferMemory(cmr->getHandle(), g_frameIndex, buffer_memory);
@@ -444,13 +722,15 @@ void renderer::updateFrameUniformBuffer(const camera* cmr, float aspectRatio)
     }
 }
 
-void renderer::updateFrameUniformBuffer(const directional_light* dir_light)
+void renderer::updateFrameUniformBuffer(const directional_light* dir_light, u32 width, u32 height)
 {
     if (dir_light)
     {
         frame_uniform_buffer buffer;
         buffer.view = dir_light->getViewMatrix();
         buffer.proj = dir_light->getProjectionMatrix();
+        buffer.position = glm::vec4(dir_light->getPosition(), 1.0f);
+        buffer.other = glm::vec4((float)width, (float)height, 0.0f, 0.0f);
 
         void* buffer_memory;
         _dynamicRHI->getUniformBufferMemory(dir_light->getViewProjHandle(), g_frameIndex, buffer_memory);
@@ -466,7 +746,7 @@ void renderer::updateLightUniformBuffer(const directional_light* dir_light)
         buffer.position = glm::vec4(dir_light->getPosition(), 1.0f);
         buffer.direction = glm::vec4(dir_light->getDirection(), 0.0f);
         buffer.color = glm::vec4(1.f, 1.f, 1.f, 1.f);
-        buffer.ambient = glm::vec4(0.f, 0.f, 1.f, 0.1f);
+        buffer.ambient = glm::vec4(1.f, 1.f, 1.f, 0.1f);
         buffer.viewProj = dir_light->getProjectionMatrix() * dir_light->getViewMatrix();
 
         void* buffer_memory;
@@ -490,7 +770,7 @@ void renderer::updateObjectUniformBuffer(const render_object* obj)
 
 void renderer::initDefaultResources()
 {
-    g_defaultViewBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer));
+    g_defaultViewBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
     g_defaultObjectBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(object_uniform_buffer));
     g_defaultLightBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(light_uniform_buffer), shader_binding_stage::BOTH);
 
@@ -503,6 +783,7 @@ void renderer::initDefaultResources()
 
     g_shadowMat.reset(material::create_factory("shadow_map"));
     g_shadowMat->setUseVertexIndexBuffers(true);
+    g_shadowMat->setDeferredMode(false);
 
     shadow_rt_handle = _dynamicRHI->createRenderTarget(shadow_map_width, shadow_map_height, render_target_type::DEPTH, g_framesInFlight);
 
@@ -515,5 +796,10 @@ void renderer::initDefaultResources()
         g_gbufferB = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
         g_gbufferC = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
         g_gbufferDepth = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::DEPTH, g_framesInFlight);
+        g_gbufferSamplerHandle = _dynamicRHI->createSampler(); 
+
+        g_deferredLightingMat.reset(material::create_factory("deferred_lighting"));
+        g_deferredLightingMat->setUseVertexIndexBuffers(false);
+        g_deferredLightingMat->setDeferredMode(false);
     }
 }

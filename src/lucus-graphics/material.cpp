@@ -1,5 +1,7 @@
 #include "material.hpp"
 
+#include "renderer.hpp"
+
 using namespace lucus;
 
 material* material::create_factory(const std::string& shaderName)
@@ -7,6 +9,21 @@ material* material::create_factory(const std::string& shaderName)
     material* mat = new material();
     mat->setShaderName(shaderName);
     return mat;
+}
+
+void lucus::material::setShaderName(const std::string &shaderName)
+{
+    _shaderName = shaderName;
+    _shaderNameDeferred = shaderName + "_deferred";
+}
+
+const std::string &lucus::material::getShaderName() const
+{
+    if (bDeferred && renderer::instance().getMode() == render_mode::DEFERRED)
+    {
+        return _shaderNameDeferred;
+    }
+    return _shaderName;
 }
 
 void material::addTexture(texture* tex, u8 slot_index)
@@ -18,6 +35,11 @@ void material::addTexture(texture* tex, u8 slot_index)
     texture_slot& ts = _textures.back();
     ts.texture = intrusive_ptr<texture>(tex);
     ts.slot_index = slot_index;
+}
+
+void lucus::material::setDeferredMode(bool bInDeferred)
+{
+    bDeferred = bInDeferred;
 }
 
 u32 material::getHash() const
