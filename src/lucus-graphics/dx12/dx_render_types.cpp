@@ -341,7 +341,9 @@ void lucus::dx_images::init(Com<ID3D12Device> device, const dx_images_desc &init
         else
         {
             D3D12_DEPTH_STENCIL_VIEW_DESC dsv_depth_desc{};
-            dsv_depth_desc.Format = init_desc.format;
+            DXGI_FORMAT dsvFormat = init_desc.format;
+            if (dsvFormat == DXGI_FORMAT_R32_TYPELESS) dsvFormat = DXGI_FORMAT_D32_FLOAT;
+            dsv_depth_desc.Format = dsvFormat;
             dsv_depth_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
             dsv_depth_desc.Flags = D3D12_DSV_FLAG_NONE;
 
@@ -437,11 +439,14 @@ void lucus::dx_render_target::init(Com<ID3D12Device> device, const dx_render_tar
         depth_clear.DepthStencil.Depth = 1.f;
         depth_clear.DepthStencil.Stencil = 0.f;
 
+        // R32_TYPELESS required to allow both DSV and SRV on same resource
+        DXGI_FORMAT depthResourceFormat = init_desc.bDepthShaderRead ? DXGI_FORMAT_R32_TYPELESS : init_desc.depthFormat;
+
         dx_images_desc depth_desc {
             .count = init_desc.count,
             .width = init_desc.width,
             .height = init_desc.height,
-            .format = init_desc.depthFormat,
+            .format = depthResourceFormat,
             .shaderReadFormat = DXGI_FORMAT_R32_FLOAT,
             .heapType = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
             .resourceFlags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
