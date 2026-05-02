@@ -1,7 +1,6 @@
 #include "common/defines.slang"
 #include "common/structs.slang"
 #include "common/bindless_textures.slang"
-#include "common/light.slang"
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<FrameUniforms> gFrame : register(b0);
@@ -9,8 +8,6 @@ ConstantBuffer<FrameUniforms> gFrame : register(b0);
 ConstantBuffer<ObjectUniforms> gObject : register(b1);
 [[vk::binding(0, 2)]]
 ConstantBuffer<MaterialUniforms> gMaterial : register(b2);
-[[vk::binding(0, 3)]]
-ConstantBuffer<LightUniforms> gLight : register(b3);
 
 [shader("vertex")]
 VSOutput vsMain(VSInput input)
@@ -26,7 +23,6 @@ VSOutput vsMain(VSInput input)
     o.normal = normalize(normal.xyz);
     o.texCoords0 = input.texCoords0;
     o.color = input.color;
-    o.lightClipPos = mul(gLight.viewProj, worldPos);
     return o;
 }
 
@@ -36,35 +32,33 @@ Texture2D gAlbedo : register(t0);
 SamplerState gSampler : register(s0);
 
 [shader("fragment")]
-float4 psMain(VSOutput input) : SV_Target0
+GBufferOutput psMain(VSOutput input)
 {
-    float3 N = normalize(input.normal);
-    float3 L = normalize(-gLight.direction.xyz);
-    float lambert = max(dot(N, L), 0.0f);
-
-    float lit = computeShadow(input.lightClipPos, lambert);
+    float3 N = (normalize(input.normal) + 1.0f) * 0.5f;
 
     static const uint kMaterialTexHasAlbedo = 1u;
     static const uint kMaterialTexBindlessAlbedo = 2u;
 
-    float3 vtxColor;
+    float3 albedoRgb;
     const uint matTexFlags = gMaterial.textureInfo.x;
     if ((matTexFlags & kMaterialTexBindlessAlbedo) != 0u && (matTexFlags & kMaterialTexHasAlbedo) != 0u)
     {
         uint idx = gMaterial.textureInfo.y;
-        vtxColor = gBindlessTextures[NonUniformResourceIndex(idx)].Sample(gBindlessSamplers[NonUniformResourceIndex(0u)], input.texCoords0).rgb;
+        albedoRgb = gBindlessTextures[NonUniformResourceIndex(idx)].Sample(gBindlessSamplers[NonUniformResourceIndex(0u)], input.texCoords0).rgb;
     }
     else if ((matTexFlags & kMaterialTexHasAlbedo) != 0u)
     {
-        vtxColor = gAlbedo.Sample(gSampler, input.texCoords0).rgb;
+        albedoRgb = gAlbedo.Sample(gSampler, input.texCoords0).rgb;
     }
     else
     {
-        vtxColor = float3(1.0f, 1.0f, 1.0f);
+        albedoRgb = float3(1.0f, 1.0f, 1.0f);
     }
-    vtxColor *= input.color * gMaterial.baseColor.rgb;
-    float3 diffuse = vtxColor * gLight.color.xyz * gLight.color.w * lambert * lit;
-    float3 ambient = vtxColor * gLight.ambient.xyz * gLight.ambient.w;
-    float4 color = float4(ambient + diffuse, 1.0f);
-    return color;
+    albedoRgb *= input.color * gMaterial.baseColor.rgb;
+
+    GBufferOutput o;
+    o.normal_flags = float4(N, 0.0f);
+    o.met_rgh_spc_shd = float4(0.0f, 1.0f, 0.0f, 0.0f);
+    o.albedo_ao = float4(albedoRgb, 1.0f);
+    return o;
 }

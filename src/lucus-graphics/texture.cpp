@@ -2,7 +2,6 @@
 
 #include "texture_manager.hpp"
 
-
 using namespace lucus;
 
 texture* texture::create_factory()

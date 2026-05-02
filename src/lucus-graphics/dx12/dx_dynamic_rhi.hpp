@@ -28,7 +28,7 @@ namespace lucus
 
             virtual mesh_handle createMesh(mesh* msh) override;
 
-            virtual sampler_handle createSampler() override;
+            virtual sampler_handle createSampler(resource_binding_mode binding_mode = resource_binding_mode::BINDFULL) override;
             virtual texture_handle createTexture(texture* tex) override;
             virtual void loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex) override;
 

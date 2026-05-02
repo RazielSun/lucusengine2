@@ -44,7 +44,8 @@ void lucus::material::setDeferredMode(bool bInDeferred)
 
 u32 material::getHash() const
 {
-    const u32 shaderHash = static_cast<u32>(std::hash<std::string>{}(_shaderName));
+    // Must match the shader module name used in createPSO (forward vs *_deferred).
+    const u32 shaderHash = static_cast<u32>(std::hash<std::string>{}(getShaderName()));
     const u32 frameUniformBufferHash = static_cast<u32>(_useFrameUniformBuffer);
     const u32 objectUniformBufferHash = static_cast<u32>(_useObjectUniformBuffer);
     const u32 vertexIndexBufferHash = static_cast<u32>(_useVertexIndexBuffers);

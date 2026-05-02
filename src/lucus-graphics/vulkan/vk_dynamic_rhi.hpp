@@ -29,7 +29,7 @@ namespace lucus
 
             virtual mesh_handle createMesh(mesh* msh) override;
 
-            virtual sampler_handle createSampler() override;
+            virtual sampler_handle createSampler(resource_binding_mode binding_mode = resource_binding_mode::BINDFULL) override;
             virtual texture_handle createTexture(texture* tex) override;
             virtual void loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex) override;
 
@@ -114,5 +114,9 @@ namespace lucus
             VkDescriptorPool _bindlessDescriptorPool{ VK_NULL_HANDLE };
             //
             std::array<vk_frame_sync, g_framesInFlight> frameSync{};
+
+            u32 _nextBindlessTextureSlot{0};
+            void writeTextureToAllBindlessDescriptorFrames(const vk_texture& vktex) const;
+            void writeSamplerToBindlessSlot0(VkSampler vkSampler) const;
     };
 }

@@ -34,7 +34,7 @@ namespace lucus
         
         virtual mesh_handle createMesh(mesh* msh) = 0;
 
-        virtual sampler_handle createSampler() = 0;
+        virtual sampler_handle createSampler(resource_binding_mode binding_mode = resource_binding_mode::BINDFULL) = 0;
         virtual texture_handle createTexture(texture* tex) = 0;
         virtual void loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex) = 0;
 

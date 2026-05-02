@@ -10,7 +10,6 @@ void main()
     test_mat.SetUseVertexIndexBuffers(true);
 
     Texture@ tex = Texture::load("content/assets/textures/texture.jpg");
-    tex.SetResourceBindingMode(ResourceBindingMode::BINDLESS);
     test_mat.SetTexture(tex, 0);
 
     Scene@ scene = Scene::load_with_material("content/assets/geometry/scene.gltf", test_mat);

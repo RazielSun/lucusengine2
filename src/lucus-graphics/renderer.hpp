@@ -42,6 +42,7 @@ namespace lucus
         void updateFrameUniformBuffer(const directional_light* dir_light, u32 width, u32 height);
         void updateLightUniformBuffer(const directional_light* dir_light);
         void updateObjectUniformBuffer(const render_object* obj);
+        void updateMaterialUniformBuffer(const material* mat);
 
         void initDefaultResources();
 
@@ -56,10 +57,14 @@ namespace lucus
         uniform_buffer_handle g_defaultLightBufferHandle{};
 
         sampler_handle g_defaultSamplerHandle{};
+        sampler_handle g_defaultBindlessSamplerHandle{};
         sampler_handle g_shadowMapSamplerHandle{};
 
         intrusive_ptr<texture> g_defaultWhiteTexture{};
         intrusive_ptr<texture> g_defaultBlackTexture{};
+        /// 1x1 bindless fallbacks (GPU slot from `getBindlessTextureSlot()` after upload).
+        intrusive_ptr<texture> g_bindlessFallbackBlackTexture{};
+        intrusive_ptr<texture> g_bindlessFallbackWhiteTexture{};
 
         // SHADOW PASS
         u32 shadow_map_width = 1024, shadow_map_height = 1024;

@@ -19,6 +19,8 @@ struct MaterialUniforms
 {
     float4 baseColor;
     float4 materialParams;
+    // x = flags; y = albedo bindless index; z = normal; w = RME (CPU uses black bindless fallback when index not ready).
+    uint4 textureInfo;
 };
 
 struct LightUniforms

@@ -63,9 +63,10 @@ float4 psMain(VSOutput input) : SV_Target
 
     float lit = computeShadow(lightClip, lambert);
 
-    float3 vtxColor = smpl_C.rgb * 0.5f + float3(0.5f);
-    float3 diffuse = vtxColor * gLight.color.xyz * gLight.color.w * lambert * lit;
-    float3 ambient = vtxColor * gLight.ambient.xyz * gLight.ambient.w;
+    // G-buffer albedo is already final rgb (same as forward texture / unlit paths write).
+    float3 albedo = smpl_C.rgb;
+    float3 diffuse = albedo * gLight.color.xyz * gLight.color.w * lambert * lit;
+    float3 ambient = albedo * gLight.ambient.xyz * gLight.ambient.w;
     float4 color = float4(ambient + diffuse, 1.0f);
     return color;
     // return float4(uv, 0.0, 1.0); // Colorize based on UV for testing

@@ -22,6 +22,13 @@ namespace lucus
         DEFERRED = 1,
     };
 
+    /// Resource descriptor style: classic per-draw bind vs. bindless heap (textures, samplers, etc.).
+    enum class resource_binding_mode : u8
+    {
+        BINDFULL = 0,
+        BINDLESS = 1,
+    };
+
     enum class render_pass_name : u8
     {
         SHADOW_PASS = 0,
@@ -138,10 +145,20 @@ namespace lucus
         alignas(16) glm::mat4 model;
     };
 
+    /// Bits for `material_uniform_buffer::texture_info.x`
+    constexpr u32 material_tex_flag_has_albedo = 1u << 0;
+    constexpr u32 material_tex_flag_bindless_albedo = 1u << 1;
+    constexpr u32 material_tex_flag_has_normal = 1u << 2;
+    constexpr u32 material_tex_flag_bindless_normal = 1u << 3;
+    constexpr u32 material_tex_flag_has_rme = 1u << 4;
+    constexpr u32 material_tex_flag_bindless_rme = 1u << 5;
+
     struct material_uniform_buffer
     {
         glm::vec4 base_color{1.0f};
         glm::vec4 material_params{0.0f};
+        /// .x = flags (material_tex_flag_*). .y/.z/.w = bindless sampled-image indices for albedo, normal, RME (roughness/metalness/emit packed map); use with matching bindless flags.
+        glm::uvec4 texture_info{0, 0, 0, 0};
     };
 
     struct light_uniform_buffer

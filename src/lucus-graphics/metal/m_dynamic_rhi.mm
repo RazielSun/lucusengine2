@@ -337,7 +337,7 @@ mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-sampler_handle m_dynamic_rhi::createSampler()
+sampler_handle m_dynamic_rhi::createSampler(resource_binding_mode /*binding_mode*/)
 {
     auto& smpl = _samplers.emplace_back();
     

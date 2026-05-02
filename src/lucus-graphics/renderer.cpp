@@ -1,5 +1,7 @@
 #include "renderer.hpp"
 
+#include <limits>
+
 #include "render_types.hpp"
 #include "command_buffer.hpp"
 #include "window.hpp"
@@ -364,6 +366,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
 
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        updateMaterialUniformBuffer(matInst);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(light_handle, (u8)shader_binding::LIGHT);
 
@@ -520,6 +523,7 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
 
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        updateMaterialUniformBuffer(matInst);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
 
@@ -763,13 +767,86 @@ void renderer::updateObjectUniformBuffer(const render_object* obj)
 {
     if (obj)
     {
-        object_uniform_buffer oub;
+        object_uniform_buffer oub{};
         oub.model = math::transform_to_mat4(obj->getTransform());
 
         void* buffer_memory;
         _dynamicRHI->getUniformBufferMemory(obj->getHandle(), g_frameIndex, buffer_memory);
         std::memcpy(static_cast<u8*>(buffer_memory), &oub, sizeof(oub));
     }
+}
+
+void renderer::updateMaterialUniformBuffer(const material* mat)
+{
+    material_uniform_buffer ub{};
+    ub.base_color = glm::vec4(1.0f);
+    ub.material_params = glm::vec4(0.0f);
+
+    u32 flags = 0;
+    u32 albedoSlot = 0;
+    u32 normalSlot = 0;
+    u32 rmeSlot = 0;
+
+    u32 bindlessInvalidFallbackSlot = g_bindlessFallbackBlackTexture->getBindlessTextureSlot();
+    if (bindlessInvalidFallbackSlot == std::numeric_limits<u32>::max())
+    {
+        bindlessInvalidFallbackSlot = 0;
+    }
+
+    if (mat)
+    {
+        for (const texture_slot& ts : mat->getTextures())
+        {
+            const texture* tex = ts.texture.get();
+            if (!tex)
+            {
+                continue;
+            }
+
+            const bool bindless = (tex->getResourceBindingMode() == resource_binding_mode::BINDLESS);
+            u32 idx = tex->getBindlessTextureSlot();
+            if (idx == std::numeric_limits<u32>::max())
+            {
+                idx = bindlessInvalidFallbackSlot;
+            }
+
+            switch (ts.slot_index)
+            {
+            case 0:
+                flags |= material_tex_flag_has_albedo;
+                if (bindless)
+                {
+                    flags |= material_tex_flag_bindless_albedo;
+                }
+                albedoSlot = idx;
+                break;
+            case 1:
+                flags |= material_tex_flag_has_normal;
+                if (bindless)
+                {
+                    flags |= material_tex_flag_bindless_normal;
+                }
+                normalSlot = idx;
+                break;
+            case 2:
+                flags |= material_tex_flag_has_rme;
+                if (bindless)
+                {
+                    flags |= material_tex_flag_bindless_rme;
+                }
+                rmeSlot = idx;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    ub.texture_info = glm::uvec4(flags, albedoSlot, normalSlot, rmeSlot);
+
+    void* buffer_memory = nullptr;
+    _dynamicRHI->getUniformBufferMemory(g_defaultMaterialBufferHandle, g_frameIndex, buffer_memory);
+    std::memcpy(static_cast<u8*>(buffer_memory), &ub, sizeof(ub));
 }
 
 void renderer::initDefaultResources()
@@ -787,9 +864,15 @@ void renderer::initDefaultResources()
         std::memcpy(static_cast<u8*>(mat_mem), &default_mat, sizeof(default_mat));
     }
 
-    g_defaultSamplerHandle = _dynamicRHI->createSampler();
+    g_defaultSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
+    g_defaultBindlessSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDLESS);
     // TODO: create new sampler clamp, not repeat
-    g_shadowMapSamplerHandle = _dynamicRHI->createSampler(); 
+    g_shadowMapSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
+
+    g_bindlessFallbackBlackTexture.reset(texture::create_one_factory(0, 0, 0, 255));
+    g_bindlessFallbackBlackTexture->setResourceBindingMode(resource_binding_mode::BINDLESS);
+    g_bindlessFallbackWhiteTexture.reset(texture::create_one_factory(255, 255, 255, 255));
+    g_bindlessFallbackWhiteTexture->setResourceBindingMode(resource_binding_mode::BINDLESS);
 
     g_defaultWhiteTexture.reset(texture::create_one_factory(255, 255, 255, 255));
     g_defaultBlackTexture.reset(texture::create_one_factory(0, 0, 0, 255));
@@ -809,10 +892,11 @@ void renderer::initDefaultResources()
         g_gbufferB = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
         g_gbufferC = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
         g_gbufferDepth = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::DEPTH, g_framesInFlight);
-        g_gbufferSamplerHandle = _dynamicRHI->createSampler(); 
+        g_gbufferSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL); 
 
         g_deferredLightingMat.reset(material::create_factory("deferred_lighting"));
         g_deferredLightingMat->setUseVertexIndexBuffers(false);
         g_deferredLightingMat->setDeferredMode(false);
     }
+
 }

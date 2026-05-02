@@ -781,8 +781,15 @@ void vk_dynamic_rhi::createBindlessDescriptorSets()
 
     for (u32 i = 0; i < g_framesInFlight; i++)
     {
+        u32 sampledImageVarCount = g_maxTexturesCount;
+        VkDescriptorSetVariableDescriptorCountAllocateInfo varImg{};
+        varImg.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+        varImg.descriptorSetCount = 1;
+        varImg.pDescriptorCounts = &sampledImageVarCount;
+
         VkDescriptorSetAllocateInfo allocInfoImg{};
         allocInfoImg.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfoImg.pNext = &varImg;
         allocInfoImg.descriptorPool = _bindlessDescriptorPool;
         allocInfoImg.descriptorSetCount = 1;
         allocInfoImg.pSetLayouts = &bindlessImageLayout;
@@ -791,8 +798,15 @@ void vk_dynamic_rhi::createBindlessDescriptorSets()
             throw std::runtime_error("failed to allocate bindless descriptor set!");
         }
 
+        u32 samplerVarCount = g_maxSamplersCount;
+        VkDescriptorSetVariableDescriptorCountAllocateInfo varSmpl{};
+        varSmpl.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+        varSmpl.descriptorSetCount = 1;
+        varSmpl.pDescriptorCounts = &samplerVarCount;
+
         VkDescriptorSetAllocateInfo allocInfoSmpl{};
         allocInfoSmpl.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfoSmpl.pNext = &varSmpl;
         allocInfoSmpl.descriptorPool = _bindlessDescriptorPool;
         allocInfoSmpl.descriptorSetCount = 1;
         allocInfoSmpl.pSetLayouts = &bindlessSamplerLayout;
@@ -947,7 +961,7 @@ mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-sampler_handle vk_dynamic_rhi::createSampler()
+sampler_handle vk_dynamic_rhi::createSampler(resource_binding_mode binding_mode)
 {
     auto samplerDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT);
     assert(samplerDSL != VK_NULL_HANDLE);
@@ -956,6 +970,11 @@ sampler_handle vk_dynamic_rhi::createSampler()
     vksmpl.init(_deviceHandle, samplerDSL, _descriptorPool);
 
     sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));
+    if (binding_mode == resource_binding_mode::BINDLESS && _bindlessSamplerDescriptorSets[0] != VK_NULL_HANDLE)
+    {
+        writeSamplerToBindlessSlot0(vksmpl.sampler);
+    }
+
     std::printf("Sampler %d created successfully\n", smpl_handle.get());
 
     return smpl_handle;
@@ -979,6 +998,18 @@ texture_handle vk_dynamic_rhi::createTexture(texture* tex)
 
     vk_texture& vktex = pair.first->second;
     vktex.init(tex, _deviceHandle, _device->getGPU(), textureDSL, _descriptorPool);
+
+    if (tex->getResourceBindingMode() == resource_binding_mode::BINDLESS)
+    {
+        assert(_nextBindlessTextureSlot < g_maxTexturesCount);
+        vktex.bindlessSlot = _nextBindlessTextureSlot++;
+        tex->setBindlessTextureSlot(vktex.bindlessSlot);
+    }
+    else
+    {
+        vktex.bindlessSlot = std::numeric_limits<u32>::max();
+        tex->setBindlessTextureSlot(std::numeric_limits<u32>::max());
+    }
     
     std::printf("Texture %u created successfully\n", tex_handle.get());
 
@@ -1000,6 +1031,11 @@ void vk_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 fram
     transitionImageLayout(vktex.texImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vktex.free_staging();
+
+    if (vktex.bindlessSlot != std::numeric_limits<u32>::max())
+    {
+        writeTextureToAllBindlessDescriptorFrames(vktex);
+    }
 
     std::printf("Texture %u uploaded successfully\n", tex_handle.get());
 }
@@ -1165,6 +1201,52 @@ void vk_dynamic_rhi::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t 
     );
 
     endSingleTimeCommands(commandBuffer);
+}
+
+void vk_dynamic_rhi::writeSamplerToBindlessSlot0(VkSampler vkSampler) const
+{
+    for (u32 f = 0; f < g_framesInFlight; ++f)
+    {
+        VkDescriptorImageInfo samplerInfo{};
+        samplerInfo.sampler = vkSampler;
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = _bindlessSamplerDescriptorSets[f];
+        write.dstBinding = 0;
+        write.dstArrayElement = 0;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        write.pImageInfo = &samplerInfo;
+
+        vkUpdateDescriptorSets(_deviceHandle, 1, &write, 0, nullptr);
+    }
+}
+
+void vk_dynamic_rhi::writeTextureToAllBindlessDescriptorFrames(const vk_texture& vktex) const
+{
+    if (vktex.bindlessSlot == std::numeric_limits<u32>::max())
+    {
+        return;
+    }
+
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imageInfo.imageView = vktex.texImageView;
+
+    for (u32 f = 0; f < g_framesInFlight; ++f)
+    {
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = _bindlessDescriptorSets[f];
+        write.dstBinding = 0;
+        write.dstArrayElement = vktex.bindlessSlot;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        write.pImageInfo = &imageInfo;
+
+        vkUpdateDescriptorSets(_deviceHandle, 1, &write, 0, nullptr);
+    }
 }
 
 VkDescriptorSetLayout vk_dynamic_rhi::findDescriptor(VkDescriptorType in_type, shader_binding_stage in_stage, bool in_bindless) const
