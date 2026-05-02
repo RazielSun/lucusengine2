@@ -7,7 +7,9 @@ ConstantBuffer<FrameUniforms> gFrame : register(b0);
 [[vk::binding(0, 1)]]
 ConstantBuffer<ObjectUniforms> gObject : register(b1);
 [[vk::binding(0, 2)]]
-ConstantBuffer<LightUniforms> gLight : register(b2);
+ConstantBuffer<MaterialUniforms> gMaterial : register(b2);
+[[vk::binding(0, 3)]]
+ConstantBuffer<LightUniforms> gLight : register(b3);
 
 [shader("vertex")]
 VSOutput vsMain(VSInput input)
@@ -27,9 +29,9 @@ VSOutput vsMain(VSInput input)
     return o;
 }
 
-[[vk::binding(0, 3)]]
+[[vk::binding(0, 4)]]
 Texture2D gAlbedo : register(t0);
-[[vk::binding(0, 5)]]
+[[vk::binding(0, 6)]]
 SamplerState gSampler : register(s0);
 
 [shader("fragment")]
@@ -42,7 +44,7 @@ float4 psMain(VSOutput input) : SV_Target0
     float lit = computeShadow(input.lightClipPos, lambert);
 
     float3 vtxColor = gAlbedo.Sample(gSampler, input.texCoords0).rgb;
-    vtxColor *= input.color;
+    vtxColor *= input.color * gMaterial.baseColor.rgb;
     float3 diffuse = vtxColor * gLight.color.xyz * gLight.color.w * lambert * lit;
     float3 ambient = vtxColor * gLight.ambient.xyz * gLight.ambient.w;
     float4 color = float4(ambient + diffuse, 1.0f);

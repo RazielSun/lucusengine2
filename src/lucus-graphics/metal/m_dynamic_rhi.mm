@@ -217,6 +217,11 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     // Nothing to do
                 }
                 break;
+            case gpu_command_type::SET_BINDLESS:
+                {
+                    (void)reinterpret_cast<const gpu_set_bindless_command*>(data);
+                }
+                break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
                 {
                     const auto* bv_cmd = reinterpret_cast<const gpu_bind_vertex_command*>(data);

@@ -52,6 +52,7 @@ namespace lucus
         // default ub & tex
         uniform_buffer_handle g_defaultViewBufferHandle{};
         uniform_buffer_handle g_defaultObjectBufferHandle{};
+        uniform_buffer_handle g_defaultMaterialBufferHandle{};
         uniform_buffer_handle g_defaultLightBufferHandle{};
 
         sampler_handle g_defaultSamplerHandle{};

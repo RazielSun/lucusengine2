@@ -223,20 +223,21 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
 
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, view_handle, (u8)shader_binding::VIEW);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, obj_handle, (u8)shader_binding::OBJECT);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(obj_handle, (u8)shader_binding::OBJECT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
 
         texture_handle tex0 = g_defaultWhiteTexture->getHandle();
         assert(tex0.is_valid());
-        cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex0, (u8)shader_binding::TEXTURE);
+        cmd.emplaceCommand<gpu_bind_texture_command>(tex0, (u8)shader_binding::TEXTURE);
 
         texture_handle tex1 = g_defaultBlackTexture->getHandle();
         assert(tex1.is_valid());
-        cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex1, (u8)shader_binding::SHADOW_MAP);
+        cmd.emplaceCommand<gpu_bind_texture_command>(tex1, (u8)shader_binding::SHADOW_MAP);
 
-        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
-        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
         cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::SHADOW_PASS); // FINISH BIND for DX12
 
@@ -361,9 +362,10 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
         
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, view_handle, (u8)shader_binding::VIEW);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, light_handle, (u8)shader_binding::LIGHT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(light_handle, (u8)shader_binding::LIGHT);
 
         texture_handle tex0{};
         if (matInst->getTexturesCount() > 0)
@@ -375,12 +377,12 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
         {
             tex0 = g_defaultWhiteTexture->getHandle();
         }
-        cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex0, (u8)shader_binding::TEXTURE);
+        cmd.emplaceCommand<gpu_bind_texture_command>(tex0, (u8)shader_binding::TEXTURE);
 
-        cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
+        cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
-        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
-        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
         cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::FORWARD_PASS); // FINISH BIND for DX12
 
@@ -516,9 +518,10 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
         
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, view_handle, (u8)shader_binding::VIEW);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
 
         texture_handle tex0{};
         if (matInst->getTexturesCount() > 0)
@@ -530,13 +533,13 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
         {
             tex0 = g_defaultWhiteTexture->getHandle();
         }
-        cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, tex0, (u8)shader_binding::TEXTURE);
+        cmd.emplaceCommand<gpu_bind_texture_command>(tex0, (u8)shader_binding::TEXTURE);
 
         // we don't need it
-        cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
+        cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
-        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
-        cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
+        cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
         cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::GBUFFER_PASS); // FINISH BIND for DX12
 
@@ -664,22 +667,23 @@ void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_h
 
     cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
-    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, view_handle, (u8)shader_binding::VIEW);
-    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
-    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(pso_handle, light_handle, (u8)shader_binding::LIGHT);
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
+    cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(light_handle, (u8)shader_binding::LIGHT);
 
-    cmd.emplaceCommand<gpu_bind_texture_command>(pso_handle, g_defaultWhiteTexture->getHandle(), (u8)shader_binding::TEXTURE);
+    cmd.emplaceCommand<gpu_bind_texture_command>(g_defaultWhiteTexture->getHandle(), (u8)shader_binding::TEXTURE);
 
-    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
-    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferA, render_target_type::COLOR, (u8)shader_binding::GBUFFER_A, 0);
-    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferB, render_target_type::COLOR, (u8)shader_binding::GBUFFER_B, 0);
-    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferC, render_target_type::COLOR, (u8)shader_binding::GBUFFER_C, 0);
-    cmd.emplaceCommand<gpu_bind_render_target_command>(pso_handle, g_gbufferDepth, render_target_type::DEPTH, (u8)shader_binding::GBUFFER_DEPTH, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferA, render_target_type::COLOR, (u8)shader_binding::GBUFFER_A, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferB, render_target_type::COLOR, (u8)shader_binding::GBUFFER_B, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferC, render_target_type::COLOR, (u8)shader_binding::GBUFFER_C, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferDepth, render_target_type::DEPTH, (u8)shader_binding::GBUFFER_DEPTH, 0);
 
-    cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
-    cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
-    cmd.emplaceCommand<gpu_bind_sampler_command>(pso_handle, g_gbufferSamplerHandle, (u8)shader_binding::GBUFFER_SAMPLER);
+    cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
+    cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
+    cmd.emplaceCommand<gpu_bind_sampler_command>(g_gbufferSamplerHandle, (u8)shader_binding::GBUFFER_SAMPLER);
 
     cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::DEFERRED_LIGHTING_PASS); // FINISH BIND for DX12
 
@@ -772,7 +776,16 @@ void renderer::initDefaultResources()
 {
     g_defaultViewBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
     g_defaultObjectBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(object_uniform_buffer));
+    g_defaultMaterialBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(material_uniform_buffer), shader_binding_stage::BOTH);
     g_defaultLightBufferHandle = _dynamicRHI->createUniformBuffer(sizeof(light_uniform_buffer), shader_binding_stage::BOTH);
+
+    material_uniform_buffer default_mat{};
+    for (u32 f = 0; f < g_framesInFlight; ++f)
+    {
+        void* mat_mem = nullptr;
+        _dynamicRHI->getUniformBufferMemory(g_defaultMaterialBufferHandle, f, mat_mem);
+        std::memcpy(static_cast<u8*>(mat_mem), &default_mat, sizeof(default_mat));
+    }
 
     g_defaultSamplerHandle = _dynamicRHI->createSampler();
     // TODO: create new sampler clamp, not repeat

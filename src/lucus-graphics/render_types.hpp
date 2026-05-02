@@ -35,16 +35,20 @@ namespace lucus
     {
         VIEW                = 0,
         OBJECT              = 1,
-        LIGHT               = 2,
-        TEXTURE             = 3,
-        SHADOW_MAP          = 4,
-        SAMPLER             = 5,
-        SHADOW_MAP_SAMPLER  = 6,
-        GBUFFER_A           = 7, // NORMAL + Flags
-        GBUFFER_B           = 8, // Metalness + Roughness + Specular + ShadingModel
-        GBUFFER_C           = 9, // ALBEDO + AO
-        GBUFFER_DEPTH       = 10,
-        GBUFFER_SAMPLER     = 11,
+        MATERIAL            = 2,
+        LIGHT               = 3,
+        TEXTURE             = 4,
+        SHADOW_MAP          = 5,
+        SAMPLER             = 6,
+        SHADOW_MAP_SAMPLER  = 7,
+        BINDLESS            = 8,
+        BINDLESS_SAMPLER    = 9,
+        // Deferred lighting rendering (only in DEFERRED_LIGHTING_PASS)
+        GBUFFER_A           = 10, // NORMAL + Flags
+        GBUFFER_B           = 11, // Metalness + Roughness + Specular + ShadingModel
+        GBUFFER_C           = 12, // ALBEDO + AO
+        GBUFFER_DEPTH       = 13,
+        GBUFFER_SAMPLER     = 14,
     };
 
     enum class shader_binding_stage : u8
@@ -132,6 +136,12 @@ namespace lucus
     struct object_uniform_buffer
     {
         alignas(16) glm::mat4 model;
+    };
+
+    struct material_uniform_buffer
+    {
+        glm::vec4 base_color{1.0f};
+        glm::vec4 material_params{0.0f};
     };
 
     struct light_uniform_buffer

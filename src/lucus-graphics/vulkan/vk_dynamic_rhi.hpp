@@ -8,11 +8,10 @@
 #include "vk_buffer.hpp"
 #include "vk_render_types.hpp"
 #include "vk_window_context.hpp"
+#include "vk_pipeline_state.hpp"
 
 namespace lucus
 {
-    class vk_pipeline_state;
-
     class vk_dynamic_rhi : public dynamic_rhi
     {
         public:
@@ -47,6 +46,8 @@ namespace lucus
             
             void createDescriptorPool();
             void createDescriptorSetLayouts();
+            void createPassPipelineLayouts();
+            void createBindlessDescriptorSets();
 
             void wait_idle();
 
@@ -57,7 +58,7 @@ namespace lucus
             void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
             void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 
-            VkDescriptorSetLayout findDescriptor(VkDescriptorType in_type, shader_binding_stage in_stage) const;
+            VkDescriptorSetLayout findDescriptor(VkDescriptorType in_type, shader_binding_stage in_stage, bool in_bindless = false) const;
 
             const vk_framebuffer& findOrCreateFramebuffer(const vk_framebuffer_key& key);
 
@@ -91,6 +92,10 @@ namespace lucus
             //
             std::unordered_map<u32, vk_pipeline_state> _pipelineStates;
 
+            static constexpr size_t kRenderPassPipelineLayoutCount = 4;
+            std::array<vk_pipeline_layout, kRenderPassPipelineLayoutCount> _passPipelineLayouts{};
+            VkPipelineLayout _activePassPipelineLayout{ VK_NULL_HANDLE };
+
             //
             std::unordered_map<u32, vk_mesh> _meshes;
 
@@ -104,7 +109,9 @@ namespace lucus
             //
             std::vector<vk_descriptor> _descriptors;
             VkDescriptorPool _descriptorPool{ VK_NULL_HANDLE };
-
+            std::array<VkDescriptorSet, g_framesInFlight> _bindlessDescriptorSets{};
+            std::array<VkDescriptorSet, g_framesInFlight> _bindlessSamplerDescriptorSets{};
+            VkDescriptorPool _bindlessDescriptorPool{ VK_NULL_HANDLE };
             //
             std::array<vk_frame_sync, g_framesInFlight> frameSync{};
     };

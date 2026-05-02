@@ -5,6 +5,8 @@
 ConstantBuffer<FrameUniforms> gFrame : register(b0);
 [[vk::binding(0, 1)]]
 ConstantBuffer<ObjectUniforms> gObject : register(b1);
+[[vk::binding(0, 2)]]
+ConstantBuffer<MaterialUniforms> gMaterial : register(b2);
 
 [shader("vertex")]
 VSOutput vsMain(VSInput input)
@@ -20,15 +22,15 @@ VSOutput vsMain(VSInput input)
     return o;
 }
 
-[[vk::binding(0, 3)]]
+[[vk::binding(0, 4)]]
 Texture2D gAlbedo : register(t0);
-[[vk::binding(0, 5)]]
+[[vk::binding(0, 6)]]
 SamplerState gSampler : register(s0);
 
 [shader("fragment")]
 float4 psMain(VSOutput input) : SV_Target0
 {
     float4 color = gAlbedo.Sample(gSampler, input.texCoords0);
-    color.rgb *= input.color;
+    color.rgb *= input.color * gMaterial.baseColor.rgb;
     return color;
 }

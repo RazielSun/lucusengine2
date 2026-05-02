@@ -191,11 +191,12 @@ namespace lucus
 
     struct vk_descriptor
     {
+        bool bindless { false };
         VkDescriptorType type;
         shader_binding_stage stage;
         VkDescriptorSetLayout descriptorSetLayout { VK_NULL_HANDLE };
 
-        void init(VkDevice device, VkDescriptorType in_type, shader_binding_stage in_stage);
+        void init(VkDevice device, VkDescriptorType in_type, shader_binding_stage in_stage, bool in_bindless = false);
         void cleanup();
 
     private:

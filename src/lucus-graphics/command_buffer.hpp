@@ -3,6 +3,7 @@
 #include "pch.hpp"
 
 #include "core_types.hpp"
+#include "render_types.hpp"
 
 namespace lucus
 {
@@ -22,6 +23,7 @@ namespace lucus
         BIND_RENDER_TARGET,
         BIND_SAMPLER,
         BIND_DESCRIPTION_TABLE,
+        SET_BINDLESS,
         BIND_VERTEX_BUFFER,
         DRAW_INDEXED,
         DRAW_VERTEX,
@@ -160,46 +162,58 @@ namespace lucus
 
     struct gpu_bind_uniform_buffer_command : public gpu_command_base
     {
-        gpu_bind_uniform_buffer_command(pipeline_state_handle _pso_handle, uniform_buffer_handle _ub_handle, u8 _position) : gpu_command_base(gpu_command_type::BIND_UNIFORM_BUFFER), pso_handle(_pso_handle), ub_handle(_ub_handle), position(_position) {}
+        gpu_bind_uniform_buffer_command(uniform_buffer_handle _ub_handle, u8 _position)
+            : gpu_command_base(gpu_command_type::BIND_UNIFORM_BUFFER)
+            , ub_handle(_ub_handle)
+            , position(_position)
+        {}
 
-        pipeline_state_handle pso_handle;
         uniform_buffer_handle ub_handle;
         u8 position{0};
+        u8 _pad[3]{};
     };
 
     struct gpu_bind_texture_command : public gpu_command_base
     {
-        gpu_bind_texture_command(pipeline_state_handle _pso_handle, texture_handle _tex_handle, u8 _position) : gpu_command_base(gpu_command_type::BIND_TEXTURE), pso_handle(_pso_handle), tex_handle(_tex_handle), position(_position) {}
-        
-        pipeline_state_handle pso_handle;
+        gpu_bind_texture_command(texture_handle _tex_handle, u8 _position)
+            : gpu_command_base(gpu_command_type::BIND_TEXTURE)
+            , tex_handle(_tex_handle)
+            , position(_position)
+        {}
+
         texture_handle tex_handle;
         u8 position{0};
+        u8 _pad[3]{};
     };
 
     struct gpu_bind_render_target_command : public gpu_command_base
     {
-        gpu_bind_render_target_command(pipeline_state_handle _pso_handle, render_target_handle _rt_handle, render_target_type _type, u8 _position, u8 _slot)
+        gpu_bind_render_target_command(render_target_handle _rt_handle, render_target_type _type, u8 _position, u8 _slot)
             : gpu_command_base(gpu_command_type::BIND_RENDER_TARGET)
-            , pso_handle(_pso_handle)
             , rt_handle(_rt_handle)
             , type(_type)
             , position(_position)
-            , slot(_slot) {}
-        
-        pipeline_state_handle pso_handle;
+            , slot(_slot)
+        {}
+
         render_target_handle rt_handle;
         render_target_type type;
         u8 position{0};
         u8 slot{0};
+        u8 _pad[2]{};
     };
 
     struct gpu_bind_sampler_command : public gpu_command_base
     {
-        gpu_bind_sampler_command(pipeline_state_handle _pso_handle, sampler_handle _smpl_handle, u8 _position) : gpu_command_base(gpu_command_type::BIND_SAMPLER), pso_handle(_pso_handle), smpl_handle(_smpl_handle), position(_position) {}
-        
-        pipeline_state_handle pso_handle;
+        gpu_bind_sampler_command(sampler_handle _smpl_handle, u8 _position)
+            : gpu_command_base(gpu_command_type::BIND_SAMPLER)
+            , smpl_handle(_smpl_handle)
+            , position(_position)
+        {}
+
         sampler_handle smpl_handle;
         u8 position{0};
+        u8 _pad[3]{};
     };
 
     struct gpu_bind_description_table_command : public gpu_command_base
@@ -208,6 +222,21 @@ namespace lucus
 
         render_pass_name pass;
     };
+
+    struct gpu_set_bindless_command : public gpu_command_base
+    {
+        gpu_set_bindless_command(u32 _srvDescriptorIndex = 0, u32 _samplerDescriptorIndex = 0)
+            : gpu_command_base(gpu_command_type::SET_BINDLESS)
+            , srvDescriptorIndex(_srvDescriptorIndex)
+            , samplerDescriptorIndex(_samplerDescriptorIndex)
+        {}
+
+        u32 srvDescriptorIndex{0};
+        u32 samplerDescriptorIndex{0};
+        u32 _reserved[5]{};
+    };
+
+    static_assert(sizeof(gpu_set_bindless_command) <= COMMAND_FIXED_SIZE);
 
     struct gpu_bind_vertex_command : public gpu_command_base
     {

@@ -4,8 +4,8 @@
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<FrameUniforms> gFrame : register(b0);
-[[vk::binding(0, 2)]]
-ConstantBuffer<LightUniforms> gLight : register(b2);
+[[vk::binding(0, 3)]]
+ConstantBuffer<LightUniforms> gLight : register(b3);
 
 [shader("vertex")]
 VSOutput vsMain(uint vertexIndex : SV_VertexID)
@@ -26,15 +26,15 @@ VSOutput vsMain(uint vertexIndex : SV_VertexID)
     return o;
 }
 
-[[vk::binding(0, 7)]]
-Texture2D gBufferA : register(t3);
-[[vk::binding(0, 8)]]
-Texture2D gBufferB : register(t4);
-[[vk::binding(0, 9)]]
-Texture2D gBufferC : register(t5);
 [[vk::binding(0, 10)]]
-Texture2D gBufferDepth : register(t6);
+Texture2D gBufferA : register(t3);
 [[vk::binding(0, 11)]]
+Texture2D gBufferB : register(t4);
+[[vk::binding(0, 12)]]
+Texture2D gBufferC : register(t5);
+[[vk::binding(0, 13)]]
+Texture2D gBufferDepth : register(t6);
+[[vk::binding(0, 14)]]
 SamplerState gSampler : register(s2);
 
 [shader("fragment")]

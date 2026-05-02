@@ -6,7 +6,7 @@ ConstantBuffer<FrameUniforms> gFrame : register(b0);
 [[vk::binding(0, 1)]]
 ConstantBuffer<ObjectUniforms> gObject : register(b1);
 [[vk::binding(0, 2)]]
-ConstantBuffer<LightUniforms> gLight : register(b2);
+ConstantBuffer<MaterialUniforms> gMaterial : register(b2);
 
 [shader("vertex")]
 VSOutput vsMain(VSInput input)
@@ -29,7 +29,7 @@ VSOutput vsMain(VSInput input)
 GBufferOutput psMain(VSOutput input)
 {
     float3 N = (normalize(input.normal) + 1.0f) * 0.5f;
-    float3 vtxColor = input.color;
+    float3 vtxColor = input.color * gMaterial.baseColor.rgb;
 
     GBufferOutput o;
     o.normal_flags = float4(N, 0.0f);

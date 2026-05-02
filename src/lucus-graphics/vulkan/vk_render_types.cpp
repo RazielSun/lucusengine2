@@ -481,11 +481,12 @@ void vk_sampler::cleanup()
     vkDestroySampler(_device, sampler, nullptr);
 }
 
-void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_binding_stage in_stage)
+void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_binding_stage in_stage, bool in_bindless)
 {
     _device = device;
     type = in_type;
     stage = in_stage;
+    bindless = in_bindless;
 
     VkShaderStageFlags flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT; // BOTH
     if (stage == shader_binding_stage::VERTEX)
@@ -497,20 +498,42 @@ void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_bindi
         flags = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
 
+    u32 count = 1;
+    if (bindless)
+    {
+        count = (type == VK_DESCRIPTOR_TYPE_SAMPLER) ? g_maxSamplersCount : g_maxTexturesCount;
+    }
+
     std::array<VkDescriptorSetLayoutBinding, 1> bindings{};
     bindings[0] = VkDescriptorSetLayoutBinding
     {
         .binding = 0,
         .descriptorType = type, // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
+        .descriptorCount = count,
         .stageFlags = flags,
         .pImmutableSamplers = nullptr
     };
+
+    VkDescriptorBindingFlags bindlessFlags =
+    VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+    VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+    VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo extBindless{};
+    extBindless.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+    extBindless.bindingCount = static_cast<u32>(bindings.size());
+    extBindless.pBindingFlags = &bindlessFlags;
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = static_cast<u32>(bindings.size());
     layoutInfo.pBindings = bindings.data();
+
+    if (bindless)
+    {
+        layoutInfo.pNext = &extBindless;
+        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+    }
 
     if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");

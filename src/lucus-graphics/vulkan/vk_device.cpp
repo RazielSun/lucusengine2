@@ -1,5 +1,8 @@
 #include "vk_device.hpp"
 
+#include <algorithm>
+#include <cstring>
+
 using namespace lucus;
 
 vk_device::vk_device(VkPhysicalDevice gpu)
@@ -100,8 +103,66 @@ void vk_device::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, st
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
         .pQueueCreateInfos = queueCreateInfos.data(),
-        .pEnabledFeatures = &enabledFeatures
     };
+
+    // Descriptor indexing (bindless): query support, then enable via VkPhysicalDeviceFeatures2 chain.
+    VkPhysicalDeviceDescriptorIndexingFeatures supportedIndexing{};
+    supportedIndexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+
+    VkPhysicalDeviceFeatures2 supportedFeatures2{};
+    supportedFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    supportedFeatures2.pNext = &supportedIndexing;
+
+    vkGetPhysicalDeviceFeatures2(_gpu, &supportedFeatures2);
+
+    std::printf("VkPhysicalDeviceDescriptorIndexingFeatures (physical device, bindless-related):\n");
+    std::printf("  shaderSampledImageArrayNonUniformIndexing: %u\n",
+                supportedIndexing.shaderSampledImageArrayNonUniformIndexing);
+    std::printf("  runtimeDescriptorArray: %u\n", supportedIndexing.runtimeDescriptorArray);
+    std::printf("  descriptorBindingPartiallyBound: %u\n", supportedIndexing.descriptorBindingPartiallyBound);
+    std::printf("  descriptorBindingSampledImageUpdateAfterBind: %u\n",
+                supportedIndexing.descriptorBindingSampledImageUpdateAfterBind);
+
+    VkPhysicalDeviceDescriptorIndexingFeatures enabledIndexing{};
+    enabledIndexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+    if (supportedIndexing.shaderSampledImageArrayNonUniformIndexing) {
+        enabledIndexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    }
+    if (supportedIndexing.runtimeDescriptorArray) {
+        enabledIndexing.runtimeDescriptorArray = VK_TRUE;
+    }
+    if (supportedIndexing.descriptorBindingPartiallyBound) {
+        enabledIndexing.descriptorBindingPartiallyBound = VK_TRUE;
+    }
+    if (supportedIndexing.descriptorBindingSampledImageUpdateAfterBind) {
+        enabledIndexing.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    }
+    if (supportedIndexing.descriptorBindingVariableDescriptorCount) {
+        enabledIndexing.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    }
+
+    const bool descriptorIndexingEnabled =
+        enabledIndexing.shaderSampledImageArrayNonUniformIndexing == VK_TRUE
+        || enabledIndexing.runtimeDescriptorArray == VK_TRUE
+        || enabledIndexing.descriptorBindingPartiallyBound == VK_TRUE
+        || enabledIndexing.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE
+        || enabledIndexing.descriptorBindingVariableDescriptorCount == VK_TRUE;
+
+    if (descriptorIndexingEnabled && extensionSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))
+    {
+        const char* extName = VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
+        if (std::find_if(deviceExtensions.begin(), deviceExtensions.end(),
+                [extName](const char* e) { return e && std::strcmp(e, extName) == 0; })
+            == deviceExtensions.end())
+        {
+            deviceExtensions.push_back(extName);
+        }
+    }
+    else if (descriptorIndexingEnabled)
+    {
+        std::cerr << "VK_EXT_descriptor_indexing not listed for device; "
+                     "UPDATE_AFTER_BIND bindless layouts may fail validation without Vulkan 1.2 descriptorIndexing.\n";
+    }
 
     if (deviceExtensions.size() > 0)
     {
@@ -112,9 +173,17 @@ void vk_device::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, st
             }
         }
 
-        deviceCreateInfo.enabledExtensionCount = (uint32_t)deviceExtensions.size();
+        deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
         deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
     }
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2{};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.features = enabledFeatures;
+    deviceFeatures2.pNext = &enabledIndexing;
+
+    deviceCreateInfo.pNext = &deviceFeatures2;
+    deviceCreateInfo.pEnabledFeatures = nullptr;
 
     // TODO: future feature
     deviceCreateInfo.enabledLayerCount = 0;

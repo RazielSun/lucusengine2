@@ -5,6 +5,8 @@
 ConstantBuffer<FrameUniforms> gFrame : register(b0);
 [[vk::binding(0, 1)]]
 ConstantBuffer<ObjectUniforms> gObject : register(b1);
+[[vk::binding(0, 2)]]
+ConstantBuffer<MaterialUniforms> gMaterial : register(b2);
 
 [shader("vertex")]
 VSOutput vsMain(VSInput input)
@@ -23,6 +25,6 @@ VSOutput vsMain(VSInput input)
 [shader("fragment")]
 float4 psMain(VSOutput input) : SV_Target0
 {
-    float4 color = float4(input.color, 1.0f);
+    float4 color = float4(input.color * gMaterial.baseColor.rgb, 1.0f);
     return color;
 }

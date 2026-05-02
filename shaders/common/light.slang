@@ -1,9 +1,9 @@
 #ifndef LIGHT_SLANG
 #define LIGHT_SLANG
 
-[[vk::binding(0, 4)]]
+[[vk::binding(0, 5)]]
 Texture2D gShadowMap : register(t1);
-[[vk::binding(0, 6)]]
+[[vk::binding(0, 7)]]
 SamplerState gShadowMapSampler : register(s1);
 
 float computeShadow(float4 lightClipPos, float lambert)

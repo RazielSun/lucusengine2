@@ -5,6 +5,32 @@
 
 using namespace lucus;
 
+void vk_pipeline_layout::init(VkDevice device, const std::vector<VkDescriptorSetLayout>& layouts)
+{
+    cleanup();
+    _device = device;
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(layouts.size());
+    pipelineLayoutInfo.pSetLayouts = layouts.empty() ? nullptr : layouts.data();
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_layout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create pipeline layout!");
+    }
+}
+
+void vk_pipeline_layout::cleanup()
+{
+    if (_layout != VK_NULL_HANDLE && _device != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(_device, _layout, nullptr);
+    }
+    _layout = VK_NULL_HANDLE;
+    _device = VK_NULL_HANDLE;
+}
+
 vk_pipeline_state::vk_pipeline_state(VkDevice device)
     : _device(device)
 {
@@ -14,9 +40,6 @@ vk_pipeline_state::~vk_pipeline_state()
 {
     if (_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(_device, _pipeline, nullptr);
-    }
-    if (_pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(_device, _pipelineLayout, nullptr);
     }
 }
 
@@ -136,7 +159,9 @@ void vk_pipeline_state::init(const std::string& shaderName, const vk_pipeline_st
     colorBlending.blendConstants[2] = 0.0f; // Optional
     colorBlending.blendConstants[3] = 0.0f; // Optional
 
-    createPipelineLayout((u32)init_desc.layouts.size(), init_desc.layouts.data());
+    if (init_desc.pipelineLayout == VK_NULL_HANDLE) {
+        throw std::runtime_error("vk_pipeline_state::init: pipelineLayout is null");
+    }
 
     VkPipelineDepthStencilStateCreateInfo depthState{};
     depthState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -165,7 +190,7 @@ void vk_pipeline_state::init(const std::string& shaderName, const vk_pipeline_st
     pipelineInfo.pDepthStencilState = &depthState; // Optional
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = _pipelineLayout;
+    pipelineInfo.layout = init_desc.pipelineLayout;
     pipelineInfo.renderPass = init_desc.renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
@@ -199,24 +224,3 @@ VkShaderModule vk_pipeline_state::loadShader(const std::string& filepath) const
     return shaderModule;
 }
 
-void vk_pipeline_state::createPipelineLayout(uint32_t layoutCount, const VkDescriptorSetLayout* layouts)
-{
-    // Pipeline layout
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-
-    if (layoutCount > 0) {
-        pipelineLayoutInfo.setLayoutCount = layoutCount;
-        pipelineLayoutInfo.pSetLayouts = layouts;
-    } else {
-        pipelineLayoutInfo.setLayoutCount = 0; // Optional
-        pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
-    }
-
-    pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-    pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
-
-    if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
-    }
-}

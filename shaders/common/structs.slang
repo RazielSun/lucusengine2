@@ -15,6 +15,12 @@ struct ObjectUniforms
     float4x4 model;
 };
 
+struct MaterialUniforms
+{
+    float4 baseColor;
+    float4 materialParams;
+};
+
 struct LightUniforms
 {
     float4 position;

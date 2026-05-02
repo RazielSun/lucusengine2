@@ -5,6 +5,7 @@
 #include "command_buffer.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
+#include "render_types.hpp"
 
 #include "dx_utils.hpp"
 
@@ -259,8 +260,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::BIND_UNIFORM_BUFFER:
                 {
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
-                    // auto found = _pipelineStates.find(bu_cmd->pso_handle.get());
-                    // auto& pso = found->second;
                     auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
                     commandBuffer->SetGraphicsRootConstantBufferView((u32)bu_cmd->position, ub.get(currentFrame)->GetGPUVirtualAddress());
                 }
@@ -268,8 +267,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::BIND_TEXTURE:
                 {
                     const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
-                    // auto found = _pipelineStates.find(bt_cmd->pso_handle.get());
-                    // auto& pso = found->second;
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
                     assert(found_tex != _textures.end());
                     auto& tex = found_tex->second;
@@ -320,6 +317,8 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP,         srvHeapDesc.getShaderHeadHandle(frameIndex, 1));
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER,            samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP_SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex, 1));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS,           srvHeapDesc.getShaderHeadHandle(frameIndex, 0));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS_SAMPLER,   samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
                     if (bd_cmd->pass == render_pass_name::DEFERRED_LIGHTING_PASS)
                     {
                         commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_A,          srvHeapDesc.getShaderHeadHandle(frameIndex, 2));
@@ -330,6 +329,15 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     }
                     srvHeapDesc.head_to_current(frameIndex);
                     samplerHeapDesc.head_to_current(frameIndex);
+                }
+                break;
+            case gpu_command_type::SET_BINDLESS:
+                {
+                    (void)reinterpret_cast<const gpu_set_bindless_command*>(data);
+                    ID3D12DescriptorHeap* heaps[] = { srvHeapDesc.shaderHeap.Get(), samplerHeapDesc.shaderHeap.Get() };
+                    commandBuffer->SetDescriptorHeaps(2, heaps);
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS,         srvHeapDesc.getShaderHeadHandle(frameIndex, 0));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS_SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -428,12 +436,18 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
             D3D12_SHADER_VISIBILITY_VERTEX);
 
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
-            (u32)shader_binding::LIGHT, // b2
+            (u32)shader_binding::MATERIAL, // b2
             0,
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_ALL);
 
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[9];
+        init_desc.layouts.emplace_back().InitAsConstantBufferView(
+            (u32)shader_binding::LIGHT, // b3
+            0,
+            D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
+            D3D12_SHADER_VISIBILITY_ALL);
+
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[11];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t0 TEXTURE
         ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t1 SHADOW_MAP
         ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // s0 SAMPLER
@@ -443,11 +457,15 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
         ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t5 GBUFFER_C
         ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 6, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t6 GBUFFER_DEPTH
         ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // s2 GBUFFER_SAMPLER
+        ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // t7 BINDLESS
+        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // s3 BINDLESS_SAMPLER
 
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL); // TEXTURE
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL); // SAMPLER
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP_SAMPLER
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[9], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[10], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS_SAMPLER
         if (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
         {
             init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_A

@@ -31,6 +31,7 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     vkDeviceWaitIdle(_deviceHandle);
 
     vkDestroyDescriptorPool(_deviceHandle, _descriptorPool, nullptr);
+    vkDestroyDescriptorPool(_deviceHandle, _bindlessDescriptorPool, nullptr);
     for (auto& desc : _descriptors)
     {
         desc.cleanup();
@@ -60,6 +61,10 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     _meshes.clear();
 
     _pipelineStates.clear();
+
+    for (auto& pl : _passPipelineLayouts) {
+        pl.cleanup();
+    }
 
     for (auto& rt : _renderTargets)
     {
@@ -110,6 +115,8 @@ void vk_dynamic_rhi::init()
     
     createDescriptorPool();
     createDescriptorSetLayouts();
+    createPassPipelineLayouts();
+    createBindlessDescriptorSets();
 }
 
 void vk_dynamic_rhi::createInstance()
@@ -420,11 +427,30 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     renderPassInfo.pClearValues = clearValues.data();
 
                     vkCmdBeginRenderPass(cmdBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+                    const size_t passIndex = static_cast<size_t>(rb_cmd->pass);
+                    assert(passIndex < kRenderPassPipelineLayoutCount);
+                    _activePassPipelineLayout = _passPipelineLayouts[passIndex].get();
+
+                    VkDescriptorSet bindlessSetsHardcoded[] = {
+                        _bindlessDescriptorSets[currentFrame],
+                        _bindlessSamplerDescriptorSets[currentFrame],
+                    };
+                    vkCmdBindDescriptorSets(
+                        cmdBuffer,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        _activePassPipelineLayout,
+                        (u32)shader_binding::BINDLESS,
+                        2,
+                        bindlessSetsHardcoded,
+                        0,
+                        nullptr);
                 }
                 break;
             case gpu_command_type::RENDER_PASS_END:
                 {
                     vkCmdEndRenderPass(cmdBuffer);
+                    _activePassPipelineLayout = VK_NULL_HANDLE;
                 }
                 break;
             case gpu_command_type::SET_VIEWPORT:
@@ -461,30 +487,24 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::BIND_UNIFORM_BUFFER:
                 {
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
-                    auto found = _pipelineStates.find(bu_cmd->pso_handle.get());
-                    assert(found != _pipelineStates.end());
-                    auto& pso = found->second;
+                    assert(_activePassPipelineLayout != VK_NULL_HANDLE);
                     auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bu_cmd->position, 1, ub.get(currentFrame), 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _activePassPipelineLayout, (u32)bu_cmd->position, 1, ub.get(currentFrame), 0, nullptr);
                 }
                 break;
             case gpu_command_type::BIND_TEXTURE:
                 {
                     const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
-                    auto found = _pipelineStates.find(bt_cmd->pso_handle.get());
-                    assert(found != _pipelineStates.end());
-                    auto& pso = found->second;
+                    assert(_activePassPipelineLayout != VK_NULL_HANDLE);
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
                     auto& tex = found_tex->second;
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bt_cmd->position, 1, &tex.descriptorSet, 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _activePassPipelineLayout, (u32)bt_cmd->position, 1, &tex.descriptorSet, 0, nullptr);
                 }
                 break;
             case gpu_command_type::BIND_RENDER_TARGET:
                 {
                     const auto* br_cmd = reinterpret_cast<const gpu_bind_render_target_command*>(data);
-                    auto found = _pipelineStates.find(br_cmd->pso_handle.get());
-                    assert(found != _pipelineStates.end());
-                    auto& pso = found->second;
+                    assert(_activePassPipelineLayout != VK_NULL_HANDLE);
                     auto rt_handle = br_cmd->rt_handle;
                     assert(rt_handle.is_valid());
                     auto& rt = _renderTargets[rt_handle.as_index()];
@@ -494,22 +514,39 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     VkDescriptorSet descriptorSet = rt.descriptorSets[index];
 
                     assert(descriptorSet);
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)br_cmd->position, 1, &descriptorSet, 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _activePassPipelineLayout, (u32)br_cmd->position, 1, &descriptorSet, 0, nullptr);
                 }
                 break;
             case gpu_command_type::BIND_SAMPLER:
                 {
                     const auto* bs_cmd = reinterpret_cast<const gpu_bind_sampler_command*>(data);
-                    auto found = _pipelineStates.find(bs_cmd->pso_handle.get());
-                    assert(found != _pipelineStates.end());
-                    auto& pso = found->second;
+                    assert(_activePassPipelineLayout != VK_NULL_HANDLE);
                     auto& smpl = _samplers[bs_cmd->smpl_handle.as_index()];
-                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pso.getPipelineLayout(), (u32)bs_cmd->position, 1, &smpl.descriptorSet, 0, nullptr);
+                    vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _activePassPipelineLayout, (u32)bs_cmd->position, 1, &smpl.descriptorSet, 0, nullptr);
                 }
                 break;
             case gpu_command_type::BIND_DESCRIPTION_TABLE:
                 {
                     // Nothing to do
+                }
+                break;
+            case gpu_command_type::SET_BINDLESS:
+                {
+                    (void)reinterpret_cast<const gpu_set_bindless_command*>(data);
+                    assert(_activePassPipelineLayout != VK_NULL_HANDLE);
+                    VkDescriptorSet bindlessSetsHardcoded[] = {
+                        _bindlessDescriptorSets[currentFrame],
+                        _bindlessSamplerDescriptorSets[currentFrame],
+                    };
+                    vkCmdBindDescriptorSets(
+                        cmdBuffer,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        _activePassPipelineLayout,
+                        (u32)shader_binding::BINDLESS,
+                        2,
+                        bindlessSetsHardcoded,
+                        0,
+                        nullptr);
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -635,28 +672,48 @@ void vk_dynamic_rhi::createCommandBufferPool()
 
 void vk_dynamic_rhi::createDescriptorPool()
 {
-    VkDescriptorPoolSize poolSizes[] = {
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(g_framesInFlight) * g_maxUniformBufferCount },
-        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, g_maxTexturesCount },
-        { VK_DESCRIPTOR_TYPE_SAMPLER,       g_maxSamplersCount },
-    };
-
-    uint32_t totalCount = 0;
-    for (auto& size : poolSizes) {
-        totalCount += size.descriptorCount;
-    }
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = std::size(poolSizes);
-    poolInfo.pPoolSizes = poolSizes;
-    poolInfo.maxSets = totalCount;
+    {
+        VkDescriptorPoolSize poolSizes[] = {
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, static_cast<uint32_t>(g_framesInFlight) * g_maxUniformBufferCount },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, g_maxTexturesCount },
+            { VK_DESCRIPTOR_TYPE_SAMPLER,       g_maxSamplersCount },
+        };
     
-    if (vkCreateDescriptorPool(_deviceHandle, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor pool!");
+        uint32_t totalCount = 0;
+        for (auto& size : poolSizes) {
+            totalCount += size.descriptorCount;
+        }
+    
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = std::size(poolSizes);
+        poolInfo.pPoolSizes = poolSizes;
+        poolInfo.maxSets = totalCount;
+        
+        if (vkCreateDescriptorPool(_deviceHandle, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+    
+    {
+        VkDescriptorPoolSize poolSizes[] = {
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, g_maxTexturesCount * g_framesInFlight },
+            { VK_DESCRIPTOR_TYPE_SAMPLER, g_maxSamplersCount * g_framesInFlight },
+        };
+    
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = std::size(poolSizes);
+        poolInfo.pPoolSizes = poolSizes;
+        poolInfo.maxSets = g_framesInFlight * 2;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        
+        if (vkCreateDescriptorPool(_deviceHandle, &poolInfo, nullptr, &_bindlessDescriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create bindless descriptor pool!");
+        }
     }
 
-    std::printf("Descriptor pool created successfully\n");
+    std::printf("Descriptor pools created successfully\n");
 }
 
 void vk_dynamic_rhi::createDescriptorSetLayouts()
@@ -666,6 +723,84 @@ void vk_dynamic_rhi::createDescriptorSetLayouts()
     _descriptors.emplace_back().init(_deviceHandle, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::VERTEX);
     _descriptors.emplace_back().init(_deviceHandle, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::FRAGMENT);
     _descriptors.emplace_back().init(_deviceHandle, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::BOTH);
+    _descriptors.emplace_back().init(_deviceHandle, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT, true);
+    _descriptors.emplace_back().init(_deviceHandle, VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT, true);
+}
+
+void vk_dynamic_rhi::createPassPipelineLayouts()
+{
+    auto bufferDSLVertex = findDescriptor(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::VERTEX);
+    assert(bufferDSLVertex != VK_NULL_HANDLE);
+
+    auto bufferDSLBoth = findDescriptor(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::BOTH);
+    assert(bufferDSLBoth != VK_NULL_HANDLE);
+
+    auto textureDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT);
+    assert(textureDSL != VK_NULL_HANDLE);
+
+    auto samplerDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT);
+    assert(samplerDSL != VK_NULL_HANDLE);
+
+    auto bindlessTextureDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT, true);
+    assert(bindlessTextureDSL != VK_NULL_HANDLE);
+    auto bindlessSamplerDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT, true);
+    assert(bindlessSamplerDSL != VK_NULL_HANDLE);
+
+    const std::vector<VkDescriptorSetLayout> baseLayouts = {
+        bufferDSLBoth,
+        bufferDSLVertex,
+        bufferDSLBoth,
+        bufferDSLBoth,
+        textureDSL,
+        textureDSL,
+        samplerDSL,
+        samplerDSL,
+        bindlessTextureDSL,
+        bindlessSamplerDSL,
+    };
+
+    std::vector<VkDescriptorSetLayout> deferredLayouts = baseLayouts;
+    deferredLayouts.push_back(textureDSL);
+    deferredLayouts.push_back(textureDSL);
+    deferredLayouts.push_back(textureDSL);
+    deferredLayouts.push_back(textureDSL);
+    deferredLayouts.push_back(samplerDSL);
+
+    _passPipelineLayouts[static_cast<size_t>(render_pass_name::SHADOW_PASS)].init(_deviceHandle, baseLayouts);
+    _passPipelineLayouts[static_cast<size_t>(render_pass_name::FORWARD_PASS)].init(_deviceHandle, baseLayouts);
+    _passPipelineLayouts[static_cast<size_t>(render_pass_name::GBUFFER_PASS)].init(_deviceHandle, baseLayouts);
+    _passPipelineLayouts[static_cast<size_t>(render_pass_name::DEFERRED_LIGHTING_PASS)].init(_deviceHandle, deferredLayouts);
+}
+
+void vk_dynamic_rhi::createBindlessDescriptorSets()
+{
+    auto bindlessImageLayout = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT, true);
+    assert(bindlessImageLayout != VK_NULL_HANDLE);
+    auto bindlessSamplerLayout = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT, true);
+    assert(bindlessSamplerLayout != VK_NULL_HANDLE);
+
+    for (u32 i = 0; i < g_framesInFlight; i++)
+    {
+        VkDescriptorSetAllocateInfo allocInfoImg{};
+        allocInfoImg.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfoImg.descriptorPool = _bindlessDescriptorPool;
+        allocInfoImg.descriptorSetCount = 1;
+        allocInfoImg.pSetLayouts = &bindlessImageLayout;
+
+        if (vkAllocateDescriptorSets(_deviceHandle, &allocInfoImg, &_bindlessDescriptorSets[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate bindless descriptor set!");
+        }
+
+        VkDescriptorSetAllocateInfo allocInfoSmpl{};
+        allocInfoSmpl.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfoSmpl.descriptorPool = _bindlessDescriptorPool;
+        allocInfoSmpl.descriptorSetCount = 1;
+        allocInfoSmpl.pSetLayouts = &bindlessSamplerLayout;
+
+        if (vkAllocateDescriptorSets(_deviceHandle, &allocInfoSmpl, &_bindlessSamplerDescriptorSets[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate bindless sampler descriptor set!");
+        }
+    }
 }
 
 pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
@@ -696,37 +831,7 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
         else if (passName == render_pass_name::GBUFFER_PASS) colorCount = 3;
         init_desc.colorAttachmentsCount = colorCount;
 
-        auto bufferDSLVertex = findDescriptor(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::VERTEX);
-        assert(bufferDSLVertex != VK_NULL_HANDLE);
-
-        auto bufferDSLBoth = findDescriptor(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, shader_binding_stage::BOTH);
-        assert(bufferDSLBoth != VK_NULL_HANDLE);
-
-        auto textureDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT);
-        assert(textureDSL != VK_NULL_HANDLE);
-
-        auto samplerDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT);
-        assert(samplerDSL != VK_NULL_HANDLE);
-
-        // this is strict layouts shader contract
-        init_desc.layouts = {
-            bufferDSLBoth, // VIEW
-            bufferDSLVertex, // OBJECT
-            bufferDSLBoth, // LIGHT
-            textureDSL, // TEXTURE
-            textureDSL, // SHADOW_MAP
-            samplerDSL, // SAMPLER
-            samplerDSL // SHADOW_MAP SAMPLER
-        };
-
-        if (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
-        {
-            init_desc.layouts.push_back(textureDSL); // GBUFFER A
-            init_desc.layouts.push_back(textureDSL); // GBUFFER B
-            init_desc.layouts.push_back(textureDSL); // GBUFFER C
-            init_desc.layouts.push_back(textureDSL); // GBUFFER DEPTH
-            init_desc.layouts.push_back(samplerDSL); // GBUFFER SAMPLER
-        }
+        init_desc.pipelineLayout = _passPipelineLayouts[static_cast<size_t>(passName)].get();
 
         if (mat->useVertexIndexBuffers())
         {
@@ -1062,11 +1167,11 @@ void vk_dynamic_rhi::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t 
     endSingleTimeCommands(commandBuffer);
 }
 
-VkDescriptorSetLayout vk_dynamic_rhi::findDescriptor(VkDescriptorType in_type, shader_binding_stage in_stage) const
+VkDescriptorSetLayout vk_dynamic_rhi::findDescriptor(VkDescriptorType in_type, shader_binding_stage in_stage, bool in_bindless) const
 {
-    auto it = std::find_if(_descriptors.begin(), _descriptors.end(), [in_type, in_stage](const vk_descriptor& desc)
+    auto it = std::find_if(_descriptors.begin(), _descriptors.end(), [in_type, in_stage, in_bindless](const vk_descriptor& desc)
     {
-        return desc.type == in_type && desc.stage == in_stage;
+        return desc.type == in_type && desc.stage == in_stage && desc.bindless == in_bindless;
     });
     if (it != _descriptors.end())
     {
