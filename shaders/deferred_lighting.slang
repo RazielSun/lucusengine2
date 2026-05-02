@@ -35,7 +35,7 @@ Texture2D gBufferC : register(t5);
 [[vk::binding(0, 13)]]
 Texture2D gBufferDepth : register(t6);
 [[vk::binding(0, 14)]]
-SamplerState gSampler : register(s2);
+SamplerState gSampler : register(s3);
 
 [shader("fragment")]
 float4 psMain(VSOutput input) : SV_Target

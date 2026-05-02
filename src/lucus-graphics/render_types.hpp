@@ -37,7 +37,7 @@ namespace lucus
         DEFERRED_LIGHTING_PASS = 3,
     };
 
-    // STRICT SHADER BIND CONTRACT
+    // STRICT SHADER BIND CONTRACT (root parameter / descriptor set index; DX12 + Vulkan)
     enum class shader_binding : u8
     {
         VIEW                = 0,

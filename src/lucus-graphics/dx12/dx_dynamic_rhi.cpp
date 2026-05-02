@@ -460,32 +460,34 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_ALL);
 
+        // Descriptor tables: `ranges[]` order matches `InitAsDescriptorTable` / `shader_binding` after CBVs.
+        // HLSL: t0/t1/s0/s1 classic; bindless `bindless_textures.slang` t2/s2; deferred gbuffer s3.
         CD3DX12_DESCRIPTOR_RANGE1 ranges[11];
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t0 TEXTURE
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t1 SHADOW_MAP
-        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // s0 SAMPLER
-        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // s1 SHADOW_MAP_SAMPLER
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t3 GBUFFER_A
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t4 GBUFFER_B
-        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t5 GBUFFER_C
-        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 6, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // t6 GBUFFER_DEPTH
-        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // s2 GBUFFER_SAMPLER
-        ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // t7 BINDLESS
-        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // s3 BINDLESS_SAMPLER
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // TEXTURE t0
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SHADOW_MAP t1
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SAMPLER s0
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SHADOW_MAP_SAMPLER s1
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS t2
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS_SAMPLER s2
+        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_A t3
+        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_B t4
+        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_C t5
+        ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 6, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_DEPTH t6
+        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_SAMPLER s3
 
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL); // TEXTURE
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL); // SAMPLER
         init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP_SAMPLER
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[9], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[10], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS_SAMPLER
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS_SAMPLER
         if (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
         {
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_A
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_B
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_C
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_DEPTH
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[8], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_SAMPLER
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_A
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_B
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[8], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_C
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[9], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_DEPTH
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[10], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_SAMPLER
         }
 
         if (mat->useVertexIndexBuffers())
