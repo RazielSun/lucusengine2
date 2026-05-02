@@ -175,6 +175,7 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, width, height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, width, height);
+    cmd.emplaceCommand<gpu_set_bindless_command>();
 
     const directional_light* dir_light = scn->getDirectionalLight();
     uniform_buffer_handle view_handle = g_defaultViewBufferHandle;
@@ -241,7 +242,7 @@ void renderer::shadowPass(const scene* scn, const window_context_handle& ctx_han
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::SHADOW_PASS); // FINISH BIND for DX12
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::SHADOW_PASS); // DX12: ring descriptor tables + head
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -304,6 +305,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+    cmd.emplaceCommand<gpu_set_bindless_command>();
 
     const camera* cam = scn->getCamera();
     uniform_buffer_handle view_handle = g_defaultViewBufferHandle;
@@ -387,7 +389,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::FORWARD_PASS); // FINISH BIND for DX12
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::FORWARD_PASS); // DX12: ring descriptor tables + head
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -481,6 +483,7 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+    cmd.emplaceCommand<gpu_set_bindless_command>();
 
     const camera* cam = scn->getCamera();
     uniform_buffer_handle view_handle = g_defaultViewBufferHandle;
@@ -545,7 +548,7 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::GBUFFER_PASS); // FINISH BIND for DX12
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::GBUFFER_PASS); // DX12: ring descriptor tables + head
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -651,6 +654,7 @@ void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_h
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
+    cmd.emplaceCommand<gpu_set_bindless_command>();
 
     const directional_light* dir_light = scn->getDirectionalLight();
     uniform_buffer_handle light_handle = g_defaultLightBufferHandle;
@@ -689,7 +693,7 @@ void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_h
     cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
     cmd.emplaceCommand<gpu_bind_sampler_command>(g_gbufferSamplerHandle, (u8)shader_binding::GBUFFER_SAMPLER);
 
-    cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::DEFERRED_LIGHTING_PASS); // FINISH BIND for DX12
+    cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::DEFERRED_LIGHTING_PASS); // DX12: ring descriptor tables + head
 
     // FULLSCREEN TRIANGLE - we can use vertex shader to generate vertices, so no need to bind vertex/index buffers
     cmd.emplaceCommand<gpu_draw_vertex_command>(3);

@@ -431,20 +431,6 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     const size_t passIndex = static_cast<size_t>(rb_cmd->pass);
                     assert(passIndex < kRenderPassPipelineLayoutCount);
                     _activePassPipelineLayout = _passPipelineLayouts[passIndex].get();
-
-                    VkDescriptorSet bindlessSetsHardcoded[] = {
-                        _bindlessDescriptorSets[currentFrame],
-                        _bindlessSamplerDescriptorSets[currentFrame],
-                    };
-                    vkCmdBindDescriptorSets(
-                        cmdBuffer,
-                        VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        _activePassPipelineLayout,
-                        (u32)shader_binding::BINDLESS,
-                        2,
-                        bindlessSetsHardcoded,
-                        0,
-                        nullptr);
                 }
                 break;
             case gpu_command_type::RENDER_PASS_END:

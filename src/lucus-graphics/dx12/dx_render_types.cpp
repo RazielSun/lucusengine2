@@ -184,26 +184,29 @@ void dx_sampler::cleanup()
     //
 }
 
-void dx_heap_descriptor::init(Com<ID3D12Device> device, u32 in_capacity, D3D12_DESCRIPTOR_HEAP_TYPE type)
+void dx_heap_descriptor::init(Com<ID3D12Device> device, u32 in_bindless_stable, u32 in_ring_per_frame, u32 in_dynamic_resource_count, D3D12_DESCRIPTOR_HEAP_TYPE type)
 {
-    resourceIndex = 0;
-    capacity = in_capacity;
+    bindlessStableCount = in_bindless_stable;
+    ringPerFrameCapacity = in_ring_per_frame;
+    resourceCapacity = in_bindless_stable + in_dynamic_resource_count;
+    resourceIndex = in_bindless_stable;
     heapItemSize = device->GetDescriptorHandleIncrementSize(type);
     _device = device;
     heapType = type;
 
     {
         D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-        heapDesc.NumDescriptors = capacity;
+        heapDesc.NumDescriptors = resourceCapacity;
         heapDesc.Type = type;
         heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
         ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&resourceHeap)), "CreateDescriptorHeap failed");
     }
 
+    const u32 shaderVisibleCount = bindlessStableCount + ringPerFrameCapacity * g_framesInFlight;
     {
         D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-        heapDesc.NumDescriptors = capacity * g_framesInFlight;
+        heapDesc.NumDescriptors = shaderVisibleCount;
         heapDesc.Type = type;
         heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -211,14 +214,15 @@ void dx_heap_descriptor::init(Com<ID3D12Device> device, u32 in_capacity, D3D12_D
 
         for (u32 i = 0; i < g_framesInFlight; i++)
         {
-            allocators[i].init(i * capacity, capacity);
+            const u32 base = bindlessStableCount + i * ringPerFrameCapacity;
+            allocators[i].init(base, ringPerFrameCapacity);
         }
     }
 }
 
 u32 dx_heap_descriptor::allocateResource(u32 count)
 {
-    assert(resourceIndex + count < capacity);
+    assert(resourceIndex + count <= resourceCapacity);
     u32 current = resourceIndex;
     resourceIndex += count;
     return current;
@@ -250,6 +254,37 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getShaderHeadHandle(u32 frameI
         shaderHeap->GetGPUDescriptorHandleForHeapStart(),
         static_cast<INT>(allocators[currentFrame].head + offset),
         heapItemSize);
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE dx_heap_descriptor::getBindlessTableGpuStart() const
+{
+    return CD3DX12_GPU_DESCRIPTOR_HANDLE(
+        shaderHeap->GetGPUDescriptorHandleForHeapStart(),
+        0,
+        heapItemSize);
+}
+
+void dx_heap_descriptor::copyBindlessSrvFromResourceToSlot(u32 srcResourceIndex, u32 bindlessSlot)
+{
+    assert(bindlessSlot < bindlessStableCount);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dst(
+        shaderHeap->GetCPUDescriptorHandleForHeapStart(),
+        static_cast<INT>(bindlessSlot),
+        heapItemSize);
+    _device->CopyDescriptorsSimple(1, dst, getResourceHandle(srcResourceIndex), heapType);
+}
+
+void dx_heap_descriptor::copyBindlessSamplerFromResourceToStable(u32 srcResourceIndex)
+{
+    CD3DX12_CPU_DESCRIPTOR_HANDLE src = getResourceHandle(srcResourceIndex);
+    for (u32 s = 0; s < bindlessStableCount; ++s)
+    {
+        CD3DX12_CPU_DESCRIPTOR_HANDLE dst(
+            shaderHeap->GetCPUDescriptorHandleForHeapStart(),
+            static_cast<INT>(s),
+            heapItemSize);
+        _device->CopyDescriptorsSimple(1, dst, src, heapType);
+    }
 }
 
 void dx_heap_descriptor::reset_allocator(u32 frameIndex)

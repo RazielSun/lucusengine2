@@ -19,6 +19,21 @@ namespace lucus
 
 using namespace lucus;
 
+namespace
+{
+    /// CPU heap after the bindless prefix: classic texture SRVs + color/depth SRV runs (see `createRenderTarget`).
+    constexpr u32 dx_dynamic_srv_descriptor_budget()
+    {
+        return g_maxTexturesCount * 2u
+            + g_swapchainImageCount * (g_maxMrtColorTargets + 1u);
+    }
+
+    constexpr u32 dx_dynamic_sampler_descriptor_budget()
+    {
+        return g_maxSamplersCount * 2u + g_maxMrtColorTargets + g_framesInFlight;
+    }
+}
+
 dx_dynamic_rhi::dx_dynamic_rhi()
 {
 }
@@ -261,6 +276,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
                     auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
+                    // Root parameter index matches `shader_binding` for the first CBVs (VIEW=0 … LIGHT=3); see createPSO layout order.
                     commandBuffer->SetGraphicsRootConstantBufferView((u32)bu_cmd->position, ub.get(currentFrame)->GetGPUVirtualAddress());
                 }
                 break;
@@ -317,8 +333,8 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP,         srvHeapDesc.getShaderHeadHandle(frameIndex, 1));
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SAMPLER,            samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
                     commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::SHADOW_MAP_SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex, 1));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS,           srvHeapDesc.getShaderHeadHandle(frameIndex, 0));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS_SAMPLER,   samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS,         srvHeapDesc.getBindlessTableGpuStart());
+                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS_SAMPLER, samplerHeapDesc.getBindlessTableGpuStart());
                     if (bd_cmd->pass == render_pass_name::DEFERRED_LIGHTING_PASS)
                     {
                         commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::GBUFFER_A,          srvHeapDesc.getShaderHeadHandle(frameIndex, 2));
@@ -334,10 +350,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::SET_BINDLESS:
                 {
                     (void)reinterpret_cast<const gpu_set_bindless_command*>(data);
-                    ID3D12DescriptorHeap* heaps[] = { srvHeapDesc.shaderHeap.Get(), samplerHeapDesc.shaderHeap.Get() };
-                    commandBuffer->SetDescriptorHeaps(2, heaps);
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS,         srvHeapDesc.getShaderHeadHandle(frameIndex, 0));
-                    commandBuffer->SetGraphicsRootDescriptorTable((u32)shader_binding::BINDLESS_SAMPLER, samplerHeapDesc.getShaderHeadHandle(frameIndex, 0));
+                    // Bindless root tables are set in BIND_DESCRIPTION_TABLE (same heap bind + ring flush).
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -558,11 +571,20 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-sampler_handle dx_dynamic_rhi::createSampler(resource_binding_mode /*binding_mode*/)
+sampler_handle dx_dynamic_rhi::createSampler(resource_binding_mode binding_mode)
 {
     auto& smpl = _samplers.emplace_back();
 
-    smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, samplerHeapDesc.allocateResource());
+    if (binding_mode == resource_binding_mode::BINDLESS)
+    {
+        constexpr u32 kBindlessSamplerCpuIndex = 0;
+        smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, kBindlessSamplerCpuIndex);
+        samplerHeapDesc.copyBindlessSamplerFromResourceToStable(kBindlessSamplerCpuIndex);
+    }
+    else
+    {
+        smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, samplerHeapDesc.allocateResource(1));
+    }
 
     sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));
     std::printf("Sampler %d created successfully\n", smpl_handle.get());
@@ -584,7 +606,20 @@ texture_handle dx_dynamic_rhi::createTexture(texture* tex)
     assert(pair.second);
 
     dx_texture& dxtex = pair.first->second;
-    dxtex.init(_deviceHandle, srvHeapDesc.resourceHeap, srvHeapDesc.allocateResource(), tex);
+    if (tex->getResourceBindingMode() == resource_binding_mode::BINDLESS)
+    {
+        assert(_nextBindlessTextureSlot < g_maxTexturesCount);
+        const u32 slot = _nextBindlessTextureSlot++;
+        tex->setBindlessTextureSlot(slot);
+        dxtex.bindlessSlot = slot;
+        dxtex.init(_deviceHandle, srvHeapDesc.resourceHeap, slot, tex);
+    }
+    else
+    {
+        tex->setBindlessTextureSlot(std::numeric_limits<u32>::max());
+        dxtex.bindlessSlot = std::numeric_limits<u32>::max();
+        dxtex.init(_deviceHandle, srvHeapDesc.resourceHeap, srvHeapDesc.allocateResource(1), tex);
+    }
     std::printf("Texture %u created successfully\n", texHash);
 
     return texture_handle(texHash);
@@ -600,6 +635,10 @@ void dx_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 fram
 
     dx_texture& dxtex = it->second;
     uploadTextureToGpu(dxtex, frameIndex);
+    if (dxtex.bindlessSlot != std::numeric_limits<u32>::max())
+    {
+        srvHeapDesc.copyBindlessSrvFromResourceToSlot(dxtex.index, dxtex.bindlessSlot);
+    }
     std::printf("Texture %u loaded successfully\n", tex_handle.get());
 }
 
@@ -778,8 +817,18 @@ void dx_dynamic_rhi::createCommandBufferPool()
 
 void dx_dynamic_rhi::createDescriptorHeaps()
 {
-    srvHeapDesc.init(_deviceHandle, g_maxTexturesCount, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    samplerHeapDesc.init(_deviceHandle, g_maxSamplersCount, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    srvHeapDesc.init(
+        _deviceHandle,
+        g_maxTexturesCount,
+        g_maxTexturesCount,
+        dx_dynamic_srv_descriptor_budget(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    samplerHeapDesc.init(
+        _deviceHandle,
+        g_maxSamplersCount,
+        g_maxSamplersCount,
+        dx_dynamic_sampler_descriptor_budget(),
+        D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 }
 
 void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)

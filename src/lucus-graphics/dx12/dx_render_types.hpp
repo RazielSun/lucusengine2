@@ -40,6 +40,8 @@ namespace lucus
         Com<ID3D12Resource> texResource;
 
         u32 index;
+        /// Same semantics as `texture::getBindlessTextureSlot()`; max = not bindless.
+        u32 bindlessSlot{ std::numeric_limits<u32>::max() };
         D3D12_CPU_DESCRIPTOR_HANDLE srvCPUHandle;
         D3D12_GPU_DESCRIPTOR_HANDLE srvGPUHandle;
         
@@ -89,16 +91,24 @@ namespace lucus
 
         std::array<dx_allocator, g_framesInFlight> allocators{};
 
+        /// First `bindlessStableCount` indices in the shader-visible heap: stable bindless tables (root `BINDLESS` / `BINDLESS_SAMPLER`).
+        u32 bindlessStableCount{ 0 };
+        /// Dynamic `copy()` ring size per in-flight frame (TEXTURE, RT SRVs, etc.).
+        u32 ringPerFrameCapacity{ 0 };
+        /// Total CPU descriptors in `resourceHeap` (`bindlessStableCount` reserved + dynamic pool).
+        u32 resourceCapacity{ 0 };
         u32 resourceIndex = 0;
         u32 heapItemSize = 0;
-        u32 capacity = 0;
         D3D12_DESCRIPTOR_HEAP_TYPE heapType;
 
-        void init(Com<ID3D12Device> device, u32 in_capacity, D3D12_DESCRIPTOR_HEAP_TYPE type);
+        void init(Com<ID3D12Device> device, u32 in_bindless_stable, u32 in_ring_per_frame, u32 in_dynamic_resource_count, D3D12_DESCRIPTOR_HEAP_TYPE type);
         u32 allocateResource(u32 count = 1);
         CD3DX12_CPU_DESCRIPTOR_HANDLE getResourceHandle(u32 index) const;
         CD3DX12_GPU_DESCRIPTOR_HANDLE getShaderHeadHandle(u32 frameIndex, u32 offset = 0) const;
+        CD3DX12_GPU_DESCRIPTOR_HANDLE getBindlessTableGpuStart() const;
         void copy(u32 index, u32 frameIndex);
+        void copyBindlessSrvFromResourceToSlot(u32 srcResourceIndex, u32 bindlessSlot);
+        void copyBindlessSamplerFromResourceToStable(u32 srcResourceIndex);
         void reset_allocator(u32 frameIndex);
         void head_to_current(u32 frameIndex);
         void cleanup();

@@ -86,5 +86,7 @@ namespace lucus
             Com<ID3D12Fence> fence;
             std::array<uint64_t, g_framesInFlight> fenceValues{};
             void* fenceEvent = nullptr;
+
+            u32 _nextBindlessTextureSlot{0};
     };
 }
