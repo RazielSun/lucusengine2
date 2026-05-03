@@ -29,6 +29,16 @@ namespace lucus
         virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const = 0;
         virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle, render_target_type rt_type) const = 0;
 
+        /// G-buffer bundle stored on the window context (Vulkan/DX12). Invalid handle if unsupported or bad context.
+        virtual const window_gbuffer_targets& getWindowContextGBufferTargets(const window_context_handle& /*handle*/) const
+        {
+            static const window_gbuffer_targets kEmpty{};
+            return kEmpty;
+        }
+
+        /// Allocate per-context G-buffer RTs when `r_mode == DEFERRED` (no-op if already allocated or extent is zero).
+        virtual void ensureDeferredGBufferTargets(const window_context_handle& /*ctx*/) {}
+
         virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) = 0;
         virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) = 0;
         

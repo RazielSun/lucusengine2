@@ -83,6 +83,7 @@ void renderer::tick(float dt)
             }
             else if (r_mode == render_mode::DEFERRED)
             {
+                _dynamicRHI->ensureDeferredGBufferTargets(context);
                 gbufferPass(_currentScene.get(), context, cmd);
                 lightingPass(_currentScene.get(), context, cmd);
             }
@@ -451,35 +452,41 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
         throw std::runtime_error("gbufferPass:: gBuffer render target is not valid!");
     }
 
+    const window_gbuffer_targets& gb = _dynamicRHI->getWindowContextGBufferTargets(ctx_handle);
+    if (!gb.valid())
+    {
+        throw std::runtime_error("gbufferPass:: per-window G-buffer targets are not valid!");
+    }
+
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferA,
+        gb.a,
         resource_state::UNDEFINED,
         resource_state::COLOR_WRITE,
         image_barrier_aspect::COLOR, 0);
     
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferB,
+        gb.b,
         resource_state::UNDEFINED,
         resource_state::COLOR_WRITE,
         image_barrier_aspect::COLOR, 0);
     
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferC,
+        gb.c,
         resource_state::UNDEFINED,
         resource_state::COLOR_WRITE,
         image_barrier_aspect::COLOR, 0);
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferDepth,
+        gb.depth,
         resource_state::UNDEFINED,
         resource_state::DEPTH_WRITE,
         image_barrier_aspect::DEPTH, 0);
 
     auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::GBUFFER_PASS, 3, 1, v_width, v_height);
-    bpc.colorTargets[0] = g_gbufferA;
-    bpc.colorTargets[1] = g_gbufferB;
-    bpc.colorTargets[2] = g_gbufferC;
-    bpc.depthTarget = g_gbufferDepth;
+    bpc.colorTargets[0] = gb.a;
+    bpc.colorTargets[1] = gb.b;
+    bpc.colorTargets[2] = gb.c;
+    bpc.depthTarget = gb.depth;
 
     cmd.emplaceCommand<gpu_set_viewport_command>(0, 0, v_width, v_height);
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, v_width, v_height);
@@ -581,25 +588,25 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
     cmd.emplaceCommand<gpu_render_pass_end_command>();
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferA,
+        gb.a,
         resource_state::COLOR_WRITE,
         resource_state::SHADER_READ,
         image_barrier_aspect::COLOR, 0);
     
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferB,
+        gb.b,
         resource_state::COLOR_WRITE,
         resource_state::SHADER_READ,
         image_barrier_aspect::COLOR, 0);
     
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferC,
+        gb.c,
         resource_state::COLOR_WRITE,
         resource_state::SHADER_READ,
         image_barrier_aspect::COLOR, 0);
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
-        g_gbufferDepth,
+        gb.depth,
         resource_state::DEPTH_WRITE,
         resource_state::SHADER_READ,
         image_barrier_aspect::DEPTH, 0);
@@ -626,6 +633,12 @@ void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_h
     if (v_width == 0 || v_height == 0 || !fb_color_handle.is_valid())
     {
         throw std::runtime_error("lightingPass:: render target is not valid!");
+    }
+
+    const window_gbuffer_targets& gb = _dynamicRHI->getWindowContextGBufferTargets(ctx_handle);
+    if (!gb.valid())
+    {
+        throw std::runtime_error("lightingPass:: per-window G-buffer targets are not valid!");
     }
 
     const camera* cam = scn->getCamera();
@@ -684,10 +697,10 @@ void renderer::lightingPass(const scene* scn, const window_context_handle& ctx_h
 
     cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
-    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferA, render_target_type::COLOR, (u8)shader_binding::GBUFFER_A, 0);
-    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferB, render_target_type::COLOR, (u8)shader_binding::GBUFFER_B, 0);
-    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferC, render_target_type::COLOR, (u8)shader_binding::GBUFFER_C, 0);
-    cmd.emplaceCommand<gpu_bind_render_target_command>(g_gbufferDepth, render_target_type::DEPTH, (u8)shader_binding::GBUFFER_DEPTH, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(gb.a, render_target_type::COLOR, (u8)shader_binding::GBUFFER_A, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(gb.b, render_target_type::COLOR, (u8)shader_binding::GBUFFER_B, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(gb.c, render_target_type::COLOR, (u8)shader_binding::GBUFFER_C, 0);
+    cmd.emplaceCommand<gpu_bind_render_target_command>(gb.depth, render_target_type::DEPTH, (u8)shader_binding::GBUFFER_DEPTH, 0);
 
     cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
     cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
@@ -889,14 +902,7 @@ void renderer::initDefaultResources()
 
     if (r_mode == render_mode::DEFERRED)
     {
-        u32 v_width, v_height;
-        // TODO: 0 index from window contexts is not good, need to find better way to get main window size
-        _dynamicRHI->getWindowContextSize(_dynamicRHI->getWindowContexts()[0], v_width, v_height);
-        g_gbufferA = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
-        g_gbufferB = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
-        g_gbufferC = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::COLOR, g_framesInFlight);
-        g_gbufferDepth = _dynamicRHI->createRenderTarget(v_width, v_height, render_target_type::DEPTH, g_framesInFlight);
-        g_gbufferSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL); 
+        g_gbufferSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
 
         g_deferredLightingMat.reset(material::create_factory("deferred_lighting"));
         g_deferredLightingMat->setUseVertexIndexBuffers(false);

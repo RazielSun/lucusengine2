@@ -26,7 +26,9 @@ namespace lucus
 
         render_target_handle color_handle;
         render_target_handle depth_handle;
-        
+
+        window_gbuffer_targets gbuffer{};
+
         private:
             Com<IDXGIFactory4> mDXGIFactory;
             Com<ID3D12Device> mDevice;

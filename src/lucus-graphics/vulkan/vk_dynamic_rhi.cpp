@@ -334,6 +334,41 @@ render_target_handle vk_dynamic_rhi::getWindowContextRenderTarget(const window_c
     return ctx.color_handle;
 }
 
+const window_gbuffer_targets& vk_dynamic_rhi::getWindowContextGBufferTargets(const window_context_handle& ctx_handle) const
+{
+    static const window_gbuffer_targets kEmpty{};
+    if (!ctx_handle.is_valid())
+    {
+        return kEmpty;
+    }
+    return _contexts[ctx_handle.as_index()].gbuffer;
+}
+
+void vk_dynamic_rhi::ensureDeferredGBufferTargets(const window_context_handle& ctx_handle)
+{
+    if (!ctx_handle.is_valid())
+    {
+        return;
+    }
+    vk_window_context& ctx = _contexts[ctx_handle.as_index()];
+    if (ctx.gbuffer.a.is_valid())
+    {
+        return;
+    }
+
+    const u32 gw = ctx.swapChain.extent.width;
+    const u32 gh = ctx.swapChain.extent.height;
+    if (gw == 0 || gh == 0)
+    {
+        return;
+    }
+
+    ctx.gbuffer.a = createRenderTarget(gw, gh, render_target_type::COLOR, g_framesInFlight);
+    ctx.gbuffer.b = createRenderTarget(gw, gh, render_target_type::COLOR, g_framesInFlight);
+    ctx.gbuffer.c = createRenderTarget(gw, gh, render_target_type::COLOR, g_framesInFlight);
+    ctx.gbuffer.depth = createRenderTarget(gw, gh, render_target_type::DEPTH, g_framesInFlight);
+}
+
 void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
 {
     if (!ctx_handle.is_valid()) {

@@ -40,6 +40,8 @@ namespace lucus
         render_target_handle color_handle;
         render_target_handle depth_handle;
 
+        window_gbuffer_targets gbuffer{};
+
         void init(VkInstance instance, VkPhysicalDevice gpu, VkDevice device, window* window);
         void init_images(vk_render_target& render_target);
         void cleanup();

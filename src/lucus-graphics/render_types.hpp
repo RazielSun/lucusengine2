@@ -131,6 +131,20 @@ namespace lucus
     CUSTOM_RESOURCE_HANDLE(pipeline_state_handle);
     CUSTOM_RESOURCE_HANDLE(uniform_buffer_handle);
 
+    /// Per-window-context deferred G-buffer attachments (sizes match that context's swapchain extent).
+    struct window_gbuffer_targets
+    {
+        render_target_handle a;
+        render_target_handle b;
+        render_target_handle c;
+        render_target_handle depth;
+
+        bool valid() const
+        {
+            return a.is_valid() && b.is_valid() && c.is_valid() && depth.is_valid();
+        }
+    };
+
     struct frame_uniform_buffer
     {
         alignas(16) glm::mat4 view;

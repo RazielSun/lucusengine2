@@ -71,10 +71,6 @@ namespace lucus
         render_target_handle shadow_rt_handle;
         intrusive_ptr<material> g_shadowMat;
 
-        render_target_handle g_gbufferA;
-        render_target_handle g_gbufferB;
-        render_target_handle g_gbufferC;
-        render_target_handle g_gbufferDepth;
         intrusive_ptr<material> g_deferredLightingMat;
         sampler_handle g_gbufferSamplerHandle{};
 
