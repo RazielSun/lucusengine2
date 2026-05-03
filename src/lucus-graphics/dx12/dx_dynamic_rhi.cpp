@@ -461,14 +461,14 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
             D3D12_SHADER_VISIBILITY_ALL);
 
         // Descriptor tables: `ranges[]` order matches `InitAsDescriptorTable` / `shader_binding` after CBVs.
-        // HLSL: t0/t1/s0/s1 classic; bindless `bindless_textures.slang` t2/s2; deferred gbuffer s3.
+        // HLSL: t0/t1/s0/s1 classic; deferred g-buffer t3–t6 + s3; bindless t7/s7 (must not overlap t2–t6 range).
         CD3DX12_DESCRIPTOR_RANGE1 ranges[11];
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // TEXTURE t0
         ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SHADOW_MAP t1
         ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SAMPLER s0
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SHADOW_MAP_SAMPLER s1
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS t2
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS_SAMPLER s2
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS t7
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS_SAMPLER s7
         ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_A t3
         ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_B t4
         ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_C t5

@@ -135,13 +135,13 @@ void dx_pipeline_state::createRootSignature(const dx_pipeline_state_desc& init_d
     Com<ID3DBlob> signature;
     Com<ID3DBlob> error;
 
-    ThrowIfFailed(D3D12SerializeVersionedRootSignature(
-            &desc,
-            &signature,
-            &error
-        ),
-        "Failed Serialize Root Signature"
-    );
+    HRESULT hr = D3D12SerializeVersionedRootSignature(&desc, &signature, &error);
+    if (FAILED(hr) && error && error->GetBufferPointer())
+    {
+        std::fprintf(stderr, "D3D12SerializeVersionedRootSignature: %s\n",
+            static_cast<const char*>(error->GetBufferPointer()));
+    }
+    ThrowIfFailed(hr, "Failed Serialize Root Signature");
 
     ThrowIfFailed(_device->CreateRootSignature(
             0,
