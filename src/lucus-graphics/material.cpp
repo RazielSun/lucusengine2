@@ -33,7 +33,7 @@ void material::addTexture(texture* tex, u8 slot_index)
     _textures.push_back(texture_slot());
 
     texture_slot& ts = _textures.back();
-    ts.texture = intrusive_ptr<texture>(tex);
+    ts.tex = intrusive_ptr<texture>(tex);
     ts.slot_index = slot_index;
 }
 

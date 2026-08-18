@@ -377,7 +377,7 @@ void renderer::forwardPass(const scene* scn, const window_context_handle& ctx_ha
         if (matInst->getTexturesCount() > 0)
         {
             const auto& tex_slot = matInst->getTextures()[0];
-            tex0 = tex_slot.texture->getHandle();
+            tex0 = tex_slot.tex->getHandle();
         }
         else
         {
@@ -541,7 +541,7 @@ void renderer::gbufferPass(const scene* scn, const window_context_handle& ctx_ha
         if (matInst->getTexturesCount() > 0)
         {
             const auto& tex_slot = matInst->getTextures()[0];
-            tex0 = tex_slot.texture->getHandle();
+            tex0 = tex_slot.tex->getHandle();
         }
         else
         {
@@ -814,7 +814,7 @@ void renderer::updateMaterialUniformBuffer(const material* mat)
     {
         for (const texture_slot& ts : mat->getTextures())
         {
-            const texture* tex = ts.texture.get();
+            const texture* tex = ts.tex.get();
             if (!tex)
             {
                 continue;

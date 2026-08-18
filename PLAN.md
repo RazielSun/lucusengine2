@@ -330,7 +330,7 @@ counts to baseline under ASan/LSan, including failed and partial glTF loads.
 | S1 | P1 | Metal backend does not match the current RHI interface |
 | S2 | P1 | `assert()` used as production error handling |
 | S3 | P1 | No swapchain recreation / window resize |
-| S4 | P2 | GCC cannot compile the project |
+| S4 | P2 | ~~GCC cannot compile the project~~ **fixed** |
 | S5 | P2 | `compile_vulkan.sh` does not resolve `slangc` from `scripts/tools` |
 | S6 | P2 | Tests only check the exit code |
 | S7 | P2 | Refactor renderer handle plumbing |
@@ -395,7 +395,7 @@ Depends on **B6** (detect out-of-date), **B10** (drop stale framebuffers) and
 **Done when:** resizing a window re-creates the swapchain and dependent targets,
 and `two_windows_test` survives a resize.
 
-### S4 — GCC cannot compile the project · P2
+### S4 — GCC cannot compile the project · P2 · **FIXED**
 
 [material.hpp:14](src/lucus-graphics/material.hpp#L14)
 
@@ -403,11 +403,20 @@ and `two_windows_test` survives a resize.
 intrusive_ptr<texture> texture;   // member named after its own type
 ```
 
-GCC 14+ makes this a hard error (`-Werror=changes-meaning`); clang accepts it.
-Building with GCC currently requires `-Wno-changes-meaning`.
+`texture_slot::texture` shadowed the `lucus::texture` class it was declared
+from. GCC 13+ makes this a hard error (`-Werror=changes-meaning`, added in GCC
+13); clang accepts it silently. Building with GCC required
+`-Wno-changes-meaning`.
 
-**Fix:** rename the member to `tex`. One-line change, drops a whole compiler
-from the "unsupported" list.
+Renamed the member to `tex` — declaration plus four call sites
+([material.cpp:36](src/lucus-graphics/material.cpp#L36),
+[renderer.cpp:380](src/lucus-graphics/renderer.cpp#L380),
+[544](src/lucus-graphics/renderer.cpp#L544),
+[817](src/lucus-graphics/renderer.cpp#L817)). The Metal `.texture` accesses are
+`MTLRenderPassDescriptor` fields and were left alone.
+
+**Closed.** Verified: clean GCC 13.3 configure + build with no workaround flag,
+14/14 tests pass on the resulting binary.
 
 ### S5 — `slangc` lookup inconsistent across platforms · P2
 
@@ -576,7 +585,7 @@ verifiable with the existing suite and touches one area.
 | Q1 | S7 — extract `pass_context` + uniform lazy-create helpers | `renderer.cpp` | ~30 min | none, pure de-duplication |
 | Q2 | B3 — move the view buffer off the camera, slot per context | `renderer.cpp` | ~1 h | low, needs Q1 first |
 | Q3 | B8 — add `sampler_desc` to `createSampler` | RHI + backends | ~30 min | low, slots already exist |
-| Q4 | S4 — rename `material::texture` to `tex` | `material.*` | ~5 min | none, unblocks GCC |
+| Q4 | ~~S4 — rename `material::texture` to `tex`~~ **done** | `material.*` | — | closed |
 | Q5 | S5 — resolve `slangc` from `scripts/tools/slang/bin` | `compile_vulkan.sh` | ~5 min | none |
 
 **Order:** Q4 and Q5 are independent and can land immediately. Q1 before Q2 —

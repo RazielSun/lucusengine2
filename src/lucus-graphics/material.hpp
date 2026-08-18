@@ -11,7 +11,7 @@ namespace lucus
 {
     struct texture_slot
     {
-        intrusive_ptr<texture> texture;
+        intrusive_ptr<texture> tex;
         u8 slot_index;
     };
 

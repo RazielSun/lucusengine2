@@ -61,8 +61,7 @@ brew install ninja
 - Cmake >= 3.28
 - Ninja
 - Vulkan (loader + headers, e.g. `libvulkan-dev` / Vulkan SDK)
-- Clang (default). GCC 14+ rejects `material.hpp` with `-Werror=changes-meaning`;
-  build with `-DCMAKE_CXX_FLAGS=-Wno-changes-meaning` if you use GCC.
+- Clang (default) or GCC 13+ — both build the project as-is.
 
 ## Instalation
 
