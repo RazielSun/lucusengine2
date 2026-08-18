@@ -6,10 +6,25 @@ IFS=$'\n\t'
 
 echo "Compiling shaders..."
 
+# Resolve slangc: explicit $SLANGC, then scripts/tools/slang/bin, then PATH.
+if [ -n "${SLANGC:-}" ]; then
+    :
+elif [ -x "$(dirname "$0")/tools/slang/bin/slangc" ]; then
+    SLANGC="$(dirname "$0")/tools/slang/bin/slangc"
+elif command -v slangc >/dev/null 2>&1; then
+    SLANGC="$(command -v slangc)"
+else
+    echo "slangc not found." >&2
+    echo "Put a slang release in scripts/tools/slang (so that" >&2
+    echo "scripts/tools/slang/bin/slangc exists), add slangc to PATH," >&2
+    echo "or set SLANGC=/path/to/slangc. See README." >&2
+    exit 1
+fi
+echo "Using slangc: $SLANGC"
+
 SRC_DIR="shaders"
 OUT_DIR="bin/shaders"
 COMMON_DIR="$SRC_DIR/common"
-SLANGC="$(dirname "$0")/tools/slang/bin/slangc"
 
 mkdir -p "$OUT_DIR"
 
@@ -41,7 +56,7 @@ find "$SRC_DIR" -type f -name "*.slang" ! -path "*/common/*" | while read -r fil
 
     if needs_rebuild "$file" "$out_mtl"; then
         echo "Compiling $file to $out_lib"
-        $SLANGC "$file" -target metal -entry vsMain -entry psMain -D TARGET_METAL=1 -o "$out_mtl" -I "$SRC_DIR"
+        "$SLANGC" "$file" -target metal -entry vsMain -entry psMain -D TARGET_METAL=1 -o "$out_mtl" -I "$SRC_DIR"
         xcrun -sdk macosx metal -c "$out_mtl" -o "$out_air"
         xcrun -sdk macosx metallib "$out_air" -o "$out_lib"
     fi

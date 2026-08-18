@@ -6,9 +6,21 @@ IFS=$'\n\t'
 
 echo "Compiling shaders..."
 
-# find tools/slang -name slangc | while read -r slangc; do
-#     export PATH="$(dirname "$slangc"):$PATH"
-# done
+# Resolve slangc: explicit $SLANGC, then scripts/tools/slang/bin, then PATH.
+if [ -n "${SLANGC:-}" ]; then
+    :
+elif [ -x "$(dirname "$0")/tools/slang/bin/slangc" ]; then
+    SLANGC="$(dirname "$0")/tools/slang/bin/slangc"
+elif command -v slangc >/dev/null 2>&1; then
+    SLANGC="$(command -v slangc)"
+else
+    echo "slangc not found." >&2
+    echo "Put a slang release in scripts/tools/slang (so that" >&2
+    echo "scripts/tools/slang/bin/slangc exists), add slangc to PATH," >&2
+    echo "or set SLANGC=/path/to/slangc. See README." >&2
+    exit 1
+fi
+echo "Using slangc: $SLANGC"
 
 SRC_DIR="shaders"
 OUT_DIR="bin/shaders"
@@ -43,12 +55,12 @@ find "$SRC_DIR" -type f -name "*.slang" ! -path "*/common/*" | while read -r fil
 
     if needs_rebuild "$file" "$out_vs"; then
         echo "Compiling $file to $out_vs"
-        slangc "$file" -entry vsMain -profile vs_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_vs" -I "$SRC_DIR"
+        "$SLANGC" "$file" -entry vsMain -profile vs_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_vs" -I "$SRC_DIR"
     fi
 
     if needs_rebuild "$file" "$out_ps"; then
         echo "Compiling $file to $out_ps"
-        slangc "$file" -entry psMain -profile ps_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_ps" -I "$SRC_DIR"
+        "$SLANGC" "$file" -entry psMain -profile ps_6_0 -target spirv -D TARGET_VULKAN=1 -o "$out_ps" -I "$SRC_DIR"
     fi
 
 done

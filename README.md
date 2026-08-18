@@ -78,7 +78,12 @@ Get DXC for WIN SLANG compilation
 https://github.com/microsoft/DirectXShaderCompiler/releases
 to scripts/tools/dxc
 
-`slangc` must be on `PATH` when `scripts/compile_vulkan.sh` runs.
+The shader scripts look for `slangc` in this order: `$SLANGC`, then
+`scripts/tools/slang/bin/slangc`, then `PATH`. Any one of the three works:
+
+```bash
+SLANGC=/path/to/slangc ./scripts/compile_vulkan.sh
+```
 
 ## Build
 

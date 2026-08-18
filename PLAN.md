@@ -331,7 +331,7 @@ counts to baseline under ASan/LSan, including failed and partial glTF loads.
 | S2 | P1 | `assert()` used as production error handling |
 | S3 | P1 | No swapchain recreation / window resize |
 | S4 | P2 | ~~GCC cannot compile the project~~ **fixed** |
-| S5 | P2 | `compile_vulkan.sh` does not resolve `slangc` from `scripts/tools` |
+| S5 | P2 | ~~`compile_vulkan.sh` does not resolve `slangc` from `scripts/tools`~~ **fixed** |
 | S6 | P2 | Tests only check the exit code |
 | S7 | P2 | Refactor renderer handle plumbing |
 | S8 | P1 | RHI has no explicit backend capability contract |
@@ -418,22 +418,21 @@ Renamed the member to `tex` — declaration plus four call sites
 **Closed.** Verified: clean GCC 13.3 configure + build with no workaround flag,
 14/14 tests pass on the resulting binary.
 
-### S5 — `slangc` lookup inconsistent across platforms · P2
+### S5 — `slangc` lookup inconsistent across platforms · P2 · **FIXED**
 
-[compile_vulkan.sh:9-12](scripts/compile_vulkan.sh#L9-L12)
+`compile_dx12.bat` prepended `scripts\tools\slang\bin` to `PATH`,
+`compile_metal.sh` hardcoded `scripts/tools/slang/bin/slangc` with no fallback,
+and `compile_vulkan.sh` called bare `slangc` with its tools-dir block commented
+out. So the layout the README documents did not work on Linux, and a
+system-wide `slangc` did not work on macOS.
 
-`compile_metal.sh` resolves `scripts/tools/slang/bin/slangc` and
-`compile_dx12.bat` prepends `scripts\tools\slang\bin` to `PATH`, but
-`compile_vulkan.sh` calls bare `slangc` — its tools-dir block is commented out.
-So the layout the README tells you to create does not work on Linux.
+Both shell scripts now share one resolver — `$SLANGC`, then
+`scripts/tools/slang/bin/slangc`, then `PATH`, then a diagnostic and exit 1.
+The chosen binary is echoed so build logs record which compiler ran.
 
-**Fix:** mirror `compile_metal.sh`:
-
-```bash
-SLANGC="$(dirname "$0")/tools/slang/bin/slangc"
-```
-
-falling back to `PATH` when it is not there.
+**Closed.** Verified on all three paths (tools dir only, `PATH` only, `$SLANGC`
+override with the other two absent): 26/26 shaders each time, and the
+not-found case exits 1 with instructions.
 
 ### S6 — Tests only check the exit code · P2
 
@@ -586,10 +585,10 @@ verifiable with the existing suite and touches one area.
 | Q2 | B3 — move the view buffer off the camera, slot per context | `renderer.cpp` | ~1 h | low, needs Q1 first |
 | Q3 | B8 — add `sampler_desc` to `createSampler` | RHI + backends | ~30 min | low, slots already exist |
 | Q4 | ~~S4 — rename `material::texture` to `tex`~~ **done** | `material.*` | — | closed |
-| Q5 | S5 — resolve `slangc` from `scripts/tools/slang/bin` | `compile_vulkan.sh` | ~5 min | none |
+| Q5 | ~~S5 — resolve `slangc` from `scripts/tools/slang/bin`~~ **done** | `compile_vulkan.sh` | — | closed |
 
-**Order:** Q4 and Q5 are independent and can land immediately. Q1 before Q2 —
-Q1 turns Q2 into a single-site edit. Q3 is independent of all of them.
+**Order:** Q4 and Q5 are done. Q1 before Q2 — Q1 turns Q2 into a single-site
+edit. Q3 is independent of both.
 
 **Caveat:** Q2 fixes a race whose result nothing can currently observe
 automatically. Until S6 exists, "fixed" means "two windows show independent
