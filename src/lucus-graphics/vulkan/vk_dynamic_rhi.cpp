@@ -1329,7 +1329,7 @@ const vk_framebuffer& vk_dynamic_rhi::findOrCreateFramebuffer(const vk_framebuff
         .renderPass = found->renderPass,
     };
 
-    fb_desc.viewsPerFrame.resize(g_swapchainImageCount);
+    fb_desc.viewsPerFrame.resize(count);
     for (u32 slot = 0; slot < count; ++slot)
     {
         for (u8 c = 0; c < key.colorCount; ++c)

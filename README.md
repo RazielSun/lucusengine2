@@ -9,21 +9,37 @@ An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not 
 - content/scripts/ - AngelScript code for engine (main and tests)
 - third-party/ - third-party dependencies for different platforms
 
+## Backend status
+
+| Feature | Vulkan (Linux) | DX12 (Win) | Metal (Mac) |
+|---|---|---|---|
+| Forward pass | yes | yes | yes |
+| Shadow map pass | yes | yes | no (disabled) |
+| Deferred / GBuffer | yes | yes | no |
+| Bindless textures | yes | yes | no |
+
+Metal was intentionally left behind at the `shadow_map` pass stage, maybe in the future.
+
 ## TODO LIST
+### Done
+- [x] Simple shadow pass (Vulkan, DX12)
+- [x] Simple deferred pipeline (GBuffer + deferred lighting pass) — Vulkan, DX12
+- [x] Bindless textures (Vulkan, DX12)
+- [x] Separate render targets and framebuffers per pass
+- [x] GBuffer handles moved to window contexts
+
 ### Current
-- [x] Add support simple shadow for dx12
 - [ ] Fix dx12 render triangle upside down
-- [ ] New sampler for shadow map
+- [ ] New sampler for shadow map (today one global `REPEAT` / `compareEnable=VK_FALSE` sampler is reused everywhere)
 - [ ] Refactor work with handlers for renderer
-- [ ] Fix Window context aspect ratio
+- [ ] Fix Window context aspect ratio (frame uniform buffer is keyed by camera, not by camera+window, so with 2 windows of different size the last context wins)
 - [ ] Add support for get render object from scene by name
 - [ ] Add flag in render object to disable render on main pass
+- [ ] Swapchain recreation on window resize (no resize callback, `vkAcquireNextImageKHR` / `vkQueuePresentKHR` results are ignored)
 
 ### Features
-- [ ] Simple Defered pipeline (GBuffer)
-- [ ] Simple PBR
+- [ ] Simple PBR (GBuffer B channel already reserved for Metalness/Roughness/Specular/ShadingModel, lighting is still Lambert)
 - [ ] Early Z
-- [ ] Bindless textures
 - [ ] TAA like Inside
 
 ## Dependencies
@@ -42,9 +58,11 @@ brew install ninja
 ```
 
 ### Linux
-- Cmake
+- Cmake >= 3.28
 - Ninja
-- Vulkan
+- Vulkan (loader + headers, e.g. `libvulkan-dev` / Vulkan SDK)
+- Clang (default). GCC 14+ rejects `material.hpp` with `-Werror=changes-meaning`;
+  build with `-DCMAKE_CXX_FLAGS=-Wno-changes-meaning` if you use GCC.
 
 ## Instalation
 
@@ -60,6 +78,19 @@ e.x. Ubuntu Linux, put slang-2026.5-linux-x86_64-glibc-2.27.tar.gz to scripts/to
 Get DXC for WIN SLANG compilation
 https://github.com/microsoft/DirectXShaderCompiler/releases
 to scripts/tools/dxc
+
+`slangc` must be on `PATH` when `scripts/compile_vulkan.sh` runs.
+
+## Build
+
+| Platform | Command |
+|----------|---------|
+| Linux | `./scripts/build_linux.sh` |
+| macOS | `./scripts/build_mac.sh` |
+| Windows | `scripts\build_win.bat` |
+
+Output: `bin/app` (or `bin/app.exe`), `bin/shaders/`.
+Note: `build_linux.sh` also compiles shaders, links `bin/content`, and then launches `./bin/app`.
 
 ## Tests
 
@@ -95,4 +126,5 @@ TEST_DIR=./bin/content/scripts/tests ./scripts/run_tests.sh
 scripts\run_tests.bat
 ```
 
-Logs are written to `scripts/logs`.
+Tests are smoke tests only: a test passes if the app exits 0 after N ticks.
+Nothing checks the rendered image. Logs are written to `scripts/logs`.
