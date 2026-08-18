@@ -20,7 +20,7 @@ void dx_window_context::init(Com<IDXGIFactory4> factory, Com<ID3D12Device> devic
     width = window->framebuffer_width();
     height = window->framebuffer_height();
 
-    imageCount = g_swapchainImageCount;
+    imageCount = g_desiredSwapchainImageCount;
 
     DXGI_SWAP_CHAIN_DESC1 swap_desc{};
     swap_desc.BufferCount = imageCount;

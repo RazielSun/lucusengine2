@@ -26,6 +26,7 @@ void vk_window_context::init(VkInstance instance, VkPhysicalDevice gpu, VkDevice
     initSurface(gpu, window);
     swapChain.init(gpu, device, surface, window);
 
+	imageSync.resize(swapChain.imageCount);
 	for (auto& img_sync : imageSync) {
         img_sync.init(device);
     }
@@ -37,7 +38,10 @@ void vk_window_context::init_images(vk_render_target& render_target)
 
 	u32 imageCount = swapChain.imageCount;
 	render_target.images.resize(imageCount);
-    vkGetSwapchainImagesKHR(_device, swapChain.swapChain, &imageCount, render_target.images.data());
+    if (vkGetSwapchainImagesKHR(_device, swapChain.swapChain, &imageCount, render_target.images.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to get swapchain images!");
+    }
+    assert(imageCount == swapChain.imageCount);
 
 	render_target.desc.bUseDescriptorSet = false;
 	render_target.createResources();
@@ -145,7 +149,7 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 
 void vk_window_context::acquire_image(u32 frameIndex)
 {
-	u32 nextImageIndex = frameIndex % g_swapchainImageCount;
+	u32 nextImageIndex = frameIndex % static_cast<u32>(imageSync.size());
     vkAcquireNextImageKHR(_device, swapChain.swapChain, UINT64_MAX, imageSync[nextImageIndex].imageAvailable, (VkFence)nullptr, &currentImageIndex);
 }
 
@@ -201,7 +205,7 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
 
 	// The FIFO present mode is the only mode that is guaranteed to be available
 	// and supports triple buffering, so we prefer to use triple buffering if it's available
-    uint32_t desiredNumberOfSwapchainImages = g_swapchainImageCount;
+    uint32_t desiredNumberOfSwapchainImages = g_desiredSwapchainImageCount;
 	if (desiredNumberOfSwapchainImages < capabilities.minImageCount) {
 		desiredNumberOfSwapchainImages = capabilities.minImageCount;
 	} else if (capabilities.maxImageCount > 0 && desiredNumberOfSwapchainImages > capabilities.maxImageCount) {
@@ -270,9 +274,16 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
         throw std::runtime_error("failed to create swap chain!");
     }
 
-    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+    // The driver decides the real count; minImageCount above was only a request.
+    if (vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to get swapchain image count!");
+    }
+    if (imageCount == 0) {
+        throw std::runtime_error("Swapchain reported zero images!");
+    }
 
-	std::printf("VkSwapchainKHR created successfully (%dx%d)\n", extent.width, extent.height);
+	std::printf("VkSwapchainKHR created successfully (%dx%d, %u images, %u requested)\n",
+        extent.width, extent.height, imageCount, desiredNumberOfSwapchainImages);
 }
 
 void vk_swapchain::cleanup()

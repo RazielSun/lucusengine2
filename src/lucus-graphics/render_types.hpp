@@ -9,7 +9,11 @@ namespace lucus
 {
     // 2 and 3 are special for understanding that these are different constants
     constexpr u32 g_framesInFlight{ 2 };
-    constexpr u32 g_swapchainImageCount{ 3 };
+    // How many swapchain images we ASK for. Vulkan treats this as a minimum and
+    // may hand out more, so never index a per-image array by this value --
+    // use the count the driver actually reported (vk_swapchain::imageCount).
+    // DX12 and Metal do get exactly what they request.
+    constexpr u32 g_desiredSwapchainImageCount{ 3 };
     // TODO: Make this dynamic or configurable
     constexpr u32 g_maxUniformBufferCount{ 32 };
     constexpr u32 g_maxTexturesCount{ 32 };

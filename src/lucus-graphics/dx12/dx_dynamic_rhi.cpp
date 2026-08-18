@@ -25,7 +25,7 @@ namespace
     constexpr u32 dx_dynamic_srv_descriptor_budget()
     {
         return g_maxTexturesCount * 2u
-            + g_swapchainImageCount * (g_maxMrtColorTargets + 1u);
+            + g_desiredSwapchainImageCount * (g_maxMrtColorTargets + 1u);
     }
 
     constexpr u32 dx_dynamic_sampler_descriptor_budget()

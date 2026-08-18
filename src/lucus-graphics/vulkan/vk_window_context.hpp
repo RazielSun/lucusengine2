@@ -35,7 +35,8 @@ namespace lucus
         VkSurfaceFormatKHR selectedFormat;
 
         uint32_t currentImageIndex = 0;
-        std::array<vk_image_sync, g_swapchainImageCount> imageSync{};
+        // Sized from the count the driver actually reported, not from a constant.
+        std::vector<vk_image_sync> imageSync{};
 
         render_target_handle color_handle;
         render_target_handle depth_handle;

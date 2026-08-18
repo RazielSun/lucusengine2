@@ -653,7 +653,8 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
         throw std::runtime_error("failed to record command buffer!");
     }
 
-    u32 imageIndex = frameIndex % g_swapchainImageCount;
+    // Must match the slot acquire_image() signalled for this frame.
+    u32 imageIndex = frameIndex % static_cast<u32>(ctx.imageSync.size());
 	const VkPipelineStageFlags waitPipelineStage{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	VkSubmitInfo submitInfo{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,

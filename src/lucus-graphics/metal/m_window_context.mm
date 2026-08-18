@@ -27,7 +27,7 @@ void m_window_context::init(id<MTLDevice> device, window* window)
     metalLayer.device = device;
     metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     metalLayer.framebufferOnly = YES;
-    metalLayer.maximumDrawableCount = g_swapchainImageCount;
+    metalLayer.maximumDrawableCount = g_desiredSwapchainImageCount;
     metalLayer.contentsScale = [ns_window backingScaleFactor];
 
     cachedDrawableSize = CGSizeMake((CGFloat)window->framebuffer_width(), (CGFloat)window->framebuffer_height());
