@@ -16,6 +16,33 @@ namespace lucus
     constexpr u32 g_maxSamplersCount{ 32 };
     constexpr u32 g_maxMrtColorTargets{ 3 };
 
+    enum class sampler_filter : u8
+    {
+        NEAREST = 0,
+        LINEAR  = 1,
+    };
+
+    enum class sampler_address_mode : u8
+    {
+        REPEAT          = 0,
+        CLAMP_TO_EDGE   = 1,
+        CLAMP_TO_BORDER = 2,
+    };
+
+    enum class sampler_border_color : u8
+    {
+        OPAQUE_BLACK = 0,
+        OPAQUE_WHITE = 1,
+    };
+
+    struct sampler_desc
+    {
+        sampler_filter filter { sampler_filter::LINEAR };
+        sampler_filter mipFilter { sampler_filter::LINEAR };
+        sampler_address_mode addressMode { sampler_address_mode::REPEAT };
+        sampler_border_color borderColor { sampler_border_color::OPAQUE_BLACK };
+    };
+
     enum class render_mode : u8
     {
         FORWARD = 0,

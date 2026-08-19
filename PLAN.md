@@ -25,7 +25,7 @@ hazard · **P2** cleanup, no user-visible symptom today.
 | B5 | P1 | Shadow pass re-recorded per window context into one shared render target | `renderer.cpp` |
 | B6 | P1 | Acquire / present return codes discarded | `vulkan/` |
 | B7 | P1 | DX12 renders the triangle upside down | `shaders/`, `dx12/` |
-| B8 | P2 | Sampler state cannot be described through the RHI | `dynamic_rhi.hpp`, backend sampler types |
+| B8 | P2 | ~~Sampler state cannot be described through the RHI~~ **fixed** | `dynamic_rhi.hpp`, backend sampler types |
 | B9 | P2 | Semaphore ring and fence ring have different lengths | `vulkan/vk_dynamic_rhi.cpp` |
 | B10 | P2 | Framebuffer cache is never invalidated and its key has no context | `vulkan/` |
 | B11 | P1 | Every draw reads the last material uniform written in the frame | `renderer.cpp` |
@@ -190,38 +190,46 @@ instead of per-shader `y *= -1`.
 
 **Not verified on Linux** — needs a Windows machine to confirm and close.
 
-### B8 — Sampler state cannot be described through the RHI · P2
+### B8 — Sampler state cannot be described through the RHI · P2 · **FIXED**
 
-[vk_render_types.cpp:420-436](src/lucus-graphics/vulkan/vk_render_types.cpp#L420-L436)
+Every sampler handle resolved to identical backend-hardcoded state: `REPEAT` on
+all axes, linear filtering, `compareEnable = VK_FALSE`. The renderer already
+created four distinct handles and bound them to distinct shader slots, so the
+intent was there; only the description was missing.
 
-The renderer now creates separate default, bindless, shadow and gbuffer sampler
-handles ([renderer.cpp:884-905](src/lucus-graphics/renderer.cpp#L884-L905)), and
-the shader binding slots are already distinct — `SAMPLER`,
-`SHADOW_MAP_SAMPLER`, `GBUFFER_SAMPLER`, bound separately at
-[renderer.cpp:705-707](src/lucus-graphics/renderer.cpp#L705-L707). The existing
-note sits right at the creation site:
+Added a backend-neutral `sampler_desc` (filter, mip filter, address mode, border
+colour) to `dynamic_rhi::createSampler`, with translation tables in all three
+backends. The four samplers are now:
 
-```cpp
-// TODO: create new sampler clamp, not repeat
-g_shadowMapSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
-```
+| sampler | address mode | border |
+|---|---|---|
+| default | `REPEAT` | opaque black |
+| bindless | `REPEAT` | opaque black |
+| shadow map | `CLAMP_TO_BORDER` | opaque **white** |
+| g-buffer | `CLAMP_TO_EDGE` | opaque black |
 
-So the plumbing is finished; only the description is missing.
-`dynamic_rhi::createSampler` accepts only `resource_binding_mode`
-([dynamic_rhi.hpp:47](src/lucus-graphics/dynamic_rhi.hpp#L47)) and
-`vk_sampler::init` hardcodes its state, so all four handles resolve to identical
-samplers. Vulkan uses
-`ADDRESS_MODE_REPEAT` and `compareEnable = VK_FALSE` for every sampler. A shadow
-map wants `CLAMP_TO_EDGE` or `CLAMP_TO_BORDER` with an opaque-white border, and
-ideally `compareEnable = VK_TRUE` with `COMPARE_OP_LESS_OR_EQUAL` for hardware
-PCF. Right now geometry outside the light frustum samples wrapped depth.
+White border on the shadow map means "far / lit" for anything sampled outside
+the map. `CLAMP_TO_EDGE` on the g-buffer stops the fullscreen lighting pass
+wrapping at screen edges.
 
-**Fix:** add a backend-neutral `sampler_desc` to the RHI API: min/mag/mip
-filters, address modes, comparison state, border color and LOD range. Cache
-samplers by that complete descriptor.
+Also fixed on the way: the Vulkan border colour was `VK_BORDER_COLOR_INT_OPAQUE_BLACK`
+on float-format images, which is invalid usage. Now `FLOAT_OPAQUE_BLACK`.
 
-**Done when:** a dedicated shadow sampler exists and the shadow term is correct
-outside the light frustum.
+**Correction to the original entry.** It claimed "geometry outside the light
+frustum samples wrapped depth". That was wrong — `computeShadow` in
+`shaders/common/light.slang` already masks the result with an explicit
+`insideShadowMap` UV bounds check. The real defect was narrower: bilinear
+filtering at the shadow-map edge blended in texels from the opposite edge, and
+the g-buffer sampler wrapped at screen borders.
+
+**Verified** by probing `VkSamplerCreateInfo` at creation: four samplers, the
+address mode and border colour above, all distinct. Suite 14/14.
+
+**Still open:** hardware comparison sampling (`compareEnable = VK_TRUE`,
+`COMPARE_OP_LESS_OR_EQUAL`) for free PCF. It needs `SamplerComparisonState` /
+`SampleCmp` in the shaders and a separate comparison-sampler binding, so it did
+not belong in this change. Tracked under **F3** (PBR), which is where soft
+shadows start to matter.
 
 ### B9 — Mismatched sync ring lengths · P2
 
@@ -553,7 +561,7 @@ least compile after an RHI interface change.
 |----|-------|-----------|
 | F1 | Get render object from scene by name | — |
 | F2 | Flag on render object to skip the main pass | — |
-| F3 | Simple PBR | B8, B11 |
+| F3 | Simple PBR | B11 |
 | F4 | Early Z | S7 |
 | F5 | TAA like Inside | B2, B3, B11, S3, S7, F3 |
 
@@ -585,8 +593,9 @@ pass still evaluates plain Lambert
 So the plumbing exists; what is missing is the BRDF. Cook-Torrance in the
 deferred lighting pass, writing real material values into GBuffer B.
 
-Wants **B8** and **B11** first — a correct shadow sampler and per-draw material
-constants, since PBR makes both classes of error much more visible.
+Wants **B11** first (per-draw material constants). **B8** is done; the remaining
+shadow-quality work — a comparison sampler for hardware PCF — belongs here,
+since PBR is where hard shadow edges start to look wrong.
 
 ### F4 — Early Z
 
@@ -613,12 +622,11 @@ verifiable with the existing suite and touches one area.
 |---|---|---|---|---|
 | Q1 | ~~S7 — extract `pass_context` + uniform lazy-create helpers~~ **done** | `renderer.cpp` | — | closed |
 | Q2 | ~~B3 — move the view buffer off the camera, slot per context~~ **done** | `renderer.cpp` | — | closed |
-| Q3 | B8 — add `sampler_desc` to `createSampler` | RHI + backends | ~30 min | low, slots already exist |
+| Q3 | ~~B8 — add `sampler_desc` to `createSampler`~~ **done** | RHI + backends | — | closed |
 | Q4 | ~~S4 — rename `material::texture` to `tex`~~ **done** | `material.*` | — | closed |
 | Q5 | ~~S5 — resolve `slangc` from `scripts/tools/slang/bin`~~ **done** | `compile_vulkan.sh` | — | closed |
 
-**Order:** Q1, Q2, Q4 and Q5 are done. Q3 remains and is independent of
-everything else.
+**All quick wins are done.** Next up is the execution order below.
 
 **Caveat:** Q2 fixed a race the suite still cannot observe. It was verified with
 temporary instrumentation (see B3), not by an assertion that would catch a

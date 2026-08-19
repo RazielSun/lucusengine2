@@ -182,7 +182,7 @@ namespace lucus
         VkSampler sampler;
         VkDescriptorSet descriptorSet;
 
-        void init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);
+        void init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, const sampler_desc& desc);
         void cleanup();
 
     private:

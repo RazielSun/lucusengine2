@@ -64,7 +64,7 @@ namespace lucus
         D3D12_CPU_DESCRIPTOR_HANDLE samplerCPUHandle;
         D3D12_GPU_DESCRIPTOR_HANDLE samplerGPUHandle;
 
-        void init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index);
+        void init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index, const sampler_desc& desc);
         void cleanup();
     };
 

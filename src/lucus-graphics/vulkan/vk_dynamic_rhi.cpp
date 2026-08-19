@@ -948,13 +948,13 @@ mesh_handle vk_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-sampler_handle vk_dynamic_rhi::createSampler(resource_binding_mode binding_mode)
+sampler_handle vk_dynamic_rhi::createSampler(const sampler_desc& desc, resource_binding_mode binding_mode)
 {
     auto samplerDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLER, shader_binding_stage::FRAGMENT);
     assert(samplerDSL != VK_NULL_HANDLE);
 
     vk_sampler& vksmpl = _samplers.emplace_back();
-    vksmpl.init(_deviceHandle, samplerDSL, _descriptorPool);
+    vksmpl.init(_deviceHandle, samplerDSL, _descriptorPool, desc);
 
     sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));
     if (binding_mode == resource_binding_mode::BINDLESS && _bindlessSamplerDescriptorSets[0] != VK_NULL_HANDLE)

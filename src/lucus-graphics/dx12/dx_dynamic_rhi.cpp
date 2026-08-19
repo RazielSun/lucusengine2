@@ -604,19 +604,19 @@ mesh_handle dx_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-sampler_handle dx_dynamic_rhi::createSampler(resource_binding_mode binding_mode)
+sampler_handle dx_dynamic_rhi::createSampler(const sampler_desc& desc, resource_binding_mode binding_mode)
 {
     auto& smpl = _samplers.emplace_back();
 
     if (binding_mode == resource_binding_mode::BINDLESS)
     {
         constexpr u32 kBindlessSamplerCpuIndex = 0;
-        smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, kBindlessSamplerCpuIndex);
+        smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, kBindlessSamplerCpuIndex, desc);
         samplerHeapDesc.copyBindlessSamplerFromResourceToStable(kBindlessSamplerCpuIndex);
     }
     else
     {
-        smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, samplerHeapDesc.allocateResource(1));
+        smpl.init(_deviceHandle, samplerHeapDesc.resourceHeap, samplerHeapDesc.allocateResource(1), desc);
     }
 
     sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));

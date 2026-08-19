@@ -331,11 +331,11 @@ mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
     return mesh_handle(meshHash);
 }
 
-sampler_handle m_dynamic_rhi::createSampler(resource_binding_mode /*binding_mode*/)
+sampler_handle m_dynamic_rhi::createSampler(const sampler_desc& desc, resource_binding_mode /*binding_mode*/)
 {
     auto& smpl = _samplers.emplace_back();
     
-    smpl.init(_deviceHandle);
+    smpl.init(_deviceHandle, desc);
 
     sampler_handle smpl_handle(static_cast<u32>(_samplers.size()));
 

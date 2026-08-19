@@ -148,7 +148,34 @@ void dx_texture::cleanup()
 {
 }
 
-void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index)
+namespace
+{
+    D3D12_FILTER to_dx_filter(sampler_filter f, sampler_filter mip)
+    {
+        if (f == sampler_filter::NEAREST)
+        {
+            return mip == sampler_filter::NEAREST
+                ? D3D12_FILTER_MIN_MAG_MIP_POINT
+                : D3D12_FILTER_MIN_MAG_POINT_MIP_LINEAR;
+        }
+        return mip == sampler_filter::NEAREST
+            ? D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT
+            : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    }
+
+    D3D12_TEXTURE_ADDRESS_MODE to_dx_address_mode(sampler_address_mode m)
+    {
+        switch (m)
+        {
+        case sampler_address_mode::CLAMP_TO_EDGE:   return D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        case sampler_address_mode::CLAMP_TO_BORDER: return D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+        case sampler_address_mode::REPEAT:          break;
+        }
+        return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    }
+}
+
+void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index, const sampler_desc& desc)
 {
     index = in_index;
     {
@@ -158,11 +185,19 @@ void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> sample
             static_cast<INT>(index),
             samplerDescriptorSize);
 
+        const D3D12_TEXTURE_ADDRESS_MODE addressMode = to_dx_address_mode(desc.addressMode);
+        const float border = desc.borderColor == sampler_border_color::OPAQUE_WHITE ? 1.0f : 0.0f;
+
         D3D12_SAMPLER_DESC samplerDesc{};
-        samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        samplerDesc.Filter = to_dx_filter(desc.filter, desc.mipFilter);
+        samplerDesc.AddressU = addressMode;
+        samplerDesc.AddressV = addressMode;
+        samplerDesc.AddressW = addressMode;
+        samplerDesc.BorderColor[0] = border;
+        samplerDesc.BorderColor[1] = border;
+        samplerDesc.BorderColor[2] = border;
+        samplerDesc.BorderColor[3] = 1.0f;
+        samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
 
         device->CreateSampler(&samplerDesc, samplerCPUHandle);
 

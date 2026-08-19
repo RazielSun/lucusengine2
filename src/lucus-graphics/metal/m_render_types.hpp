@@ -40,7 +40,7 @@ namespace lucus
     {
         id<MTLSamplerState> sampler;
 
-        void init(id<MTLDevice> device);
+        void init(id<MTLDevice> device, const sampler_desc& desc);
         void cleanup();
     };
 }

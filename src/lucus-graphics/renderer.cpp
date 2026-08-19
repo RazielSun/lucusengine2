@@ -843,10 +843,13 @@ void renderer::initDefaultResources()
         std::memcpy(static_cast<u8*>(mat_mem), &default_mat, sizeof(default_mat));
     }
 
-    g_defaultSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
-    g_defaultBindlessSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDLESS);
-    // TODO: create new sampler clamp, not repeat
-    g_shadowMapSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
+    g_defaultSamplerHandle = _dynamicRHI->createSampler({}, resource_binding_mode::BINDFULL);
+    g_defaultBindlessSamplerHandle = _dynamicRHI->createSampler({}, resource_binding_mode::BINDLESS);
+
+    sampler_desc shadow_sampler_desc;
+    shadow_sampler_desc.addressMode = sampler_address_mode::CLAMP_TO_BORDER;
+    shadow_sampler_desc.borderColor = sampler_border_color::OPAQUE_WHITE;
+    g_shadowMapSamplerHandle = _dynamicRHI->createSampler(shadow_sampler_desc, resource_binding_mode::BINDFULL);
 
     g_bindlessFallbackBlackTexture.reset(texture::create_one_factory(0, 0, 0, 255));
     g_bindlessFallbackBlackTexture->setResourceBindingMode(resource_binding_mode::BINDLESS);
@@ -864,7 +867,9 @@ void renderer::initDefaultResources()
 
     if (r_mode == render_mode::DEFERRED)
     {
-        g_gbufferSamplerHandle = _dynamicRHI->createSampler(resource_binding_mode::BINDFULL);
+        sampler_desc gbuffer_sampler_desc;
+        gbuffer_sampler_desc.addressMode = sampler_address_mode::CLAMP_TO_EDGE;
+        g_gbufferSamplerHandle = _dynamicRHI->createSampler(gbuffer_sampler_desc, resource_binding_mode::BINDFULL);
 
         g_deferredLightingMat.reset(material::create_factory("deferred_lighting"));
         g_deferredLightingMat->setUseVertexIndexBuffers(false);

@@ -407,26 +407,57 @@ void vk_texture::cleanup()
     vkFreeMemory(_device, texImageMemory, nullptr);
 }
 
-void vk_sampler::init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool)
+namespace
+{
+    VkFilter to_vk_filter(sampler_filter f)
+    {
+        return f == sampler_filter::NEAREST ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
+    }
+
+    VkSamplerMipmapMode to_vk_mipmap_mode(sampler_filter f)
+    {
+        return f == sampler_filter::NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    }
+
+    VkSamplerAddressMode to_vk_address_mode(sampler_address_mode m)
+    {
+        switch (m)
+        {
+        case sampler_address_mode::CLAMP_TO_EDGE:   return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case sampler_address_mode::CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        case sampler_address_mode::REPEAT:          break;
+        }
+        return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    }
+
+    VkBorderColor to_vk_border_color(sampler_border_color c)
+    {
+        return c == sampler_border_color::OPAQUE_WHITE
+            ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE
+            : VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    }
+}
+
+void vk_sampler::init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool, const sampler_desc& desc)
 {
     _device = device;
 
-    // TODO: Create in the feature CLAMP / NON LINEAR
+    const VkSamplerAddressMode addressMode = to_vk_address_mode(desc.addressMode);
 
     VkSamplerCreateInfo samplerCreateInfo{};
     samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
-    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
-    samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerCreateInfo.magFilter = to_vk_filter(desc.filter);
+    samplerCreateInfo.minFilter = to_vk_filter(desc.filter);
+    samplerCreateInfo.addressModeU = addressMode;
+    samplerCreateInfo.addressModeV = addressMode;
+    samplerCreateInfo.addressModeW = addressMode;
     samplerCreateInfo.anisotropyEnable = VK_FALSE;
     samplerCreateInfo.maxAnisotropy = 1.0f;
-    samplerCreateInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerCreateInfo.borderColor = to_vk_border_color(desc.borderColor);
     samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
     samplerCreateInfo.compareEnable = VK_FALSE;
     samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.mipmapMode = to_vk_mipmap_mode(desc.mipFilter);
     samplerCreateInfo.mipLodBias = 0.0f;
     samplerCreateInfo.minLod = 0.0f;
     samplerCreateInfo.maxLod = 0.0f;

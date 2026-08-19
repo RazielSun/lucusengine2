@@ -78,15 +78,46 @@ void m_texture::cleanup()
     mtexture = nil;
 }
 
-void m_sampler::init(id<MTLDevice> device)
+namespace
+{
+    MTLSamplerMinMagFilter to_mtl_filter(sampler_filter f)
+    {
+        return f == sampler_filter::NEAREST ? MTLSamplerMinMagFilterNearest : MTLSamplerMinMagFilterLinear;
+    }
+
+    MTLSamplerMipFilter to_mtl_mip_filter(sampler_filter f)
+    {
+        return f == sampler_filter::NEAREST ? MTLSamplerMipFilterNearest : MTLSamplerMipFilterLinear;
+    }
+
+    MTLSamplerAddressMode to_mtl_address_mode(sampler_address_mode m)
+    {
+        switch (m)
+        {
+        case sampler_address_mode::CLAMP_TO_EDGE:   return MTLSamplerAddressModeClampToEdge;
+        case sampler_address_mode::CLAMP_TO_BORDER: return MTLSamplerAddressModeClampToBorderColor;
+        case sampler_address_mode::REPEAT:          break;
+        }
+        return MTLSamplerAddressModeRepeat;
+    }
+}
+
+void m_sampler::init(id<MTLDevice> device, const sampler_desc& desc)
 {
     MTLSamplerDescriptor* smplDesc = [MTLSamplerDescriptor new];
 
-    smplDesc.minFilter = MTLSamplerMinMagFilterLinear;
-    smplDesc.magFilter = MTLSamplerMinMagFilterLinear;
+    const MTLSamplerAddressMode addressMode = to_mtl_address_mode(desc.addressMode);
 
-    smplDesc.sAddressMode = MTLSamplerAddressModeRepeat;
-    smplDesc.tAddressMode = MTLSamplerAddressModeRepeat;
+    smplDesc.minFilter = to_mtl_filter(desc.filter);
+    smplDesc.magFilter = to_mtl_filter(desc.filter);
+    smplDesc.mipFilter = to_mtl_mip_filter(desc.mipFilter);
+
+    smplDesc.sAddressMode = addressMode;
+    smplDesc.tAddressMode = addressMode;
+    smplDesc.rAddressMode = addressMode;
+    smplDesc.borderColor = desc.borderColor == sampler_border_color::OPAQUE_WHITE
+        ? MTLSamplerBorderColorOpaqueWhite
+        : MTLSamplerBorderColorOpaqueBlack;
 
     sampler = [device newSamplerStateWithDescriptor:smplDesc];
 }
