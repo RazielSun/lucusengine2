@@ -333,7 +333,7 @@ counts to baseline under ASan/LSan, including failed and partial glTF loads.
 | S4 | P2 | ~~GCC cannot compile the project~~ **fixed** |
 | S5 | P2 | ~~`compile_vulkan.sh` does not resolve `slangc` from `scripts/tools`~~ **fixed** |
 | S6 | P2 | Tests only check the exit code |
-| S7 | P2 | Refactor renderer handle plumbing |
+| S7 | P2 | Refactor renderer handle plumbing — *partly done* |
 | S8 | P1 | RHI has no explicit backend capability contract |
 | S9 | P1 | No cross-platform build matrix guards backend interface parity |
 
@@ -458,7 +458,18 @@ and re-derive the same handles
 [448](src/lucus-graphics/renderer.cpp#L448),
 [628](src/lucus-graphics/renderer.cpp#L628)).
 
-The duplication is literal. Three blocks, repeated across the three passes:
+**Q1 landed the pass-context half.** `pass_context` is now built once per window
+context per frame in `tick` and handed to every pass; the three duplicated
+preambles and the lazy uniform-buffer creation are gone, replaced by
+`makePassContext`, `requireGBufferTargets`, `ensureViewBuffer`,
+`ensureShadowViewBuffer` and `ensureLightBuffer`. `shadowPass` lost its unused
+`window_context_handle` parameter.
+
+Still open: `shadow_rt_handle` remains renderer-global (**B5**), and
+`pass_context` does not yet carry the frame slot, the acquired swapchain image
+or a frame-local uniform allocator — that arrives with **B3**/**B11**.
+
+The duplication that was removed, for the record:
 
 | block | forwardPass | gbufferPass | lightingPass |
 |---|---|---|---|
@@ -476,13 +487,13 @@ struct pass_context {
     window_context_handle ctx;
     u32 width, height;
     render_target_handle color, depth;
-    const window_gbuffer_targets* gbuffer;
 };
 ```
 
-plus `ensureViewBuffer(scn, w, h)` / `ensureLightBuffer(scn)` helpers. Removes
-roughly 60 duplicated lines with no behaviour change, and turns B3 from a
-three-site edit into a one-site edit.
+**Note on error messages:** the three per-pass validation throws collapsed into
+one `makePassContext::` message. `gbufferPass` now also requires a valid colour
+target, which `lightingPass` already demanded in the same frame, so this is not
+a new failure mode.
 
 ### S8 — No explicit backend capability contract · P1
 
@@ -581,14 +592,14 @@ verifiable with the existing suite and touches one area.
 
 | | item | scope | effort | risk |
 |---|---|---|---|---|
-| Q1 | S7 — extract `pass_context` + uniform lazy-create helpers | `renderer.cpp` | ~30 min | none, pure de-duplication |
+| Q1 | ~~S7 — extract `pass_context` + uniform lazy-create helpers~~ **done** | `renderer.cpp` | — | closed |
 | Q2 | B3 — move the view buffer off the camera, slot per context | `renderer.cpp` | ~1 h | low, needs Q1 first |
 | Q3 | B8 — add `sampler_desc` to `createSampler` | RHI + backends | ~30 min | low, slots already exist |
 | Q4 | ~~S4 — rename `material::texture` to `tex`~~ **done** | `material.*` | — | closed |
 | Q5 | ~~S5 — resolve `slangc` from `scripts/tools/slang/bin`~~ **done** | `compile_vulkan.sh` | — | closed |
 
-**Order:** Q4 and Q5 are done. Q1 before Q2 — Q1 turns Q2 into a single-site
-edit. Q3 is independent of both.
+**Order:** Q1, Q4 and Q5 are done. Q2 is next — Q1 reduced it to a single-site
+edit inside `ensureViewBuffer`. Q3 is independent.
 
 **Caveat:** Q2 fixes a race whose result nothing can currently observe
 automatically. Until S6 exists, "fixed" means "two windows show independent

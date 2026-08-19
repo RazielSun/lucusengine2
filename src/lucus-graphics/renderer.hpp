@@ -15,6 +15,18 @@ namespace lucus
     class camera;
     struct gpu_command_buffer;
 
+    /// Everything a pass needs to know about the window it draws into.
+    /// Resolved once per window context per frame instead of re-fetched,
+    /// re-validated and re-derived by every pass.
+    struct pass_context
+    {
+        window_context_handle ctx;
+        u32 width { 0 };
+        u32 height { 0 };
+        render_target_handle color;
+        render_target_handle depth;
+    };
+
     class renderer : public singleton<renderer>
     {
     public:
@@ -32,10 +44,20 @@ namespace lucus
 
     protected:
         void prepareScene(const scene* scn);
-        void shadowPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
-        void forwardPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
-        void gbufferPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
-        void lightingPass(const scene* scn, const window_context_handle& ctx_handle, gpu_command_buffer& cmd);
+        void shadowPass(const scene* scn, gpu_command_buffer& cmd);
+        void forwardPass(const scene* scn, const pass_context& pc, gpu_command_buffer& cmd);
+        void gbufferPass(const scene* scn, const pass_context& pc, gpu_command_buffer& cmd);
+        void lightingPass(const scene* scn, const pass_context& pc, gpu_command_buffer& cmd);
+
+        pass_context makePassContext(const window_context_handle& ctx_handle);
+        const window_gbuffer_targets& requireGBufferTargets(const pass_context& pc, const char* pass_name);
+
+        /// Return the uniform buffer for this frame's view/light constants,
+        /// creating it on first use, and refresh its contents. Fall back to the
+        /// shared default handle when the scene has no camera / light.
+        uniform_buffer_handle ensureViewBuffer(const camera* cmr, u32 width, u32 height);
+        uniform_buffer_handle ensureShadowViewBuffer(const directional_light* dir_light, u32 width, u32 height);
+        uniform_buffer_handle ensureLightBuffer(const directional_light* dir_light);
 
         void updateFrameUniformBuffer(const uniform_buffer_handle& handle, u32 width, u32 height);
         void updateFrameUniformBuffer(const camera* cmr, u32 width, u32 height);
