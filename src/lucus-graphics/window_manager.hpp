@@ -21,7 +21,6 @@ namespace lucus
         window* getWindow(const window_handle& handle) const;
 
     protected:
-        //
 
     private:
         window_handle _mainWindow;

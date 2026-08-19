@@ -55,7 +55,6 @@ namespace lucus
 
             void* dst = data.data() + oldSize;
 
-            // optionally zero the slot
             std::memset(dst, 0, COMMAND_FIXED_SIZE);
 
             ++commandCount;
@@ -71,8 +70,6 @@ namespace lucus
         }
     };
 
-    // Commands
-
     struct gpu_render_pass_begin_command : public gpu_command_base
     {
         gpu_render_pass_begin_command(render_pass_name in_pass, u8 in_color, u8 in_depth, u32 _width, u32 _height)
@@ -85,8 +82,8 @@ namespace lucus
         {}
 
         render_pass_name pass;
-        u8 colorTargetCount; // 0 .. 1 .. 2 .. 3
-        u8 depthTargetCount; // 0 .. 1
+        u8 colorTargetCount;
+        u8 depthTargetCount;
         u8 _pad;
 
         u32 width;

@@ -26,10 +26,8 @@ namespace lucus
         private:
             VkDevice _device;
 
-            // A Command Pool is a data structure that allows you to create command buffers.
             VkCommandPool _commandPool{ VK_NULL_HANDLE };
 
-            // Command buffers used for rendering
 	        std::array<VkCommandBuffer, g_framesInFlight> _buffers;
     };
 
@@ -168,7 +166,7 @@ namespace lucus
 
         VkDeviceSize texSize;
         VkExtent2D texExtent;
-        /// max() if bindless slot was not allocated; otherwise index into bindless sampled-image array (see loadTextureToGPU).
+        /// max() means no bindless slot; otherwise an index into the bindless sampled-image array.
         u32 bindlessSlot{std::numeric_limits<u32>::max()};
 
         void init(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkDescriptorSetLayout descriptorSetLayout, VkDescriptorPool descriptorPool);

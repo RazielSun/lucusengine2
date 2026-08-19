@@ -125,7 +125,7 @@ void vk_dynamic_rhi::createInstance()
 
     VkApplicationInfo appInfo{
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-		.pApplicationName = engine_info.name().c_str(),// app_info.app_name().c_str(),
+		.pApplicationName = engine_info.name().c_str(),
 		.pEngineName = engine_info.name().c_str(),
 		.apiVersion = VK_API_VERSION_1_1
 	};
@@ -148,11 +148,8 @@ void vk_dynamic_rhi::createInstance()
     instanceCreateInfo.ppEnabledExtensionNames = glfwExtensions;
 
     #ifndef NDEBUG
-    // The VK_LAYER_KHRONOS_validation contains all current validation functionality.
-	// Note that on Android this layer requires at least NDK r20
 	const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
 	{
-		// Check if this layer is available at instance level
 		uint32_t instanceLayerCount;
 		vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
 		std::vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
@@ -183,7 +180,6 @@ void vk_dynamic_rhi::createInstance()
 
 void vk_dynamic_rhi::createDevice()
 {
-    // Physical device
     uint32_t gpuCount = 0;
     vkEnumeratePhysicalDevices(_instance, &gpuCount, nullptr);
     if (gpuCount == 0) {
@@ -195,32 +191,18 @@ void vk_dynamic_rhi::createDevice()
         throw std::runtime_error("failed to enumerate physical devices!");
     }
 
-    // GPU selection
     uint32_t selectedDevice = 0;
 
     // TODO: Device suitability checks
-    // for (const auto& device : physicalDevices) {
-    //     if (isDeviceSuitable(device, _surface)) {
-    //         _physicalDevice = device;
-    //         break;
-    //     }
-    // }
 
     VkPhysicalDevice physicalDevice = physicalDevices[selectedDevice];
 
-    // getEnabledFeatures();
-    // getEnabledExtensions();
-
-    // Vulkan device creation
     _device = std::make_unique<vk_device>(physicalDevice);
 
-    //
     _device->createLogicalDevice(_enabledFeatures, _enabledDeviceExtensions);
     _deviceHandle = _device->getDevice();
 
-    // Get a graphics queue from the device
     vkGetDeviceQueue(_deviceHandle, _device->queueFamilyIndices.graphics, 0, &_graphicsQueue);
-    // vkGetDeviceQueue(_device, indices.presentFamily.value(), 0, &_presentQueue);
 
     depthFormat = utils::findDepthFormat(physicalDevice);
 }
@@ -389,8 +371,8 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0; // Optional
-    beginInfo.pInheritanceInfo = nullptr; // Optional
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
 
     if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("failed to begin recording command buffer!");
@@ -548,7 +530,6 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 break;
             case gpu_command_type::BIND_DESCRIPTION_TABLE:
                 {
-                    // Nothing to do
                 }
                 break;
             case gpu_command_type::SET_BINDLESS:
@@ -678,13 +659,11 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
         .swapchainCount = 1,
         .pSwapchains = &ctx.swapChain.swapChain,
         .pImageIndices = &ctx.currentImageIndex,
-        .pResults = nullptr // Optional
+        .pResults = nullptr
     };
 
-    // vkQueuePresentKHR(_presentQueue, &presentInfo);
     vkQueuePresentKHR(_graphicsQueue, &presentInfo);
 
-    // vkDeviceWaitIdle(_deviceHandle);
 }
 
 void vk_dynamic_rhi::createCommandBufferPool()
@@ -920,20 +899,6 @@ render_target_handle vk_dynamic_rhi::createRenderTarget(u32 width, u32 height, r
     auto& rt = _renderTargets.emplace_back();
     render_target_handle rt_handle(static_cast<u32>(_renderTargets.size()));
 
-    // bool bNeedDescritors = true;
-    // if (ctx_handle.is_valid())
-    // {
-    //     auto& ctx = _contexts[ctx_handle.as_index()];
-    //     ctx.init_images(rt);
-    //     rt.bSwapChain = true;
-    //     bNeedDescritors = false;
-    // }
-
-    // auto found = std::find_if(_renderPasses.begin(), _renderPasses.end(), [passName = info.passName](const vk_render_pass& pass) {
-    //     return passName == pass.name;
-    // });
-    // assert(found != _renderPasses.end());
-
     auto textureDSL = findDescriptor(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, shader_binding_stage::FRAGMENT);
     const bool bIsColor = rt_type == render_target_type::COLOR;
     vk_render_target_desc init_desc {
@@ -1042,7 +1007,6 @@ void vk_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 fram
 {
     auto it = _textures.find(tex_handle.get());
     if (it == _textures.end()) {
-        // error;
         return;
     }
 
@@ -1078,7 +1042,6 @@ uniform_buffer_handle vk_dynamic_rhi::createUniformBuffer(size_t bufferSize, sha
 
 void vk_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr)
 {
-    // std::printf("getUniformBufferMemory %d [Ctx: %d]\n", ub_handle.get(), ctx_handle.get());
     if (!ub_handle.is_valid())
     {
         throw std::runtime_error("failed to get uniform buffer memory! ub is null!");

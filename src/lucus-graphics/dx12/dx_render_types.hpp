@@ -91,11 +91,11 @@ namespace lucus
 
         std::array<dx_allocator, g_framesInFlight> allocators{};
 
-        /// First `bindlessStableCount` indices in the shader-visible heap: stable bindless tables (root `BINDLESS` / `BINDLESS_SAMPLER`).
+        /// Shader-visible heap prefix: stable bindless tables.
         u32 bindlessStableCount{ 0 };
-        /// Dynamic `copy()` ring size per in-flight frame (TEXTURE, RT SRVs, etc.).
+        /// Dynamic `copy()` ring size per in-flight frame.
         u32 ringPerFrameCapacity{ 0 };
-        /// Total CPU descriptors in `resourceHeap` (`bindlessStableCount` reserved + dynamic pool).
+        /// Total CPU descriptors in `resourceHeap`: reserved prefix + dynamic pool.
         u32 resourceCapacity{ 0 };
         u32 resourceIndex = 0;
         u32 heapItemSize = 0;

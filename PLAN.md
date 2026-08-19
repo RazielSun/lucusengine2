@@ -20,7 +20,7 @@ hazard · **P2** cleanup, no user-visible symptom today.
 |----|------|-------|-------|
 | B1 | P0 | ~~Framebuffer view array sized by constant, not by real swapchain image count~~ **fixed** | `vulkan/vk_dynamic_rhi.cpp` |
 | B2 | P0 | `g_swapchainImageCount` treated as fact everywhere else too | `vulkan/vk_window_context.*` |
-| B3 | P1 | Camera frame uniform buffer is keyed by camera, not by camera+window | `renderer.cpp` |
+| B3 | P1 | ~~Camera frame uniform buffer is keyed by camera, not by camera+window~~ **fixed** | `renderer.cpp` |
 | B4 | P1 | Texture-upload tick skips the whole frame and still advances the frame ring | `renderer.cpp` |
 | B5 | P1 | Shadow pass re-recorded per window context into one shared render target | `renderer.cpp` |
 | B6 | P1 | Acquire / present return codes discarded | `vulkan/` |
@@ -71,7 +71,7 @@ array from that. Make `imageSync` a `std::vector`.
 **Done when:** nothing indexes a per-image array by a compile-time constant, and
 the engine survives a driver returning 2 or 5 images.
 
-### B3 — Camera uniform buffer keyed by camera, not camera+window · P1
+### B3 — Camera uniform buffer keyed by camera, not camera+window · P1 · **FIXED**
 
 [renderer.cpp:745](src/lucus-graphics/renderer.cpp#L745) ·
 [renderer.cpp:311-323](src/lucus-graphics/renderer.cpp#L311-L323) ·
@@ -100,18 +100,37 @@ not help — the write must not target a slot another submit still owns.
 [two_windows_test.as](content/scripts/tests/two_windows_test.as) creates
 1280x720 and 800x600. It passes only because nothing inspects the image (S6).
 
-**Fix:** take the view buffer off the camera and slot it per (window context,
-camera) in the renderer — roughly 15 lines, no RHI interface change. Also drops
-the three `const_cast<camera*>` at the lazy-create sites. Cleanest inside the
-S7 render context.
+**Fixed.** The view buffer moved off the camera into the renderer, one per
+window context (`renderer::_viewBuffers`, indexed by context index) and surfaced
+through `pass_context::view`. `camera::_handle` / `getHandle` / `setHandle` were
+removed — the camera never owned that buffer, and nothing else referenced them
+(not script-bound). The `const_cast<camera*>` at the lazy-create site went with
+them.
+
+The camera identity never mattered: `updateFrameUniformBuffer` rewrites the
+whole struct every frame, so the buffer only ever needed to be per *context*.
+
+**Verified** by probing the target handle on every write and running
+`two_windows_test` (1280x720 + 800x600):
+
+```
+BEFORE  frame=1 ub=10 1280x720
+        frame=1 ub=10  800x600   <- same buffer, second window overwrote the first
+AFTER   frame=1 ub=10 1280x720
+        frame=1 ub=12  800x600   <- one buffer per context
+```
+
+**Still shared, benignly:** the light's `viewProj` buffer (shadow pass) and the
+`LightUniforms` buffer are still one-per-scene and rewritten by every context in
+a frame. Same race, but every context writes *identical* bytes — the shadow
+extent is a fixed constant and the light does not depend on the window — so
+there is nothing to observe. **B5** removes the duplicate writes entirely by
+hoisting the shadow pass out of the per-context loop.
 
 **Same defect class as B11** — one shared uniform buffer written repeatedly
-before a single submit. B3 is per window, B11 is per draw. One frame-local
-uniform ring with per-write offsets closes both; fixing them separately means
-building that ring twice.
-
-**Done when:** `two_windows_test` with two differently-sized windows shows
-correct, independent projections.
+before a single submit. B3 was per window, B11 is per draw. B11 still needs the
+frame-local ring; B3 did not, because one buffer per context suffices when the
+contents are fully rewritten each frame.
 
 ### B4 — Texture-upload tick eats a frame · P1
 
@@ -593,27 +612,26 @@ verifiable with the existing suite and touches one area.
 | | item | scope | effort | risk |
 |---|---|---|---|---|
 | Q1 | ~~S7 — extract `pass_context` + uniform lazy-create helpers~~ **done** | `renderer.cpp` | — | closed |
-| Q2 | B3 — move the view buffer off the camera, slot per context | `renderer.cpp` | ~1 h | low, needs Q1 first |
+| Q2 | ~~B3 — move the view buffer off the camera, slot per context~~ **done** | `renderer.cpp` | — | closed |
 | Q3 | B8 — add `sampler_desc` to `createSampler` | RHI + backends | ~30 min | low, slots already exist |
 | Q4 | ~~S4 — rename `material::texture` to `tex`~~ **done** | `material.*` | — | closed |
 | Q5 | ~~S5 — resolve `slangc` from `scripts/tools/slang/bin`~~ **done** | `compile_vulkan.sh` | — | closed |
 
-**Order:** Q1, Q4 and Q5 are done. Q2 is next — Q1 reduced it to a single-site
-edit inside `ensureViewBuffer`. Q3 is independent.
+**Order:** Q1, Q2, Q4 and Q5 are done. Q3 remains and is independent of
+everything else.
 
-**Caveat:** Q2 fixes a race whose result nothing can currently observe
-automatically. Until S6 exists, "fixed" means "two windows show independent
-projections when run by hand".
+**Caveat:** Q2 fixed a race the suite still cannot observe. It was verified with
+temporary instrumentation (see B3), not by an assertion that would catch a
+regression. Until **S6** exists, nothing stops it coming back.
 
 ---
 
 ## Recommended execution order
 
 1. **B2** — remove the remaining fixed swapchain-image-count assumptions.
-2. **B11 + B3** — one frame-local uniform ring fixes both; they are the same
-   defect (a shared uniform buffer written many times before a single submit),
-   so building the ring once covers per-draw material data and per-window frame
-   constants alike.
+2. **B11** — make material data correct per draw. B3, the per-window half of
+   the same defect, is already fixed; this is the remaining per-draw half and
+   still wants a frame-local uniform ring with dynamic offsets.
 3. **B12 + B13** — establish stable PSO/resource identity before adding more
    pipeline variants and transient targets.
 4. **B14** — make ownership explicit before scene lookup and scene-lifecycle

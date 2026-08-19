@@ -56,8 +56,6 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
                         length:texSize
                        options:MTLResourceStorageModeShared];
 
-    // std::memcpy((uint8_t*)stgBuffer.contents, tex->getResource(), width * height * bytesPerPixel);
-
     tex->freeResource();
 
     MTLTextureDescriptor* texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
@@ -68,12 +66,6 @@ void m_texture::init(id<MTLDevice> device, texture* tex)
 
     mtexture = [device newTextureWithDescriptor:texDesc];
 
-    // MTLRegion region = {{0, 0, 0},{ width, height, 1 }};
-
-    // [texture replaceRegion:region
-    //         mipmapLevel:0
-    //             withBytes:tex->getResource()
-    //         bytesPerRow:bytesPerRow];
 }
 
 void m_texture::free_staging()

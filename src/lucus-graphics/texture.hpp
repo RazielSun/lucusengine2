@@ -31,7 +31,6 @@ namespace lucus
 
         u32 getHash() const;
 
-        /// How this texture is registered for sampling (classic descriptor vs bindless heap). Read by the RHI when creating GPU resources.
         void setResourceBindingMode(resource_binding_mode mode) { _resourceBindingMode = mode; }
         resource_binding_mode getResourceBindingMode() const { return _resourceBindingMode; }
 
@@ -55,14 +54,12 @@ namespace lucus
         u32 imageChannels;
         u32 imageBytesPerPixel{4};
 
-        // custom
         std::vector<u8> data;
 
-        // transient
         texture_handle _texture_handle;
         resource_binding_mode _resourceBindingMode{resource_binding_mode::BINDFULL};
         u32 _bindlessTextureSlot{std::numeric_limits<u32>::max()};
     };
 
     texture* create_texture_factory(const std::string& fileName);
-} // namespace lucus
+}

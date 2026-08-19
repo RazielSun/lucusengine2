@@ -29,8 +29,6 @@ namespace lucus
         glm::mat4 getProjectionMatrix(float aspectRatio) const;
     
     protected:
-        const uniform_buffer_handle& getHandle() const { return _handle; }
-        void setHandle(const uniform_buffer_handle& handle) { _handle = handle; }
 
     private:
         transform _transform;
@@ -41,8 +39,5 @@ namespace lucus
 
         mutable bool bViewMatrixDirty = true;
         mutable glm::mat4 cachedViewMatrix;
-
-        // transient
-        uniform_buffer_handle _handle;
     };
 }

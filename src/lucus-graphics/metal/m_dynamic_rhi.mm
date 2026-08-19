@@ -62,7 +62,6 @@ m_dynamic_rhi::~m_dynamic_rhi()
 void m_dynamic_rhi::init()
 {
     createDevice();
-    // createObjectUniformBuffers();
 }
 
 window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& handle)
@@ -121,7 +120,7 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
         dispatch_semaphore_signal(semaphore);
     }];
 
-    id<MTLRenderCommandEncoder> pass = nil; // current pass
+    id<MTLRenderCommandEncoder> pass = nil;
 
     for (u32 i = 0; i < cmd.commandCount; ++i)
     {
@@ -142,10 +141,6 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     descriptor.depthAttachment.loadAction = MTLLoadActionClear;
                     descriptor.depthAttachment.storeAction = MTLStoreActionDontCare;
                     descriptor.depthAttachment.clearDepth = 1.0;
-                    // descriptor.stencilAttachment.texture = ctx.depthTexture;
-                    // descriptor.stencilAttachment.storeAction = MTLStoreActionStore;
-                    // descriptor.stencilAttachment.loadAction = MTLLoadActionClear;
-                    // descriptor.stencilAttachment.clearStencil = 0;
 
                     pass = [currentBuffer renderCommandEncoderWithDescriptor:descriptor];
                 }
@@ -214,7 +209,6 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                 break;
             case gpu_command_type::BIND_DESCRIPTION_TABLE:
                 {
-                    // Nothing to do
                 }
                 break;
             case gpu_command_type::SET_BINDLESS:
@@ -375,7 +369,6 @@ void m_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 frame
 {
     auto it = _textures.find(tex_handle.get());
     if (it == _textures.end()) {
-        // error
         return;
     }
 
@@ -401,7 +394,6 @@ uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(size_t bufferSize, shad
 
 void m_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr)
 {
-    // std::printf("getUniformBufferMemory %d [Ctx: %d]\n", ub_handle.get(), ctx_handle.get());
     if (!ub_handle.is_valid())
     {
         throw std::runtime_error("failed to get uniform buffer memory! ub is null!");
@@ -415,7 +407,6 @@ void m_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_handl
 
 void m_dynamic_rhi::createDevice()
 {
-    // engine_info& engine_info = engine_info::instance();
 
     _device = std::make_unique<m_device>();
     _device->createLogicalDevice();

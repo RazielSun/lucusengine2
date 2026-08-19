@@ -36,7 +36,6 @@ void m_window_context::init(id<MTLDevice> device, window* window)
     [content_view setWantsLayer:YES];
     [content_view setLayer:metalLayer];
 
-    // Depth
     MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:depthFormat
                                                       width:(NSUInteger)cachedDrawableSize.width
                                                      height:(NSUInteger)cachedDrawableSize.height
@@ -48,7 +47,6 @@ void m_window_context::init(id<MTLDevice> device, window* window)
         depthTexture = [device newTextureWithDescriptor:desc];
     }
 
-    // Create a semaphore for synchronizing frame rendering
     frameSemaphore = dispatch_semaphore_create(g_framesInFlight);
 }
 

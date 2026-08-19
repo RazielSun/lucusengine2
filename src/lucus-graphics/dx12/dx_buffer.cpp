@@ -20,7 +20,6 @@ void dx_buffer::init(Com<ID3D12Device> device, size_t bufferSize)
             nullptr,
             IID_PPV_ARGS(&_buffer)), "Failed to create buffer");
 
-    // Map the buffers.
     ThrowIfFailed(_buffer->Map(0, nullptr, reinterpret_cast<void**>(&_mapped)), "Failed to map buffer");
 }
 

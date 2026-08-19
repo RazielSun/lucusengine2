@@ -57,7 +57,6 @@ namespace lucus
 
         std::vector<texture_slot> _textures;
 
-        // transient
         pipeline_state_handle _pso_handle;
     };
 }

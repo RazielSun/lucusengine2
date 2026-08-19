@@ -22,7 +22,7 @@ void renderer::add_window(window_handle handle)
     {
         bFirstInit = true;
         _dynamicRHI = create_dynamic_rhi();
-        _dynamicRHI->init(); // Device
+        _dynamicRHI->init();
     }
     
     if (_dynamicRHI)
@@ -30,13 +30,11 @@ void renderer::add_window(window_handle handle)
         auto window_context = _dynamicRHI->createWindowContext(handle);
         if (!window_context.is_valid())
         {
-            // Handle error: Failed to create window context
             std::printf("Error: Failed to create window context for handle %u\n", handle.get());
         }
     }
     else
     {
-        // Handle error: Renderer not initialized
         std::printf("Error: Renderer not initialized. Call init() before adding windows.\n");
     }
 
@@ -175,7 +173,25 @@ pass_context renderer::makePassContext(const window_context_handle& ctx_handle)
         throw std::runtime_error("makePassContext:: window context render target is not valid!");
     }
 
+    pc.view = viewBufferFor(ctx_handle);
+
     return pc;
+}
+
+uniform_buffer_handle renderer::viewBufferFor(const window_context_handle& ctx_handle)
+{
+    const u32 index = ctx_handle.as_index();
+    if (index >= _viewBuffers.size())
+    {
+        _viewBuffers.resize(index + 1);
+    }
+
+    if (!_viewBuffers[index].is_valid())
+    {
+        _viewBuffers[index] = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
+    }
+
+    return _viewBuffers[index];
 }
 
 const window_gbuffer_targets& renderer::requireGBufferTargets(const pass_context& pc, const char* pass_name)
@@ -188,22 +204,15 @@ const window_gbuffer_targets& renderer::requireGBufferTargets(const pass_context
     return gb;
 }
 
-uniform_buffer_handle renderer::ensureViewBuffer(const camera* cmr, u32 width, u32 height)
+uniform_buffer_handle renderer::ensureViewBuffer(const camera* cmr, const pass_context& pc)
 {
     if (!cmr)
     {
         return g_defaultViewBufferHandle;
     }
 
-    uniform_buffer_handle handle = cmr->getHandle();
-    if (!handle.is_valid())
-    {
-        handle = _dynamicRHI->createUniformBuffer(sizeof(frame_uniform_buffer), shader_binding_stage::BOTH);
-        const_cast<camera*>(cmr)->setHandle(handle);
-    }
-
-    updateFrameUniformBuffer(cmr, width, height);
-    return handle;
+    updateFrameUniformBuffer(cmr, pc.view, pc.width, pc.height);
+    return pc.view;
 }
 
 uniform_buffer_handle renderer::ensureShadowViewBuffer(const directional_light* dir_light, u32 width, u32 height)
@@ -244,8 +253,6 @@ uniform_buffer_handle renderer::ensureLightBuffer(const directional_light* dir_l
 
 void renderer::shadowPass(const scene* scn, gpu_command_buffer& cmd)
 {
-    // Steps:
-    // 1. Create custom framebuffer and other - for shadow map
     const u32 width = shadow_map_width, height = shadow_map_height;
     if (!shadow_rt_handle.is_valid())
     {
@@ -257,7 +264,6 @@ void renderer::shadowPass(const scene* scn, gpu_command_buffer& cmd)
         resource_state::DEPTH_WRITE,
         image_barrier_aspect::DEPTH, 0);
 
-    // 2. ShadowPass Begin
     auto& bpc = cmd.emplaceCommand<gpu_render_pass_begin_command>(render_pass_name::SHADOW_PASS, 0, 1, width, height);
     bpc.depthTarget = shadow_rt_handle;
 
@@ -267,7 +273,6 @@ void renderer::shadowPass(const scene* scn, gpu_command_buffer& cmd)
 
     const uniform_buffer_handle view_handle = ensureShadowViewBuffer(scn->getDirectionalLight(), width, height);
 
-    // 3. Bind Commands
     for (const auto& obj_ptr : scn->objects())
     {
         if (!obj_ptr)
@@ -318,7 +323,7 @@ void renderer::shadowPass(const scene* scn, gpu_command_buffer& cmd)
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::SHADOW_PASS); // DX12: ring descriptor tables + head
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::SHADOW_PASS);
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -337,10 +342,8 @@ void renderer::shadowPass(const scene* scn, gpu_command_buffer& cmd)
         }
     }
 
-    // 4. ShadowPass End
     cmd.emplaceCommand<gpu_render_pass_end_command>();
     
-    // 5. Transit to MainPass
     cmd.emplaceCommand<gpu_image_barrier_command>(
         shadow_rt_handle,
         resource_state::DEPTH_WRITE,
@@ -372,7 +375,7 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, pc.width, pc.height);
     cmd.emplaceCommand<gpu_set_bindless_command>();
 
-    const uniform_buffer_handle view_handle = ensureViewBuffer(scn->getCamera(), pc.width, pc.height);
+    const uniform_buffer_handle view_handle = ensureViewBuffer(scn->getCamera(), pc);
     const uniform_buffer_handle light_handle = ensureLightBuffer(scn->getDirectionalLight());
 
     for (const auto& obj_ptr : scn->objects())
@@ -393,10 +396,6 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
         }
 
         // TODO: Implement logic to skip rendering certain objects in shadow pass based on material properties or object flags
-        // if (meshInst->getName().find("Plane") == std::string::npos)
-        // {
-        //     continue;
-        // }
 
         uniform_buffer_handle obj_handle = obj->getHandle();
         assert(obj_handle.is_valid());
@@ -429,7 +428,7 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::FORWARD_PASS); // DX12: ring descriptor tables + head
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::FORWARD_PASS);
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -470,16 +469,6 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
 
 void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command_buffer& cmd)
 {
-    // Mental map for deferred rendering implementation:
-    // Barrier: Transition main framebuffer to be writable
-    // RenderPass Begin: GBuffer Pass - bind gbuffer render targets
-    // Set viewport/scissor
-    // For each render object:
-    //   - Update object uniform buffer if needed
-    //   - Bind PSO, descriptor sets, vertex/index buffers
-    //   - Issue draw call
-    // RenderPass End
-    // Barrier: Transition gbuffer render targets to be readable for lighting pass
 
     assert(scn);
 
@@ -519,7 +508,7 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
     cmd.emplaceCommand<gpu_set_scissor_command>(0, 0, pc.width, pc.height);
     cmd.emplaceCommand<gpu_set_bindless_command>();
 
-    const uniform_buffer_handle view_handle = ensureViewBuffer(scn->getCamera(), pc.width, pc.height);
+    const uniform_buffer_handle view_handle = ensureViewBuffer(scn->getCamera(), pc);
 
     for (const auto& obj_ptr : scn->objects())
     {
@@ -564,13 +553,12 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
         }
         cmd.emplaceCommand<gpu_bind_texture_command>(tex0, (u8)shader_binding::TEXTURE);
 
-        // we don't need it
         cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_defaultSamplerHandle, (u8)shader_binding::SAMPLER);
         cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
 
-        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::GBUFFER_PASS); // DX12: ring descriptor tables + head
+        cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::GBUFFER_PASS);
 
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
@@ -629,21 +617,12 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
 
 void renderer::lightingPass(const scene* scn, const pass_context& pc, gpu_command_buffer& cmd)
 {
-    // Metntal map for deferred rendering implementation:
-    // Barrier: Transition main framebuffer to be writable, gbuffer render targets to be readable
-    // RenderPass Begin: Lighting Pass - bind main framebuffer render target
-    // Set viewport/scissor
-    // Bind fullscreen quad pipeline state and descriptor sets (gbuffer textures, shadow map, etc.)
-    // Issue draw call for fullscreen quad
-    // RenderPass End
 
     assert(scn);
 
     const window_gbuffer_targets& gb = requireGBufferTargets(pc, "lightingPass");
 
-    // The view buffer was already created and filled by the gbuffer pass.
-    const camera* cam = scn->getCamera();
-    const uniform_buffer_handle view_handle = cam ? cam->getHandle() : g_defaultViewBufferHandle;
+    const uniform_buffer_handle view_handle = scn->getCamera() ? pc.view : g_defaultViewBufferHandle;
 
     cmd.emplaceCommand<gpu_image_barrier_command>(
         pc.color,
@@ -690,9 +669,8 @@ void renderer::lightingPass(const scene* scn, const pass_context& pc, gpu_comman
     cmd.emplaceCommand<gpu_bind_sampler_command>(g_shadowMapSamplerHandle, (u8)shader_binding::SHADOW_MAP_SAMPLER);
     cmd.emplaceCommand<gpu_bind_sampler_command>(g_gbufferSamplerHandle, (u8)shader_binding::GBUFFER_SAMPLER);
 
-    cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::DEFERRED_LIGHTING_PASS); // DX12: ring descriptor tables + head
+    cmd.emplaceCommand<gpu_bind_description_table_command>(render_pass_name::DEFERRED_LIGHTING_PASS);
 
-    // FULLSCREEN TRIANGLE - we can use vertex shader to generate vertices, so no need to bind vertex/index buffers
     cmd.emplaceCommand<gpu_draw_vertex_command>(3);
 
     cmd.emplaceCommand<gpu_render_pass_end_command>();
@@ -714,7 +692,7 @@ void renderer::updateFrameUniformBuffer(const uniform_buffer_handle &handle, u32
     std::memcpy(static_cast<u8*>(buffer_memory), &buffer, sizeof(buffer));
 }
 
-void renderer::updateFrameUniformBuffer(const camera *cmr, u32 width, u32 height)
+void renderer::updateFrameUniformBuffer(const camera *cmr, const uniform_buffer_handle& handle, u32 width, u32 height)
 {
     if (cmr)
     {
@@ -726,7 +704,7 @@ void renderer::updateFrameUniformBuffer(const camera *cmr, u32 width, u32 height
         buffer.other = glm::vec4((float)width, (float)height, 0.0f, 0.0f);
 
         void* buffer_memory;
-        _dynamicRHI->getUniformBufferMemory(cmr->getHandle(), g_frameIndex, buffer_memory);
+        _dynamicRHI->getUniformBufferMemory(handle, g_frameIndex, buffer_memory);
         std::memcpy(static_cast<u8*>(buffer_memory), &buffer, sizeof(buffer));
     }
 }

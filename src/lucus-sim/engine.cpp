@@ -56,7 +56,7 @@ void engine::run(int argc, char** argv)
         prevFrameTime = now;
 
         // Avoid very large frame steps after pauses (e.g. debugger breakpoints).
-        constexpr float max_frame_dt = 0.1f; // 100 ms
+        constexpr float max_frame_dt = 0.1f;
         if (dt > max_frame_dt) {
             dt = max_frame_dt;
         }

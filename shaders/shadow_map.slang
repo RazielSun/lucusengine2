@@ -26,7 +26,5 @@ ShadowVSOutput vsMain(VSInput input)
 [shader("fragment")]
 void psMain(ShadowVSOutput input)
 {
-    // Intentionally empty.
-    // Depth is written by fixed-function depth output from SV_Position.
-    // No SV_Target0 here because SHADOW_PASS has no color attachments.
+    // Empty by design: SHADOW_PASS has no color attachments; depth comes from SV_Position.
 }

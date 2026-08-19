@@ -21,7 +21,7 @@ using namespace lucus;
 
 namespace
 {
-    /// CPU heap after the bindless prefix: classic texture SRVs + color/depth SRV runs (see `createRenderTarget`).
+    /// CPU heap after the bindless prefix: classic texture SRVs, then color/depth SRV runs.
     constexpr u32 dx_dynamic_srv_descriptor_budget()
     {
         return g_maxTexturesCount * 2u
@@ -168,9 +168,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     auto& ctx = _contexts[ctx_handle.as_index()];
 
     u32 currentFrame = frameIndex % g_framesInFlight;
-    // uint32_t bufferIndex = ctx.backBufferIndex % g_framesInFlight;
 
-    // Here or in beginFrame?
     ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
     ThrowIfFailed(commandBuffer->Reset(commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
 
@@ -223,7 +221,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 break;
             case gpu_command_type::RENDER_PASS_END:
                 {
-                    // commandBuffer->EndRenderPass();
                 }
                 break;
             case gpu_command_type::SET_VIEWPORT:
@@ -311,7 +308,7 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
                     auto& ub = _uniformBuffers[bu_cmd->ub_handle.as_index()];
-                    // Root parameter index matches `shader_binding` for the first CBVs (VIEW=0 … LIGHT=3); see createPSO layout order.
+                    // Root parameter index must match `shader_binding` for the first CBVs (VIEW=0 .. LIGHT=3).
                     commandBuffer->SetGraphicsRootConstantBufferView((u32)bu_cmd->position, ub.get(currentFrame)->GetGPUVirtualAddress());
                 }
                 break;
@@ -385,7 +382,6 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
             case gpu_command_type::SET_BINDLESS:
                 {
                     (void)reinterpret_cast<const gpu_set_bindless_command*>(data);
-                    // Bindless root tables are set in BIND_DESCRIPTION_TABLE (same heap bind + ring flush).
                 }
                 break;
             case gpu_command_type::BIND_VERTEX_BUFFER:
@@ -466,63 +462,63 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
         init_desc.depthFormat = mDepthFormat;
         init_desc.pass = passName;
 
-        // deferred_lighting reads gFrame (b0) in the pixel shader only; other passes use it in VS.
+        // deferred_lighting reads gFrame (b0) in PS only; other passes read it in VS.
         const D3D12_SHADER_VISIBILITY viewCbvVisibility =
             (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
                 ? D3D12_SHADER_VISIBILITY_ALL
                 : D3D12_SHADER_VISIBILITY_VERTEX;
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
-            (u32)shader_binding::VIEW, // b0
+            (u32)shader_binding::VIEW,
             0,
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             viewCbvVisibility);
 
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
-            (u32)shader_binding::OBJECT, // b1
+            (u32)shader_binding::OBJECT,
             0,
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_VERTEX);
 
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
-            (u32)shader_binding::MATERIAL, // b2
+            (u32)shader_binding::MATERIAL,
             0,
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_ALL);
 
         init_desc.layouts.emplace_back().InitAsConstantBufferView(
-            (u32)shader_binding::LIGHT, // b3
+            (u32)shader_binding::LIGHT,
             0,
             D3D12_ROOT_DESCRIPTOR_FLAG_NONE,
             D3D12_SHADER_VISIBILITY_ALL);
 
-        // Descriptor tables: `ranges[]` order matches `InitAsDescriptorTable` / `shader_binding` after CBVs.
-        // HLSL: t0/t1/s0/s1 classic; deferred g-buffer t3–t6 + s3; bindless t7/s7 (must not overlap t2–t6 range).
+        // `ranges[]` order must match `InitAsDescriptorTable` / `shader_binding` after the CBVs.
+        // HLSL registers: classic t0/t1/s0/s1, g-buffer t3-t6/s3, bindless t7/s7 (must not overlap t2-t6).
         CD3DX12_DESCRIPTOR_RANGE1 ranges[11];
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // TEXTURE t0
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SHADOW_MAP t1
-        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SAMPLER s0
-        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // SHADOW_MAP_SAMPLER s1
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS t7
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // BINDLESS_SAMPLER s7
-        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_A t3
-        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_B t4
-        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_C t5
-        ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 6, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_DEPTH t6
-        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE); // GBUFFER_SAMPLER s3
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, static_cast<UINT>(g_maxTexturesCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, static_cast<UINT>(g_maxSamplersCount), 7, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 5, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,     1, 6, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
+        ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE);
 
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL); // TEXTURE
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL); // SAMPLER
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL); // SHADOW_MAP_SAMPLER
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS
-        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL); // BINDLESS_SAMPLER
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[3], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[4], D3D12_SHADER_VISIBILITY_PIXEL);
+        init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[5], D3D12_SHADER_VISIBILITY_PIXEL);
         if (passName == render_pass_name::DEFERRED_LIGHTING_PASS)
         {
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_A
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_B
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[8], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_C
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[9], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_DEPTH
-            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[10], D3D12_SHADER_VISIBILITY_PIXEL); // GBUFFER_SAMPLER
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[6], D3D12_SHADER_VISIBILITY_PIXEL);
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[7], D3D12_SHADER_VISIBILITY_PIXEL);
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[8], D3D12_SHADER_VISIBILITY_PIXEL);
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[9], D3D12_SHADER_VISIBILITY_PIXEL);
+            init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[10], D3D12_SHADER_VISIBILITY_PIXEL);
         }
 
         if (mat->useVertexIndexBuffers())
@@ -666,7 +662,6 @@ void dx_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 fram
 {
     auto it = _textures.find(tex_handle.get());
     if (it == _textures.end()) {
-        // error
         return;
     }
 
@@ -692,7 +687,6 @@ uniform_buffer_handle dx_dynamic_rhi::createUniformBuffer(size_t bufferSize, sha
 
 void dx_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr)
 {
-    // std::printf("getUniformBufferMemory %d [Ctx: %d]\n", ub_handle.get(), ctx_handle.get());
     if (!ub_handle.is_valid())
     {
         throw std::runtime_error("failed to get uniform buffer memory! ub is null!");
@@ -719,7 +713,6 @@ void dx_dynamic_rhi::createDevice()
 {
     #ifndef NDEBUG
 	{
-		// Enable debug layer interface before create dx device
 		Com<ID3D12Debug> debugController;
 		ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)), "Failed Get Debug Interface");
 		debugController->EnableDebugLayer();
@@ -743,8 +736,6 @@ void dx_dynamic_rhi::createDevice()
 			continue;
 		}
 
-		// Check to see if the adapter supports Direct3D 12, but don't create the
-		// actual device yet.
 		if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), featureLevel, _uuidof(ID3D12Device), nullptr)))
 		{
 			break;
@@ -756,9 +747,6 @@ void dx_dynamic_rhi::createDevice()
 
     _deviceHandle = _device->getDevice();
 
-    // Here was an allocator of cmd pool
-
-    // Enable debug messages in debug mode.
 #ifndef NDEBUG
     Com<ID3D12InfoQueue> pInfoQueue;
     if (SUCCEEDED(_deviceHandle.As(&pInfoQueue)))
@@ -766,25 +754,19 @@ void dx_dynamic_rhi::createDevice()
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
-        // Suppress whole categories of messages
-        //D3D12_MESSAGE_CATEGORY Categories[] = {};
  
-        // Suppress messages based on their severity level
         D3D12_MESSAGE_SEVERITY Severities[] =
         {
             D3D12_MESSAGE_SEVERITY_INFO
         };
  
-        // Suppress individual messages by their ID
         D3D12_MESSAGE_ID DenyIds[] = {
-            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,   // I'm really not sure how to avoid this message.
-            D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,                         // This warning occurs when using capture frame while graphics debugging.
-            D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,                       // This warning occurs when using capture frame while graphics debugging.
+            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+            D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,
+            D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,
         };
  
         D3D12_INFO_QUEUE_FILTER NewFilter = {};
-        //NewFilter.DenyList.NumCategories = _countof(Categories);
-        //NewFilter.DenyList.pCategoryList = Categories;
         NewFilter.DenyList.NumSeverities = _countof(Severities);
         NewFilter.DenyList.pSeverityList = Severities;
         NewFilter.DenyList.NumIDs = _countof(DenyIds);
@@ -794,7 +776,6 @@ void dx_dynamic_rhi::createDevice()
     }
 #endif
 
-    // Create the command queue.
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -802,30 +783,11 @@ void dx_dynamic_rhi::createDevice()
     ThrowIfFailed(_deviceHandle->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(_commandQueue.ReleaseAndGetAddressOf())), "Failed Create Command Queue");
 	_commandQueue->SetName(L"Command Queue");
 
-    // _swapchain->setContext(mDXGIFactory, _commandQueue);
-
     std::printf("ID3D12CommandQueue created successfully\n");
 }
 
-// void dx_dynamic_rhi::wait_idle()
-// {
-//     ThrowIfFailed(
-//         _commandQueue->Signal(_fence.Get(), _fenceValues[_currentFrame]),
-//         "wait_for_gpu signal failed"
-//     );
-
-//     ThrowIfFailed(
-//         _fence->SetEventOnCompletion(_fenceValues[_currentFrame], (HANDLE)_fenceEvent),
-//         "wait_for_gpu SetEventOnCompletion failed"
-//     );
-
-//     WaitForSingleObject((HANDLE)_fenceEvent, INFINITE);
-//     ++_fenceValues[_currentFrame];
-// }
-
 void dx_dynamic_rhi::createSyncObjects()
 {
-    // Create synchronization objects.
 	ThrowIfFailed(_deviceHandle->CreateFence(fenceValues[0], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)), "Failed Create Fence");
 	fenceValues[0]++;
 
@@ -842,7 +804,6 @@ void dx_dynamic_rhi::createCommandBufferPool()
 {
     commandPool.init(_deviceHandle);
 
-    // Create command list for recording graphics commands
 	ThrowIfFailed(_deviceHandle->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT, commandPool.commandAllocators[0].Get(), nullptr, IID_PPV_ARGS(commandBuffer.ReleaseAndGetAddressOf())),
         "Failed Create Command List"
     );
@@ -877,7 +838,6 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
     ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
     ThrowIfFailed(commandBuffer->Reset(commandPool.commandAllocators[currentFrame].Get(), nullptr), "Failed Reset Command Buffer");
     
-    // --- Copy buffer → texture ---
     D3D12_SUBRESOURCE_DATA subresource{};
     subresource.pData = tex.texLink->getResource();
     subresource.RowPitch = tex.width * tex.bytesPerPixel;
@@ -893,7 +853,6 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
         &subresource
     );
 
-    // --- Barrier: COPY → SHADER READ ---
     D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
             tex.texResource.Get(),
             D3D12_RESOURCE_STATE_COPY_DEST,
@@ -902,13 +861,11 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
 
     commandBuffer->ResourceBarrier(1, &barrier);
 
-    // --- Submit ---
     commandBuffer->Close();
 
     ID3D12CommandList* lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, lists);
 
-    // --- Fence wait (sync) ---
     fenceValues[currentFrame]++;
     _commandQueue->Signal(fence.Get(), fenceValues[currentFrame]);
 
@@ -918,6 +875,5 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
         WaitForSingleObject(fenceEvent, INFINITE);
     }
 
-    // --- Cleanup ---
     tex.free_staging();
 }

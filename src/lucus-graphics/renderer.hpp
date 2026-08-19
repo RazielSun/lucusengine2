@@ -15,9 +15,6 @@ namespace lucus
     class camera;
     struct gpu_command_buffer;
 
-    /// Everything a pass needs to know about the window it draws into.
-    /// Resolved once per window context per frame instead of re-fetched,
-    /// re-validated and re-derived by every pass.
     struct pass_context
     {
         window_context_handle ctx;
@@ -25,6 +22,7 @@ namespace lucus
         u32 height { 0 };
         render_target_handle color;
         render_target_handle depth;
+        uniform_buffer_handle view;
     };
 
     class renderer : public singleton<renderer>
@@ -52,15 +50,13 @@ namespace lucus
         pass_context makePassContext(const window_context_handle& ctx_handle);
         const window_gbuffer_targets& requireGBufferTargets(const pass_context& pc, const char* pass_name);
 
-        /// Return the uniform buffer for this frame's view/light constants,
-        /// creating it on first use, and refresh its contents. Fall back to the
-        /// shared default handle when the scene has no camera / light.
-        uniform_buffer_handle ensureViewBuffer(const camera* cmr, u32 width, u32 height);
+        uniform_buffer_handle viewBufferFor(const window_context_handle& ctx_handle);
+        uniform_buffer_handle ensureViewBuffer(const camera* cmr, const pass_context& pc);
         uniform_buffer_handle ensureShadowViewBuffer(const directional_light* dir_light, u32 width, u32 height);
         uniform_buffer_handle ensureLightBuffer(const directional_light* dir_light);
 
         void updateFrameUniformBuffer(const uniform_buffer_handle& handle, u32 width, u32 height);
-        void updateFrameUniformBuffer(const camera* cmr, u32 width, u32 height);
+        void updateFrameUniformBuffer(const camera* cmr, const uniform_buffer_handle& handle, u32 width, u32 height);
         void updateFrameUniformBuffer(const directional_light* dir_light, u32 width, u32 height);
         void updateLightUniformBuffer(const directional_light* dir_light);
         void updateObjectUniformBuffer(const render_object* obj);
@@ -72,7 +68,8 @@ namespace lucus
         render_mode r_mode = render_mode::FORWARD;
         std::shared_ptr<dynamic_rhi> _dynamicRHI;
 
-        // default ub & tex
+        std::vector<uniform_buffer_handle> _viewBuffers;
+
         uniform_buffer_handle g_defaultViewBufferHandle{};
         uniform_buffer_handle g_defaultObjectBufferHandle{};
         uniform_buffer_handle g_defaultMaterialBufferHandle{};
@@ -84,11 +81,9 @@ namespace lucus
 
         intrusive_ptr<texture> g_defaultWhiteTexture{};
         intrusive_ptr<texture> g_defaultBlackTexture{};
-        /// 1x1 bindless fallbacks (GPU slot from `getBindlessTextureSlot()` after upload).
         intrusive_ptr<texture> g_bindlessFallbackBlackTexture{};
         intrusive_ptr<texture> g_bindlessFallbackWhiteTexture{};
 
-        // SHADOW PASS
         u32 shadow_map_width = 1024, shadow_map_height = 1024;
         render_target_handle shadow_rt_handle;
         intrusive_ptr<material> g_shadowMat;

@@ -55,7 +55,6 @@ void m_pipeline_state::cleanup()
 
 id<MTLLibrary> m_pipeline_state::loadLibrary(const std::string& filename) const
 {
-    // auto shaderCode = filesystem::instance().read_shader(filepath);
 
     std::string path = filesystem::instance().get_shader(filename + ".metallib");
 

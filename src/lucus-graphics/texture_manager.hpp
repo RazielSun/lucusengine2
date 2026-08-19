@@ -20,7 +20,6 @@ namespace lucus
         void resetPendingTextures() { _pending.clear(); }
 
     protected:
-        //
 
     private:
         std::vector<intrusive_ptr<texture>> _pending;

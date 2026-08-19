@@ -7,7 +7,6 @@ using namespace lucus;
 dx_pipeline_state::dx_pipeline_state(Com<ID3D12Device> device)
     : _device(device)
 {
-    //
 }
 
 dx_pipeline_state::~dx_pipeline_state()
@@ -36,8 +35,7 @@ void dx_pipeline_state::init(const std::string& shaderName, const dx_pipeline_st
 
     D3D12_RASTERIZER_DESC rasterizer{};
     rasterizer.FillMode = D3D12_FILL_MODE_SOLID;
-    // rasterizer.CullMode = D3D12_CULL_MODE_BACK;
-    rasterizer.CullMode = D3D12_CULL_MODE_NONE; // Only for Triangle?
+    rasterizer.CullMode = D3D12_CULL_MODE_NONE;
     rasterizer.FrontCounterClockwise = FALSE;
     rasterizer.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
     rasterizer.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
@@ -107,7 +105,7 @@ void dx_pipeline_state::init(const std::string& shaderName, const dx_pipeline_st
         pso.DepthStencilState.DepthEnable = FALSE;
         pso.DSVFormat = DXGI_FORMAT_UNKNOWN;
         break;
-    default: // FORWARD_PASS
+    default:
         pso.NumRenderTargets = 1;
         pso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
         pso.DepthStencilState.DepthEnable = TRUE;
@@ -128,7 +126,6 @@ void dx_pipeline_state::createRootSignature(const dx_pipeline_state_desc& init_d
     desc.Desc_1_1.NumParameters = static_cast<uint32_t>(init_desc.layouts.size());
     desc.Desc_1_1.pParameters = init_desc.layouts.data();
 
-    // Static samplers ?
     desc.Desc_1_1.NumStaticSamplers = 0;
     desc.Desc_1_1.pStaticSamplers = nullptr;
     

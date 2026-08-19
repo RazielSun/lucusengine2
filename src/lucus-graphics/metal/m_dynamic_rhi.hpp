@@ -37,8 +37,6 @@ namespace lucus
         protected:
             void createDevice();
 
-            // void createObjectUniformBuffers();
-
             void uploadTextureToGpu(m_texture& tex);
 
         private:
@@ -47,19 +45,14 @@ namespace lucus
 
             std::vector<m_window_context> _contexts;
 
-            //
             std::unordered_map<u32, m_pipeline_state> _pipelineStates;
 
-            //
             std::unordered_map<u32, m_mesh> _meshes;
 
-            //
             std::vector<m_sampler> _samplers;
             std::unordered_map<u32, m_texture> _textures;
 
-            //
             std::vector<m_buffer> _uniformBuffers;
             
-            // std::array<m_buffer, g_framesInFlight> _objectUniformBuffers;
     };
 }

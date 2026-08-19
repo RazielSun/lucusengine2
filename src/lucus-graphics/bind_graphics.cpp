@@ -69,7 +69,6 @@ void lucus::bind_graphics_module()
     bind_scene_class();
 
     bind_renderer_class_and_object();
-    // bind_texture_manager_class_and_object();
 }
 
 void lucus::bind_render_mode_enum()
@@ -447,15 +446,6 @@ void lucus::bind_texture_class()
 
     r = engine->RegisterObjectType(texture_class_name, 0, asOBJ_REF); assert(r >= 0);
 
-    // std::string method_factory = std::string(texture_class_name) + "@ f()";
-    // r = engine->RegisterObjectBehaviour(
-    //     texture_class_name,
-    //     asBEHAVE_FACTORY,
-    //     method_factory.c_str(),
-    //     asFUNCTION(texture::create_factory),
-    //     asCALL_CDECL
-    // ); assert(r >= 0);
-
     r = engine->RegisterObjectBehaviour(
         texture_class_name, asBEHAVE_ADDREF, "void f()",
         asMETHOD(mesh, addRef), asCALL_THISCALL
@@ -506,14 +496,6 @@ void lucus::bind_texture_manager_class_and_object()
     using namespace utils;
 
     r = engine->RegisterObjectType(texture_manager_class_name, 0, asOBJ_REF | asOBJ_NOCOUNT); assert(r >= 0);
-
-    // std::string method_set_current_scene = std::string("void SetCurrentScene(") + scene_class_name + "@)";
-    // r = engine->RegisterObjectMethod(
-    //     renderer_class_name,
-    //     method_set_current_scene.c_str(),
-    //     asMETHOD(renderer, setCurrentScene),
-    //     asCALL_THISCALL
-    // ); assert(r >= 0);
 
     std::string property = std::string(texture_manager_class_name) + " " + texture_manager_global_name;
     r = engine->RegisterGlobalProperty(property.c_str(), &texture_manager::instance()); assert(r >= 0);

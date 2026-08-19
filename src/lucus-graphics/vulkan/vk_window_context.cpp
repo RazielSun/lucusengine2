@@ -62,24 +62,18 @@ void vk_window_context::cleanup()
 
 void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 {
-    // Get available queue family properties
 	uint32_t queueCount;
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueCount, nullptr);
 	assert(queueCount >= 1);
 	std::vector<VkQueueFamilyProperties> queueProps(queueCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(gpu, &queueCount, queueProps.data());
 
-    // Iterate over each queue to learn whether it supports presenting:
-	// Find a queue with present support
-	// Will be used to present the swap chain images to the windowing system
 	std::vector<VkBool32> supportsPresent(queueCount);
 	for (uint32_t i = 0; i < queueCount; i++) 
 	{
 		vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supportsPresent[i]);
 	}
 
-    // Search for a graphics and a present queue in the array of queue
-	// families, try to find one that supports both
 	uint32_t graphicsQueueNodeIndex = UINT32_MAX;
 	uint32_t presentQueueNodeIndex = UINT32_MAX;
 	for (uint32_t i = 0; i < queueCount; i++) {
@@ -96,8 +90,6 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 	}
 	if (presentQueueNodeIndex == UINT32_MAX) 
 	{	
-		// If there's no queue that supports both present and graphics
-		// try to find a separate present queue
 		for (uint32_t i = 0; i < queueCount; ++i) {
 			if (supportsPresent[i] == VK_TRUE) {
 				presentQueueNodeIndex = i;
@@ -106,16 +98,13 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 		}
 	}
 
-    // Exit if either a graphics or a presenting queue hasn't been found
 	if (graphicsQueueNodeIndex == UINT32_MAX || presentQueueNodeIndex == UINT32_MAX)  {
 		throw std::runtime_error("Could not find a graphics and/or presenting queue!");
 	}
     if (graphicsQueueNodeIndex != presentQueueNodeIndex) {
 		throw std::runtime_error("Separate graphics and presenting queues are not supported yet!");
 	}
-	// queueNodeIndex = graphicsQueueNodeIndex;
 
-    // Get list of supported surface formats
 	uint32_t formatCount;
 	if (vkGetPhysicalDeviceSurfaceFormatsKHR(gpu, surface, &formatCount, NULL) != VK_SUCCESS) {
         throw std::runtime_error("Failed to retrieve surface formats!");
@@ -126,8 +115,6 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
         throw std::runtime_error("Failed to retrieve surface formats!");
     }
 
-	// We want to get a format that best suits our needs, so we try to get one from a set of preferred formats
-	// Initialize the format to the first one returned by the implementation in case we can't find one of the preffered formats
 	selectedFormat = surfaceFormats[0];
 	std::vector<VkFormat> preferredImageFormats = { 
 		VK_FORMAT_B8G8R8A8_UNORM,
@@ -157,10 +144,8 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
 {
     _device = device;
 
-	// Store the current swap chain handle so we can use it later on to ease up recreation
 	VkSwapchainKHR oldSwapchain = swapChain;
 
-	// Get physical device surface properties and formats
 	VkSurfaceCapabilitiesKHR capabilities;
 	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to get surface capabilities!");
@@ -169,19 +154,15 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
     int width = window->framebuffer_width();
     int height = window->framebuffer_height();
 
-	// If width (and height) equals the special value 0xFFFFFFFF, the size of the surface will be set by the swapchain
 	if (capabilities.currentExtent.width == (uint32_t)-1) {
-		// If the surface size is undefined, the size is set to the size of the images requested
 		extent.width = width;
 		extent.height = height;
 	} else {
-		// If the surface size is defined, the swap chain size must match
 		extent = capabilities.currentExtent;
 		width = capabilities.currentExtent.width;
 		height = capabilities.currentExtent.height;
 	}
 
-    // Select a present mode for the swapchain
 	uint32_t presentModeCount;
 	if (vkGetPhysicalDeviceSurfacePresentModesKHR(gpu, surface, &presentModeCount, nullptr) != VK_SUCCESS) {
         throw std::runtime_error("Failed to get surface present modes!");
@@ -194,7 +175,6 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
     }
 
 	// The VK_PRESENT_MODE_FIFO_KHR mode must always be present as per spec
-	// This mode waits for the vertical blank ("v-sync")
 	VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
     for (const auto& availablePresentMode : presentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -203,8 +183,6 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
         }
     }
 
-	// The FIFO present mode is the only mode that is guaranteed to be available
-	// and supports triple buffering, so we prefer to use triple buffering if it's available
     uint32_t desiredNumberOfSwapchainImages = g_desiredSwapchainImageCount;
 	if (desiredNumberOfSwapchainImages < capabilities.minImageCount) {
 		desiredNumberOfSwapchainImages = capabilities.minImageCount;
@@ -212,31 +190,14 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
 		desiredNumberOfSwapchainImages = capabilities.maxImageCount;
 	}
 
-    // Find the transformation of the surface
 	VkSurfaceTransformFlagsKHR preTransform;
 	if (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) {
-		// We prefer a non-rotated transform
 		preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 	} else {
 		preTransform = capabilities.currentTransform;
 	}
 
     // TODO
-    // // Find a supported composite alpha format (not all devices support alpha opaque)
-	// VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	// // Simply select the first composite alpha format available
-	// std::vector<VkCompositeAlphaFlagBitsKHR> compositeAlphaFlags = {
-	// 	VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-	// 	VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
-	// 	VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
-	// 	VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
-	// };
-	// for (auto& compositeAlphaFlag : compositeAlphaFlags) {
-	// 	if (surfaceCaps.supportedCompositeAlpha & compositeAlphaFlag) {
-	// 		compositeAlpha = compositeAlphaFlag;
-	// 		break;
-	// 	};
-	// }
 
     VkSwapchainCreateInfoKHR createSwapchainInfo{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -250,25 +211,11 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
         .preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = swapchainPresentMode,
-        // Setting clipped to VK_TRUE allows the implementation to discard rendering outside of the surface area
 		.clipped = VK_TRUE,
-		// Setting oldSwapChain to the saved handle of the previous swapchain aids in resource reuse and makes sure that we can still present already acquired images
 		.oldSwapchain = oldSwapchain,
     };
 
     // TODO
-    // QueueFamilyIndices indices = findQueueFamilies(_physicalDevice, _surface);
-    // uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-
-    // if (indices.graphicsFamily != indices.presentFamily) {
-    //     createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-    //     createInfo.queueFamilyIndexCount = 2;
-    //     createInfo.pQueueFamilyIndices = queueFamilyIndices;
-    // } else {
-        // createSwapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        // createSwapchainInfo.queueFamilyIndexCount = 0; // Optional
-        // createSwapchainInfo.pQueueFamilyIndices = nullptr; // Optional
-    // }
 
     if (vkCreateSwapchainKHR(device, &createSwapchainInfo, nullptr, &swapChain) != VK_SUCCESS) {
         throw std::runtime_error("failed to create swap chain!");

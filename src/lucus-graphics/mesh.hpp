@@ -40,7 +40,6 @@ namespace lucus
         std::vector<vertex> _vertices;
         std::vector<u32> _indices;
 
-        // transient
         mesh_handle _mesh_handle;
     };
 

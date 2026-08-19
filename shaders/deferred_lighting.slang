@@ -21,7 +21,7 @@ VSOutput vsMain(uint vertexIndex : SV_VertexID)
     VSOutput o;
     o.position = float4(positions[vertexIndex], 0.0, 1.0);
 #if TARGET_METAL || TARGET_DX12
-    o.position.y *= -1.0; // Flip Y for Metal's coordinate system
+    o.position.y *= -1.0; // Flip Y: Metal and DX12 clip space
 #endif
     return o;
 }
@@ -41,7 +41,7 @@ SamplerState gSampler : register(s3);
 float4 psMain(VSOutput input) : SV_Target
 {
     float2 screenSize = gFrame.other.xy;
-    float2 pixelPos = input.position.xy; // SV_Position
+    float2 pixelPos = input.position.xy;
     float2 uv = pixelPos / screenSize;
 
     float4 smpl_A = gBufferA.Sample(gSampler, uv);
@@ -56,18 +56,16 @@ float4 psMain(VSOutput input) : SV_Target
     worldPos /= worldPos.w;
 
     float3 L = normalize(-gLight.direction.xyz);
-    float3 N = smpl_A.xyz * 2.0f - 1.0f; // Decode normal from [0,1] to [-1,1]
+    float3 N = smpl_A.xyz * 2.0f - 1.0f;
     float lambert = max(dot(N, L), 0.0f);
 
     float4 lightClip = mul(gLight.viewProj, worldPos);
 
     float lit = computeShadow(lightClip, lambert);
 
-    // G-buffer albedo is already final rgb (same as forward texture / unlit paths write).
     float3 albedo = smpl_C.rgb;
     float3 diffuse = albedo * gLight.color.xyz * gLight.color.w * lambert * lit;
     float3 ambient = albedo * gLight.ambient.xyz * gLight.ambient.w;
     float4 color = float4(ambient + diffuse, 1.0f);
     return color;
-    // return float4(uv, 0.0, 1.0); // Colorize based on UV for testing
 }

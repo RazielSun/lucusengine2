@@ -10,7 +10,6 @@ using namespace lucus;
 
 void dx_commandbuffer_pool::init(Com<ID3D12Device> device)
 {
-    // [Command Pool] Create command allocators for each back buffer
 	for (auto& commandAllocator : commandAllocators)
 	{
 		ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(commandAllocator.ReleaseAndGetAddressOf())), "Failed Create Command Allocator");
@@ -147,7 +146,6 @@ void dx_texture::free_staging()
 
 void dx_texture::cleanup()
 {
-    //
 }
 
 void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> samplerHeap, u32 in_index)
@@ -181,7 +179,6 @@ void dx_sampler::init(Com<ID3D12Device> device, Com<ID3D12DescriptorHeap> sample
 
 void dx_sampler::cleanup()
 {
-    //
 }
 
 void dx_heap_descriptor::init(Com<ID3D12Device> device, u32 in_bindless_stable, u32 in_ring_per_frame, u32 in_dynamic_resource_count, D3D12_DESCRIPTOR_HEAP_TYPE type)
@@ -474,7 +471,6 @@ void lucus::dx_render_target::init(Com<ID3D12Device> device, const dx_render_tar
         depth_clear.DepthStencil.Depth = 1.f;
         depth_clear.DepthStencil.Stencil = 0.f;
 
-        // R32_TYPELESS required to allow both DSV and SRV on same resource
         DXGI_FORMAT depthResourceFormat = init_desc.bDepthShaderRead ? DXGI_FORMAT_R32_TYPELESS : init_desc.depthFormat;
 
         dx_images_desc depth_desc {

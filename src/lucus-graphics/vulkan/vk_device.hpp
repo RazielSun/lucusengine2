@@ -12,7 +12,6 @@ namespace lucus
 
             VkDevice getDevice() const { return _device; }
             VkPhysicalDevice getGPU() const { return _gpu; }
-            // VkCommandPool getCommandPool() const { return _commandPool; }
 
             uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
 
@@ -39,10 +38,7 @@ namespace lucus
             std::vector<VkQueueFamilyProperties> _queueFamilyProperties{};
             std::vector<std::string> _supportedExtensions{};
 
-            // Logical Device
             VkDevice _device;
             
-            // // A Command Pool is a data structure that allows you to create command buffers.
-            // VkCommandPool _commandPool{ VK_NULL_HANDLE };
     };
 }

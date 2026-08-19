@@ -19,7 +19,7 @@ struct MaterialUniforms
 {
     float4 baseColor;
     float4 materialParams;
-    // x = flags; y = albedo bindless index; z = normal; w = RME (CPU uses black bindless fallback when index not ready).
+    // x = flags; y/z/w = bindless indices for albedo, normal, RME
     uint4 textureInfo;
 };
 
@@ -50,9 +50,9 @@ struct VSOutput
 
 struct GBufferOutput
 {
-    float4 normal_flags : SV_Target0; // NORMAL + Flags
-    float4 met_rgh_spc_shd : SV_Target1; // Metalness + Roughness + Specular + ShadingModel
-    float4 albedo_ao : SV_Target2; // ALBEDO + AO
+    float4 normal_flags : SV_Target0;
+    float4 met_rgh_spc_shd : SV_Target1;
+    float4 albedo_ao : SV_Target2;
 };
 
 #endif /* STRUCTS_SLANG */

@@ -46,7 +46,6 @@ namespace lucus
             void createSyncObjects();
             void createDescriptorHeaps();
 
-            // void wait_idle();
             void uploadTextureToGpu(dx_texture& tex, u32 frameIndex);
 
         private:
@@ -61,30 +60,23 @@ namespace lucus
             DXGI_FORMAT mDepthFormat { DXGI_FORMAT_D32_FLOAT };
             std::vector<dx_window_context> _contexts;
 
-            //
             std::vector<dx_render_target> _renderTargets;
 
-            //
             std::unordered_map<u32, dx_pipeline_state> _pipelineStates;
 
-            //
             std::unordered_map<u32, dx_mesh> _meshes;
 
-            //
             std::vector<dx_uniform_buffer> _uniformBuffers;
 
-            //
             std::unordered_map<u32, dx_texture> _textures;
             std::vector<dx_sampler> _samplers;
 
             dx_heap_descriptor srvHeapDesc;
             dx_heap_descriptor samplerHeapDesc;
 
-            //
             dx_commandbuffer_pool commandPool;
             Com<ID3D12GraphicsCommandList> commandBuffer;
 
-            //
             Com<ID3D12Fence> fence;
             std::array<uint64_t, g_framesInFlight> fenceValues{};
             void* fenceEvent = nullptr;

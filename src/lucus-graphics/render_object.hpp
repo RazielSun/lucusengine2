@@ -49,7 +49,6 @@ namespace lucus
 
             bool bCastShadow = true;
 
-            // transient
             uniform_buffer_handle _handle;
     };
 }

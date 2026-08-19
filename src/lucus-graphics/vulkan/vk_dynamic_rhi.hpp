@@ -74,16 +74,13 @@ namespace lucus
             std::vector<const char*> _enabledDeviceExtensions;
             std::vector<const char*> _enabledInstanceExtensions;
 
-            //
             VkFormat colorFormat;
             VkFormat depthFormat;
             bool bPassesInitialized{false};
             std::vector<vk_render_pass> _renderPasses;
 
-            //
             std::vector<vk_window_context> _contexts;
 
-            //
             std::vector<vk_render_target> _renderTargets;
             std::unordered_map<u64, vk_framebuffer> _framebuffers;
             
@@ -91,30 +88,24 @@ namespace lucus
 
             VkQueue _graphicsQueue;
 
-            //
             std::unordered_map<u32, vk_pipeline_state> _pipelineStates;
 
             static constexpr size_t kRenderPassPipelineLayoutCount = 4;
             std::array<vk_pipeline_layout, kRenderPassPipelineLayoutCount> _passPipelineLayouts{};
             VkPipelineLayout _activePassPipelineLayout{ VK_NULL_HANDLE };
 
-            //
             std::unordered_map<u32, vk_mesh> _meshes;
 
-            //
             std::vector<vk_sampler> _samplers;
             std::unordered_map<u32, vk_texture> _textures;
 
-            //
             std::vector<vk_uniform_buffer> _uniformBuffers;
 
-            //
             std::vector<vk_descriptor> _descriptors;
             VkDescriptorPool _descriptorPool{ VK_NULL_HANDLE };
             std::array<VkDescriptorSet, g_framesInFlight> _bindlessDescriptorSets{};
             std::array<VkDescriptorSet, g_framesInFlight> _bindlessSamplerDescriptorSets{};
             VkDescriptorPool _bindlessDescriptorPool{ VK_NULL_HANDLE };
-            //
             std::array<vk_frame_sync, g_framesInFlight> frameSync{};
 
             u32 _nextBindlessTextureSlot{0};

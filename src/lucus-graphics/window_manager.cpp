@@ -55,6 +55,6 @@ window* window_manager::getWindow(const window_handle& handle) const
     if (!handle.is_valid()) {
         return nullptr;
     }
-    int index = handle.as_index(); // Convert to 0-based index
+    int index = handle.as_index();
     return index < _windows.size() ? _windows[index].get() : nullptr;
 }

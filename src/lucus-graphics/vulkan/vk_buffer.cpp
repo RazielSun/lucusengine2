@@ -112,8 +112,8 @@ void vk_uniform_buffer::createDescriptorSets(VkDeviceSize bufferSize)
         descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         descriptorWrite.descriptorCount = 1;
         descriptorWrite.pBufferInfo = &bufferInfo;
-        descriptorWrite.pImageInfo = nullptr; // Optional
-        descriptorWrite.pTexelBufferView = nullptr; // Optional
+        descriptorWrite.pImageInfo = nullptr;
+        descriptorWrite.pTexelBufferView = nullptr;
         vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
     }
 }

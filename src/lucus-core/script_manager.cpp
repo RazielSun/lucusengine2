@@ -14,10 +14,8 @@ void script_manager::init()
         throw std::runtime_error("Failed to create AngelScript engine");
     }
 
-	// Set the message callback to print the human readable messages that the engine gives in case of errors
 	int r = _engine->SetMessageCallback(asMETHOD(script_manager, message_callback), this, asCALL_THISCALL); assert( r >= 0 );
 
-    // Register the string type
 	RegisterStdString(_engine.get());
 }
 

@@ -7,12 +7,8 @@
 
 namespace lucus
 {
-    // 2 and 3 are special for understanding that these are different constants
     constexpr u32 g_framesInFlight{ 2 };
-    // How many swapchain images we ASK for. Vulkan treats this as a minimum and
-    // may hand out more, so never index a per-image array by this value --
-    // use the count the driver actually reported (vk_swapchain::imageCount).
-    // DX12 and Metal do get exactly what they request.
+    // A request. Vulkan may return more; index per-image arrays by vk_swapchain::imageCount.
     constexpr u32 g_desiredSwapchainImageCount{ 3 };
     // TODO: Make this dynamic or configurable
     constexpr u32 g_maxUniformBufferCount{ 32 };
@@ -26,7 +22,6 @@ namespace lucus
         DEFERRED = 1,
     };
 
-    /// Resource descriptor style: classic per-draw bind vs. bindless heap (textures, samplers, etc.).
     enum class resource_binding_mode : u8
     {
         BINDFULL = 0,
@@ -41,7 +36,6 @@ namespace lucus
         DEFERRED_LIGHTING_PASS = 3,
     };
 
-    // STRICT SHADER BIND CONTRACT (root parameter / descriptor set index; DX12 + Vulkan)
     enum class shader_binding : u8
     {
         VIEW                = 0,
@@ -54,10 +48,9 @@ namespace lucus
         SHADOW_MAP_SAMPLER  = 7,
         BINDLESS            = 8,
         BINDLESS_SAMPLER    = 9,
-        // Deferred lighting rendering (only in DEFERRED_LIGHTING_PASS)
-        GBUFFER_A           = 10, // NORMAL + Flags
-        GBUFFER_B           = 11, // Metalness + Roughness + Specular + ShadingModel
-        GBUFFER_C           = 12, // ALBEDO + AO
+        GBUFFER_A           = 10,
+        GBUFFER_B           = 11,
+        GBUFFER_C           = 12,
         GBUFFER_DEPTH       = 13,
         GBUFFER_SAMPLER     = 14,
     };
@@ -69,7 +62,6 @@ namespace lucus
         BOTH        = 2,
     };
 
-    // STBI
     enum class texture_format : u8
     {
         GREY       = 1,
@@ -135,7 +127,6 @@ namespace lucus
     CUSTOM_RESOURCE_HANDLE(pipeline_state_handle);
     CUSTOM_RESOURCE_HANDLE(uniform_buffer_handle);
 
-    /// Per-window-context deferred G-buffer attachments (sizes match that context's swapchain extent).
     struct window_gbuffer_targets
     {
         render_target_handle a;
@@ -175,7 +166,7 @@ namespace lucus
     {
         glm::vec4 base_color{1.0f};
         glm::vec4 material_params{0.0f};
-        /// .x = flags (material_tex_flag_*). .y/.z/.w = bindless sampled-image indices for albedo, normal, RME (roughness/metalness/emit packed map); use with matching bindless flags.
+        /// .x = material_tex_flag_* bits; .y/.z/.w = bindless indices for albedo, normal, RME.
         glm::uvec4 texture_info{0, 0, 0, 0};
     };
 

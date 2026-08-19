@@ -48,7 +48,6 @@ namespace lucus
         mutable bool bViewMatrixDirty = true;
         mutable glm::mat4 cachedViewMatrix;
 
-        // transient
         uniform_buffer_handle _handle;
         uniform_buffer_handle _view_proj_handle;
     };

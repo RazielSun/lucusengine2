@@ -70,7 +70,6 @@ void vk_commandbuffer_pool::destroyCommandBuffers()
     vkFreeCommandBuffers(_device, _commandPool, static_cast<uint32_t>(_buffers.size()), _buffers.data());
 }
 
-
 void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
 {
     name = init_desc.name;
@@ -96,7 +95,6 @@ void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
             colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
             colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            // Image layout transitions are driven explicitly by IMAGE_BARRIER commands.
             colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
@@ -120,7 +118,7 @@ void vk_render_pass::init(VkDevice device, const vk_render_pass_desc& init_desc)
 
     if (init_desc.depthAttachmentCount > 0)
     {
-        assert(init_desc.depthAttachmentCount == 1); // currently only support one depth attachment
+        assert(init_desc.depthAttachmentCount == 1);
 
         VkAttachmentDescription depthAttachment{};
         depthAttachment.format = init_desc.depthFormat;
@@ -225,7 +223,7 @@ void lucus::vk_render_target::createResources()
             VkDescriptorImageInfo dsInfo{};
             dsInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             dsInfo.imageView = views[i];
-            dsInfo.sampler = VK_NULL_HANDLE; // because your sampler is a separate descriptor
+            dsInfo.sampler = VK_NULL_HANDLE; // samplers are a separate descriptor here
 
             VkWriteDescriptorSet write{};
             write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -308,7 +306,6 @@ void vk_frame_sync::cleanup()
     vkDestroyFence(_device, fence, nullptr);
 }
 
-
 void vk_mesh::init(VkDevice device, VkPhysicalDevice gpu, mesh* msh)
 {
     assert(msh != nullptr);
@@ -383,7 +380,6 @@ void vk_texture::init(texture* tex, VkDevice device, VkPhysicalDevice gpu, VkDes
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         imageInfo.imageView = texImageView;
 
-        // TEXTURE
         write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write[0].dstSet = descriptorSet;
         write[0].dstBinding = 0;
@@ -459,7 +455,6 @@ void vk_sampler::init(VkDevice device, VkDescriptorSetLayout descriptorSetLayout
         VkDescriptorImageInfo samplerInfo{};
         samplerInfo.sampler = sampler;
 
-        // SAMPLER
         write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write[0].dstSet = descriptorSet;
         write[0].dstBinding = 0;
@@ -488,7 +483,7 @@ void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_bindi
     stage = in_stage;
     bindless = in_bindless;
 
-    VkShaderStageFlags flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT; // BOTH
+    VkShaderStageFlags flags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     if (stage == shader_binding_stage::VERTEX)
     {
         flags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -508,7 +503,7 @@ void vk_descriptor::init(VkDevice device, VkDescriptorType in_type, shader_bindi
     bindings[0] = VkDescriptorSetLayoutBinding
     {
         .binding = 0,
-        .descriptorType = type, // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorType = type,
         .descriptorCount = count,
         .stageFlags = flags,
         .pImmutableSamplers = nullptr

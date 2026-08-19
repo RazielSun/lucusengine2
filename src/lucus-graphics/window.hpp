@@ -41,4 +41,4 @@ namespace lucus
         int _framebufferWidth;
         int _framebufferHeight;
     };
-} // namespace lucus
+}

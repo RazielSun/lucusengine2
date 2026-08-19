@@ -136,7 +136,6 @@ namespace utils
         {
             const float* position = reinterpret_cast<const float*>(data + (i * stride));
             outVertices[static_cast<size_t>(i)].position = glm::vec3(position[0], position[1], position[2]);
-            // std::printf("DEBUG::mesh::create_gltf_factory: %lu POS (%f, %f, %f).\n", i, position[0], position[1], position[2]);
         }
 
         return true;
@@ -147,7 +146,6 @@ namespace utils
         for (uint32_t attributeIndex = 0; attributeIndex < primitive.attributes_count; ++attributeIndex)
         {
             const tg3_str_int_pair& attribute = primitive.attributes[attributeIndex];
-            // printf("DEBUG::find_attribute_accessor_index: checking attribute %d: %.*s\n", attributeIndex, (int)attribute.key.len, attribute.key.data);
             if (tg3_str_equals_cstr(attribute.key, attributeName))
             {
                 return attribute.value;
@@ -341,7 +339,6 @@ namespace utils
                 read_color_component(vertexData + (componentSize * 0), accessor->component_type, accessor->normalized),
                 read_color_component(vertexData + (componentSize * 1), accessor->component_type, accessor->normalized),
                 read_color_component(vertexData + (componentSize * 2), accessor->component_type, accessor->normalized));
-            // printf("DEBUG::mesh::create_gltf_factory: %lu COL (%f, %f, %f).\n", i, outVertices[static_cast<size_t>(i)].color.r, outVertices[static_cast<size_t>(i)].color.g, outVertices[static_cast<size_t>(i)].color.b);
         }
 
         return true;
@@ -402,7 +399,6 @@ namespace utils
         for (uint64_t i = 0; i < accessor->count; ++i)
         {
             outIndices[static_cast<size_t>(i)] = read_index_value(data + (i * stride), accessor->component_type);
-            // std::printf("DEBUG::mesh::create_gltf_factory: %lu IDX (%u).\n", i, outIndices[static_cast<size_t>(i)]);
         }
 
         return true;

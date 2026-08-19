@@ -13,4 +13,4 @@ namespace lucus
         std::shared_ptr<class window> _window;
         std::shared_ptr<class renderer> _renderer;
     };
-} // namespace lucus
+}

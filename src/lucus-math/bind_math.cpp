@@ -8,7 +8,6 @@
 namespace lucus
 {
     void bind_vec3();
-    // void bind_quat();
 
     void ConstructVec3(glm::vec3* self)
     {
