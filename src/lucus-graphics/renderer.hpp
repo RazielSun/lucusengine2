@@ -41,6 +41,8 @@ namespace lucus
         render_mode getMode() const { return r_mode; }
 
     protected:
+        void uploadPendingTextures();
+
         void prepareScene(const scene* scn);
         void shadowPass(const scene* scn, gpu_command_buffer& cmd);
         void forwardPass(const scene* scn, const pass_context& pc, gpu_command_buffer& cmd);
@@ -49,6 +51,8 @@ namespace lucus
 
         pass_context makePassContext(const window_context_handle& ctx_handle);
         const window_gbuffer_targets& requireGBufferTargets(const pass_context& pc, const char* pass_name);
+
+        texture_handle baseColorTextureFor(const material* mat) const;
 
         uniform_buffer_handle viewBufferFor(const window_context_handle& ctx_handle);
         uniform_buffer_handle ensureViewBuffer(const camera* cmr, const pass_context& pc);

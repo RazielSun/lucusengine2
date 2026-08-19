@@ -316,7 +316,9 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 {
                     const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
-                    assert(found_tex != _textures.end());
+                    if (found_tex == _textures.end()) {
+                        throw std::runtime_error("failed to bind texture! texture " + std::to_string(bt_cmd->tex_handle.get()) + " is not on the GPU!");
+                    }
                     auto& tex = found_tex->second;
                     srvHeapDesc.copy(tex.index, frameIndex);
                 }

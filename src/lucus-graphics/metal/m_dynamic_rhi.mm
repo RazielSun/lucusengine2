@@ -195,7 +195,9 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                 {
                     const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
                     auto found = _textures.find(bt_cmd->tex_handle.get());
-                    assert(found != _textures.end());
+                    if (found == _textures.end()) {
+                        throw std::runtime_error("failed to bind texture! texture " + std::to_string(bt_cmd->tex_handle.get()) + " is not on the GPU!");
+                    }
                     auto& tex = found->second;
                     [pass setFragmentTexture:tex.mtexture atIndex:(u32)bt_cmd->position - (u32)shader_binding::TEXTURE];
                 }

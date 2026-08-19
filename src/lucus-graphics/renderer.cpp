@@ -44,27 +44,34 @@ void renderer::add_window(window_handle handle)
     }
 }
 
-void renderer::tick(float dt)
+void renderer::uploadPendingTextures()
 {
-    const bool bNeedLoadTextures = texture_manager::instance().hasPendingTextures();
-    if (bNeedLoadTextures)
+    auto& textures = texture_manager::instance();
+    if (!textures.hasPendingTextures())
     {
-        for (auto& tex_ptr : texture_manager::instance().getPendingTextures())
-        {
-            texture_handle tex_handle = _dynamicRHI->createTexture(tex_ptr.get());
-            if (tex_handle.is_valid())
-            {
-                _dynamicRHI->loadTextureToGPU(tex_handle, g_frameIndex);
-                tex_ptr->setHandle(tex_handle);
-                texture_manager::instance().textureLoaded(tex_ptr.get());
-            }
-        }
-
-        texture_manager::instance().resetPendingTextures();
-
-        g_frameIndex++;
         return;
     }
+
+    for (auto& tex_ptr : textures.getPendingTextures())
+    {
+        texture_handle tex_handle = _dynamicRHI->createTexture(tex_ptr.get());
+        if (!tex_handle.is_valid())
+        {
+            std::printf("Error: Failed to create GPU texture for '%s'\n", tex_ptr->getFileName().c_str());
+            continue;
+        }
+
+        _dynamicRHI->loadTextureToGPU(tex_handle, g_frameIndex);
+        tex_ptr->setHandle(tex_handle);
+        textures.textureLoaded(tex_ptr.get());
+    }
+
+    textures.resetPendingTextures();
+}
+
+void renderer::tick(float dt)
+{
+    uploadPendingTextures();
 
     for (const auto& context : _dynamicRHI->getWindowContexts())
     {
@@ -102,6 +109,20 @@ void renderer::tick(float dt)
 void renderer::cleanup()
 {
     _dynamicRHI.reset();
+}
+
+texture_handle renderer::baseColorTextureFor(const material* mat) const
+{
+    if (mat && mat->getTexturesCount() > 0)
+    {
+        const texture* tex = mat->getTextures()[0].tex.get();
+        if (tex && tex->getHandle().is_valid())
+        {
+            return tex->getHandle();
+        }
+    }
+
+    return g_defaultWhiteTexture->getHandle();
 }
 
 void renderer::prepareScene(const scene* scn)
@@ -411,17 +432,7 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(light_handle, (u8)shader_binding::LIGHT);
 
-        texture_handle tex0{};
-        if (matInst->getTexturesCount() > 0)
-        {
-            const auto& tex_slot = matInst->getTextures()[0];
-            tex0 = tex_slot.tex->getHandle();
-        }
-        else
-        {
-            tex0 = g_defaultWhiteTexture->getHandle();
-        }
-        cmd.emplaceCommand<gpu_bind_texture_command>(tex0, (u8)shader_binding::TEXTURE);
+        cmd.emplaceCommand<gpu_bind_texture_command>(baseColorTextureFor(matInst), (u8)shader_binding::TEXTURE);
 
         cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 
@@ -541,17 +552,7 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
 
-        texture_handle tex0{};
-        if (matInst->getTexturesCount() > 0)
-        {
-            const auto& tex_slot = matInst->getTextures()[0];
-            tex0 = tex_slot.tex->getHandle();
-        }
-        else
-        {
-            tex0 = g_defaultWhiteTexture->getHandle();
-        }
-        cmd.emplaceCommand<gpu_bind_texture_command>(tex0, (u8)shader_binding::TEXTURE);
+        cmd.emplaceCommand<gpu_bind_texture_command>(baseColorTextureFor(matInst), (u8)shader_binding::TEXTURE);
 
         cmd.emplaceCommand<gpu_bind_render_target_command>(shadow_rt_handle, render_target_type::DEPTH, (u8)shader_binding::SHADOW_MAP, 0);
 

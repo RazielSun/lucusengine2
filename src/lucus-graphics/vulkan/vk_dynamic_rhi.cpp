@@ -500,6 +500,9 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     const auto* bt_cmd = reinterpret_cast<const gpu_bind_texture_command*>(data);
                     assert(_activePassPipelineLayout != VK_NULL_HANDLE);
                     auto found_tex = _textures.find(bt_cmd->tex_handle.get());
+                    if (found_tex == _textures.end()) {
+                        throw std::runtime_error("failed to bind texture! texture " + std::to_string(bt_cmd->tex_handle.get()) + " is not on the GPU!");
+                    }
                     auto& tex = found_tex->second;
                     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _activePassPipelineLayout, (u32)bt_cmd->position, 1, &tex.descriptorSet, 0, nullptr);
                 }

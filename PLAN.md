@@ -21,7 +21,7 @@ hazard · **P2** cleanup, no user-visible symptom today.
 | B1 | P0 | ~~Framebuffer view array sized by constant, not by real swapchain image count~~ **fixed** | `vulkan/vk_dynamic_rhi.cpp` |
 | B2 | P0 | `g_swapchainImageCount` treated as fact everywhere else too | `vulkan/vk_window_context.*` |
 | B3 | P1 | ~~Camera frame uniform buffer is keyed by camera, not by camera+window~~ **fixed** | `renderer.cpp` |
-| B4 | P1 | Texture-upload tick skips the whole frame and still advances the frame ring | `renderer.cpp` |
+| B4 | P1 | ~~Texture-upload tick skips the whole frame and still advances the frame ring~~ **fixed** | `renderer.cpp` |
 | B5 | P1 | Shadow pass re-recorded per window context into one shared render target | `renderer.cpp` |
 | B6 | P1 | Acquire / present return codes discarded | `vulkan/` |
 | B7 | P1 | DX12 renders the triangle upside down | `shaders/`, `dx12/` |
@@ -132,20 +132,84 @@ before a single submit. B3 was per window, B11 is per draw. B11 still needs the
 frame-local ring; B3 did not, because one buffer per context suffices when the
 contents are fully rewritten each frame.
 
-### B4 — Texture-upload tick eats a frame · P1
+### B4 — Texture-upload tick eats a frame · P1 · **FIXED**
 
-[renderer.cpp:51-68](src/lucus-graphics/renderer.cpp#L51-L68)
+[renderer.cpp:47-70](src/lucus-graphics/renderer.cpp#L47-L70) ·
+[renderer.cpp:72-108](src/lucus-graphics/renderer.cpp#L72-L108)
 
-When textures are pending, `tick` uploads them, then does `g_frameIndex++;
+When textures were pending, `tick` uploaded them, then did `g_frameIndex++;
 return;` — skipping all rendering for that tick *and* advancing the frame ring
-without a matching submit. After that, `g_frameIndex` no longer tracks in-flight
-submissions, which is what the fence and uniform-buffer slot indices assume.
+without a matching submit.
 
-**Fix:** upload and render in the same tick, or advance the frame index only
-where a submit actually happens.
+**Correction to the original entry.** It claimed the frame index then "no longer
+tracks in-flight submissions, which is what the fence and uniform-buffer slot
+indices assume". That overstated it: each `frameIndex` value is still used at
+most once, `execute` waits on and resets the fence for its own slot, and the
+skip path never calls `acquire_image`, so no semaphore is left signalled. The
+skip widened the gap between two uses of a slot, which is safer, not less safe.
+The real cost was a dropped frame (a visible hitch on any runtime load, and
+`--ticks N` producing N-1 frames) plus `frameIndex` losing its meaning as
+"submit number", which B9/B11 and F5 will need.
 
-**Done when:** frame index increments once per `execute()`, never on the upload
-path.
+**The `return` was load-bearing, though.** `texture::_texture_handle` is set
+only on the upload path, and the draw path read it with no validation
+([renderer.cpp:418](src/lucus-graphics/renderer.cpp#L418) before the fix), while
+the Vulkan `BIND_TEXTURE` case dereferenced the result of `_textures.find()`
+without comparing against `end()`. DX12 and Metal only had an `assert` there.
+The default textures are created through `texture::create_one_factory` and go
+through the same pending queue, so before the first upload tick *every* texture
+handle in the engine — fallbacks included — was invalid. Drawing one tick
+earlier would have been undefined behaviour, not a missing texture.
+
+**Fixed in three parts:**
+
+1. The upload loop moved to `renderer::uploadPendingTextures()`, called at the
+   top of `tick` with no `return`. `g_frameIndex++` now happens once, at the end
+   of `tick`, after `execute`. A failed `createTexture` logs the file name
+   instead of being skipped silently.
+2. `renderer::baseColorTextureFor(const material*)` replaces the duplicated
+   `tex0` selection in `forwardPass` and `gbufferPass`: no textures, null
+   `texture`, or an invalid handle all fall back to `g_defaultWhiteTexture`.
+3. `BIND_TEXTURE` in all three backends throws with the offending handle instead
+   of dereferencing `end()` (Vulkan) or asserting (DX12, Metal).
+
+Part 3 was needed independently of parts 1-2: `resetPendingTextures()` clears
+the queue unconditionally while `setHandle` only runs on success, so a single
+failed upload used to turn into UB at draw time. It now surfaces as a white
+texture, or as a loud error if a handle reaches the RHI unknown.
+
+**Verified** with a temporary probe printing every `execute` call
+(`one_texture_test`, `--ticks 3`):
+
+```
+Texture 4294901761 uploaded successfully     <- 4 default textures
+Texture 4294901762 uploaded successfully
+Texture 4294901763 uploaded successfully
+Texture 4294901764 uploaded successfully
+Texture  548364600 uploaded successfully     <- the scene texture
+PROBE submit frame=0                          <- first draw, after all uploads
+PROBE submit frame=1
+PROBE submit frame=2
+```
+
+Three ticks, three submits, starting at frame 0; before the fix the same run
+gave two submits at frames 1 and 2. All uploads precede the first submit.
+
+The guard was verified by binding `texture_handle(999999)` in `forwardPass` on a
+temporary build: `failed to bind texture! texture 999999 is not on the GPU!`,
+process exit 1 — previously a segfault on Vulkan. Both probes were reverted.
+
+Suite 14/14 on Linux/Vulkan. **Not verified:** that the image is still correct
+(S6), DX12 and Metal (compile-only edits, one line each). On DX12,
+`uploadTextureToGpu(dxtex, frameIndex)` uses the frame index for its upload
+slot, and that slot is now the same frame that goes on to render — worth
+checking on a Windows machine.
+
+**Note for B9:** the Vulkan upload path drains the queue via `vkQueueWaitIdle`
+inside `endSingleTimeCommands`, which is what makes
+`writeTextureToAllBindlessDescriptorFrames` safe when a texture loads at
+runtime — it rewrites the bindless descriptor sets of *all* frames in flight.
+That safety is accidental, not designed. DX12 has no equivalent barrier.
 
 ### B5 — Shadow pass duplicated across window contexts · P1
 
