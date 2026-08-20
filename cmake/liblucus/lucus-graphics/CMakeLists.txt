@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.28)
 project ( lucus-graphics )
 
 if(APPLE)
-    enable_language(OBJC OBJCXX)
+    message(FATAL_ERROR
+        "macOS/Metal is archived and not part of the supported build matrix. "
+        "The backend sources live in archive/metal/. See PLAN.md S1.")
 endif()
 
 set ( MODULE_NAME "lucus-graphics" )
@@ -19,12 +21,6 @@ set ( MODULE_EXTRA_LIBS "lucus::glfw" "lucus::tinygltf" )
 if (WIN32)
     list(APPEND MODULE_EXTRA_INCLUDES "${LUCUS_ENGINE_ROOT}/third-party/directx")
     list(APPEND MODULE_EXTRA_LIBS d3d12 dxgi dxguid d3dcompiler)
-elseif(APPLE)
-    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
-    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
-    find_library(METAL_FRAMEWORK Metal REQUIRED)
-    find_library(COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
-    list(APPEND MODULE_EXTRA_LIBS ${COCOA_FRAMEWORK} ${QUARTZCORE_FRAMEWORK} ${METAL_FRAMEWORK} ${COREGRAPHICS_FRAMEWORK})
 elseif(UNIX)
     find_package(Vulkan REQUIRED)
     list(APPEND MODULE_EXTRA_LIBS Vulkan::Vulkan)
@@ -43,12 +39,6 @@ if (WIN32)
     file(GLOB PLATFORM_SRC
         "${CMAKE_CURRENT_SOURCE_DIR}/dx12/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/dx12/*.hpp"
-    )
-
-elseif(APPLE)
-    file(GLOB PLATFORM_SRC
-        "${CMAKE_CURRENT_SOURCE_DIR}/metal/*.mm"
-        "${CMAKE_CURRENT_SOURCE_DIR}/metal/*.hpp"
     )
 
 elseif(UNIX)

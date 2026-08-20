@@ -7,7 +7,10 @@ Current backlog, known bugs and their analysis live in `PLAN.md`.
 
 ## Project
 
-Educational cross-platform 3D engine. Linux/Vulkan, macOS/Metal, Windows/DX12. Not production.
+Educational cross-platform 3D engine. Linux/Vulkan and Windows/DX12. Not production.
+
+macOS/Metal is **archived** — sources in `archive/metal/`, see `PLAN.md` S1.
+Configuring on macOS fails on purpose.
 
 ## Build
 
@@ -23,7 +26,6 @@ Compilers: clang (default) or GCC 13+.
 | Platform | Command |
 |----------|---------|
 | Linux | `./scripts/build_linux.sh` |
-| macOS | `./scripts/build_mac.sh` |
 | Windows | `scripts\build_win.bat` |
 
 Output: `bin/app` (or `bin/app.exe`), `bin/shaders/`
@@ -37,9 +39,18 @@ Single test (5-tick headless run):
 
 All tests:
 ```bash
-./scripts/run_tests.sh          # Linux/Mac
+./scripts/run_tests.sh          # Linux
 scripts\run_tests.bat           # Windows
 ```
+
+Every test runs with `--validation=on --validation-required`, so a run fails if
+the graphics API reports an error *or* if the requested validation level is not
+available. Override with `VALIDATION=gpu` (adds GPU-assisted and synchronization
+validation, slow) or `VALIDATION=off`. The suite also runs `--validation-selftest`
+first, which checks the argument parser and the validation sink without a GPU.
+
+On Linux the validation layer comes from the `vulkan-validationlayers` package;
+without it every test fails on the requirement, by design.
 
 Logs → `scripts/logs/`
 
@@ -52,7 +63,6 @@ engine (main loop)
 ├── renderer               frame management, GPU command buffer fill
 │   └── dynamic_rhi        abstract RHI interface
 │       ├── vk_dynamic_rhi Vulkan (Linux)
-│       ├── m_dynamic_rhi  Metal (macOS)  — .mm files, OBJC/OBJCXX
 │       └── dx_dynamic_rhi DirectX 12 (Windows)
 ├── scene                  render_objects + camera
 └── texture_manager        async load + cache
@@ -115,12 +125,12 @@ explanation belongs.
   Say so when a change affects rendering.
 - Do not add workaround build flags; fix the cause.
 - Report what was verified and what was not, per platform. Only Linux/Vulkan
-  can be run here; DX12 and Metal changes are compile-only at best.
+  can be run here; DX12 changes are compile-only at best.
 
 ## Shaders
 
 Language: SLANG. Sources in `shaders/*.slang`.
-Compiled to `bin/shaders/` as `*.spv` (Vulkan), `*.dxil` (DX12), `*.metallib` (Metal).
+Compiled to `bin/shaders/` as `*.spv` (Vulkan) and `*.dxil` (DX12).
 
 ## Third-Party
 

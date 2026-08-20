@@ -552,7 +552,7 @@ the suppression carries a written reason.
 
 | id | prio | title |
 |----|------|-------|
-| S1 | P1 | Metal backend does not match the current RHI interface |
+| S1 | P1 | ~~Metal backend does not match the current RHI interface~~ **archived** |
 | S2 | P1 | `assert()` used as production error handling |
 | S3 | P1 | No swapchain recreation / window resize |
 | S4 | P2 | ~~GCC cannot compile the project~~ **fixed** |
@@ -564,7 +564,7 @@ the suppression carries a written reason.
 | S10 | P1 | Validation is a compile-time toggle and its output is discarded |
 | S11 | P2 | No unit-test framework — everything runs through the app |
 
-### S1 — Metal backend does not match the current RHI interface · P1
+### S1 — Metal backend does not match the current RHI interface · P1 · **RESOLVED: archived**
 
 `src/lucus-graphics/metal/`
 
@@ -584,14 +584,18 @@ Intended parity after restoring the build:
 | Deferred / GBuffer | yes | yes | **no** |
 | Bindless textures | yes | yes | **no** |
 
-**Decision needed:** revive Metal, or remove it from the supported build matrix
-and label it as archived. If retained as forward-only, it must still implement
-the current interface, reject unsupported modes explicitly and compile in CI.
-Every new feature currently costs 2×, not 3× — that should be a conscious
-choice, not a drift.
+**Decision taken (2026-08-20): archived.** The supported matrix is Linux/Vulkan
+and Windows/DX12. Every new feature costs 2×, and that is now a stated choice
+rather than drift.
 
-**Done when:** macOS compiles from a clean checkout and a forward-pass smoke test
-runs, or Metal is deliberately removed from supported platforms and build docs.
+What changed: `src/lucus-graphics/metal/` moved to `archive/metal/`,
+`build_mac.sh` and `compile_metal.sh` to `archive/scripts/`, and configuring on
+macOS now stops at a `FATAL_ERROR` pointing at `archive/README.md` instead of
+failing deep in the compile. Nothing was deleted, and `archive/README.md` records
+what it would take to bring it back.
+
+Consequences elsewhere: **S9**'s build matrix is two platforms, not three, and
+`VALIDATION_PLAN.md` **V7** (Metal validation) is dropped rather than deferred.
 
 ### S2 — `assert()` as error handling · P1
 
@@ -742,13 +746,15 @@ rejected deterministically before the first frame.
 ### S9 — No cross-platform build matrix · P1
 
 Platform sources are selected by CMake, so a Linux build cannot even parse the
-DX12 or Metal implementations. Interface drift therefore remains invisible
-until someone builds on that OS; the current Metal `createPSO` mismatch is an
-example.
+DX12 implementation. Interface drift therefore remains invisible until someone
+builds on that OS. The Metal backend is what that drift looks like when nobody
+notices for long enough — it ended up archived (S1) rather than fixed, and DX12
+is exposed to exactly the same failure mode: the validation work in
+`VALIDATION_PLAN.md` V6 touched `dx_dynamic_rhi.cpp` without ever compiling it.
 
-**Fix:** CI compile jobs for Linux/Vulkan, Windows/DX12 and macOS/Metal. Runtime
-smoke tests may remain platform-specific, but every supported backend must at
-least compile after an RHI interface change.
+**Fix:** CI compile jobs for Linux/Vulkan and Windows/DX12. Runtime smoke tests
+may remain platform-specific, but every supported backend must at least compile
+after an RHI interface change.
 
 **Done when:** all supported platform targets are compiled for every change to
 `dynamic_rhi`, command structures, shared render types or shader bindings.

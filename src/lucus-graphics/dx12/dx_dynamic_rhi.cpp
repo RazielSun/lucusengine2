@@ -1,5 +1,7 @@
 #include "dx_dynamic_rhi.hpp"
 
+#include "validation_sink.hpp"
+
 #include "window_manager.hpp"
 
 #include "command_buffer.hpp"
@@ -65,6 +67,9 @@ dx_dynamic_rhi::~dx_dynamic_rhi()
         context.cleanup();
     }
     _contexts.clear();
+
+    drainValidationMessages();
+    _infoQueue.Reset();
 
     _commandQueue.Reset();
     _deviceHandle.Reset();
@@ -445,6 +450,63 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     }
 
     fenceValues[currentFrame] = current_fence + 1;
+
+    drainValidationMessages();
+}
+
+void dx_dynamic_rhi::drainValidationMessages()
+{
+    if (!_infoQueue)
+        return;
+
+    validation_sink& sink = validation_sink::instance();
+
+    const UINT64 stored = _infoQueue->GetNumStoredMessages();
+    std::vector<u8> buffer;
+
+    for (UINT64 i = 0; i < stored; ++i)
+    {
+        SIZE_T length = 0;
+        if (FAILED(_infoQueue->GetMessage(i, nullptr, &length)) || length == 0)
+            continue;
+
+        buffer.resize(length);
+        D3D12_MESSAGE* message = reinterpret_cast<D3D12_MESSAGE*>(buffer.data());
+        if (FAILED(_infoQueue->GetMessage(i, message, &length)))
+            continue;
+
+        validation_severity severity = validation_severity::INFO;
+        switch (message->Severity)
+        {
+            case D3D12_MESSAGE_SEVERITY_CORRUPTION:
+            case D3D12_MESSAGE_SEVERITY_ERROR:
+                severity = validation_severity::ERROR;
+                break;
+            case D3D12_MESSAGE_SEVERITY_WARNING:
+                severity = validation_severity::WARNING;
+                break;
+            case D3D12_MESSAGE_SEVERITY_INFO:
+            case D3D12_MESSAGE_SEVERITY_MESSAGE:
+                severity = validation_severity::INFO;
+                break;
+        }
+
+        const std::string description = message->pDescription
+            ? std::string(message->pDescription, message->DescriptionByteLength ? message->DescriptionByteLength - 1 : 0)
+            : std::string{};
+
+        sink.report(validation_backend::DX12, severity, std::to_string(message->ID), description);
+    }
+
+    _infoQueue->ClearStoredMessages();
+
+    const UINT64 discarded = _infoQueue->GetNumMessagesDiscardedByMessageCountLimit();
+    if (discarded > _discardedValidationMessages)
+    {
+        _discardedValidationMessages = discarded;
+        sink.report(validation_backend::DX12, validation_severity::ERROR, "info-queue-overflow",
+                    "the info queue discarded messages, validation results are incomplete");
+    }
 }
 
 pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
@@ -773,31 +835,35 @@ void dx_dynamic_rhi::createDevice()
 
     _deviceHandle = _device->getDevice();
 
-    Com<ID3D12InfoQueue> pInfoQueue;
-    if (_validationStatus.effective != rhi_validation_level::OFF && SUCCEEDED(_deviceHandle.As(&pInfoQueue)))
+    if (_validationStatus.effective != rhi_validation_level::OFF && SUCCEEDED(_deviceHandle.As(&_infoQueue)))
     {
         const BOOL breakOnError = IsDebuggerPresent();
-        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
-        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, breakOnError);
+        _infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
+        _infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, breakOnError);
+
+        _infoQueue->SetMessageCountLimit(static_cast<UINT64>(-1));
 
         D3D12_MESSAGE_SEVERITY Severities[] =
         {
             D3D12_MESSAGE_SEVERITY_INFO
         };
 
-        D3D12_MESSAGE_ID DenyIds[] = {
-            D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
-            D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,
-            D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,
-        };
-
         D3D12_INFO_QUEUE_FILTER NewFilter = {};
         NewFilter.DenyList.NumSeverities = _countof(Severities);
         NewFilter.DenyList.pSeverityList = Severities;
-        NewFilter.DenyList.NumIDs = _countof(DenyIds);
-        NewFilter.DenyList.pIDList = DenyIds;
 
-        ThrowIfFailed(pInfoQueue->PushStorageFilter(&NewFilter), "Failed Push Debug Info");
+        ThrowIfFailed(_infoQueue->PushStorageFilter(&NewFilter), "Failed Push Debug Info");
+
+        validation_sink& sink = validation_sink::instance();
+        sink.suppress({ validation_backend::DX12,
+                        std::to_string(D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE),
+                        "carried over from the previous hard-coded deny list, not re-audited" });
+        sink.suppress({ validation_backend::DX12,
+                        std::to_string(D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE),
+                        "carried over from the previous hard-coded deny list, not re-audited" });
+        sink.suppress({ validation_backend::DX12,
+                        std::to_string(D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE),
+                        "carried over from the previous hard-coded deny list, not re-audited" });
     }
 
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};

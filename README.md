@@ -1,5 +1,5 @@
 # LUCUS ENGINE 2
-An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not for production.
+An educational project, cross-platform (Linux-Vulkan, Win-DX12). Not for production.
 
 ## Project structure
 - src/ — main code of engine
@@ -8,17 +8,21 @@ An educational project, cross-platform (Linux-Vulkan, Mac-Metal, Win-DX12). Not 
 - scripts/ - bash/bat utilities for building, compiling, running
 - content/scripts/ - AngelScript code for engine (main and tests)
 - third-party/ - third-party dependencies for different platforms
+- archive/ - code kept for reference, not built (see `archive/README.md`)
 
 ## Backend status
 
-| Feature | Vulkan (Linux) | DX12 (Win) | Metal (Mac) |
-|---|---|---|---|
-| Forward pass | yes | yes | yes |
-| Shadow map pass | yes | yes | no (disabled) |
-| Deferred / GBuffer | yes | yes | no |
-| Bindless textures | yes | yes | no |
+| Feature | Vulkan (Linux) | DX12 (Win) |
+|---|---|---|
+| Forward pass | yes | yes |
+| Shadow map pass | yes | yes |
+| Deferred / GBuffer | yes | yes |
+| Bindless textures | yes | yes |
 
-Metal was intentionally left behind at the `shadow_map` pass stage, maybe in the future.
+Metal (macOS) is **archived**. It was parked at the `shadow_map` stage and then drifted
+out of the RHI interface, so the macOS target had not compiled for a while. The sources
+are kept in `archive/metal/` and configuring on macOS fails with a message pointing there.
+See `archive/README.md` for what reviving it would take.
 
 ## TODO LIST
 ### Done
@@ -49,13 +53,6 @@ Metal was intentionally left behind at the `shadow_map` pass stage, maybe in the
 - Cmake
 - Ninja
 - LLVM > 20.0
-
-### Mac
-* I decided do not support mac on shadow_map pass stage, maybe in the future
-```
-brew install cmake
-brew install ninja
-```
 
 ### Linux
 - Cmake >= 3.28
@@ -90,7 +87,6 @@ SLANGC=/path/to/slangc ./scripts/compile_vulkan.sh
 | Platform | Command |
 |----------|---------|
 | Linux | `./scripts/build_linux.sh` |
-| macOS | `./scripts/build_mac.sh` |
 | Windows | `scripts\build_win.bat` |
 
 Output: `bin/app` (or `bin/app.exe`), `bin/shaders/`.

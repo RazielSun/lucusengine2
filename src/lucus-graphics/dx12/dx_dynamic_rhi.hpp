@@ -48,6 +48,8 @@ namespace lucus
 
             void uploadTextureToGpu(dx_texture& tex, u32 frameIndex);
 
+            void drainValidationMessages();
+
         private:
             Com<IDXGIFactory4> _DXGIFactory;
 
@@ -55,6 +57,9 @@ namespace lucus
             Com<ID3D12Device> _deviceHandle;
 
             Com<ID3D12CommandQueue> _commandQueue;
+
+            Com<ID3D12InfoQueue> _infoQueue;
+            UINT64 _discardedValidationMessages { 0 };
 
             DXGI_FORMAT mColorFormat { DXGI_FORMAT_R8G8B8A8_UNORM };
             DXGI_FORMAT mDepthFormat { DXGI_FORMAT_D32_FLOAT };

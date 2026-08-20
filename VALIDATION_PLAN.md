@@ -948,3 +948,85 @@ the exit code.
 
 This makes V8 straightforward: both levels are clean, so `--validation-required`
 can go into the suite without a pre-existing failure to explain away.
+
+### V6 — done, compile-only claim NOT possible
+
+`ID3D12InfoQueue` is now a member, `drainValidationMessages()` reads it at the
+end of `execute()` — after the frame fence has been waited on, so GPU-based
+validation messages exist by then — and again in the destructor before the queue
+and device are released. Every `D3D12_MESSAGE_SEVERITY` is mapped
+(`CORRUPTION` and `ERROR` to error, `WARNING` to warning, `INFO` and `MESSAGE`
+to info). The storage-filter limit is lifted with
+`SetMessageCountLimit(UINT64(-1))`, and `GetNumMessagesDiscardedByMessageCountLimit`
+is still checked — a growing count reports an error through the sink, so a
+`--validation-required` run fails on incomplete validation results rather than
+passing quietly.
+
+`SetBreakOnSeverity` keeps only `CORRUPTION` and `ERROR`, and only under
+`IsDebuggerPresent()`. The three hard-coded `DenyIds` moved out of the queue
+filter into `validation_sink` suppressions, keyed by backend and carrying the
+reason "carried over from the previous hard-coded deny list, not re-audited" —
+they are now counted and visible in the summary instead of silently dropped. The
+`INFO` severity deny stays in the queue filter, since that is pure volume.
+
+**This code has never been compiled.** There is no Windows machine here. One
+error was caught by reading the API rather than by a compiler:
+`SetMessageCountLimit` takes a single `UINT64`, not an id plus a limit as first
+written. Assume there are more; the first Windows build is the real test.
+
+### V8 — done, Linux verified
+
+`run_tests.sh` and `run_tests.bat` run `--validation-selftest` before the scene
+tests and pass `--validation=${VALIDATION:-on} --validation-required` to every
+test. `VALIDATION=off` switches to `--no-validation` instead, since
+`--validation-required` with validation off is rejected at parse time.
+
+Verified on Linux: default, `VALIDATION=gpu` and `VALIDATION=off` all pass, and
+the selftest line appears in every run.
+
+Verified that the suite fails closed. With `VK_LAYER_PATH=/nonexistent` the
+layer disappears and the run stops at the first test:
+
+```
+[validation] 'on' was requested with --validation-required, but only 'off' is
+available: VK_LAYER_KHRONOS_validation is not present
+[FAIL] tests/cube_gpu_test.as
+```
+
+That is R1's whole point demonstrated end to end: a machine that cannot validate
+no longer reports a green suite.
+
+`AGENTS.md` documents the `VALIDATION` variable and the package requirement.
+
+---
+
+## State
+
+| step | status |
+|------|--------|
+| V1 V2 V3 V3b V4 V5 V8 | done, verified on Linux/Vulkan |
+| V6 | written, never compiled |
+| V7 | **dropped** — Metal archived, `PLAN.md` S1 |
+
+Fixed along the way: **B15**, **B16**, **B17**. Open: **B18**
+(`WARNING-Shader-OutputNotConsumed`, warnings only), **S11** (no unit-test
+framework), and the R10 gap that needs it — missing-layer behaviour is now
+covered by hand, not by a test.
+
+### V7 dropped — Metal archived
+
+S1 was decided on 2026-08-20: macOS/Metal leaves the supported build matrix.
+`src/lucus-graphics/metal/` is now `archive/metal/`, the macOS build and Metal
+shader scripts are in `archive/scripts/`, and configuring on macOS fails with a
+message pointing at `archive/README.md`.
+
+V7 is therefore dropped, not deferred. The design notes stay in this document as
+the starting point if the backend is ever revived — the env-vars-in-launcher
+point from R9, `MTLCommandBufferDescriptor.errorOptions` as the runtime path, and
+the completion-handler wait that R3's asynchronous finalization was written for.
+
+`validation_backend::METAL` stays in `validation_sink`: it costs nothing and is
+one less thing to reintroduce.
+
+**The validation plan is now complete for every supported backend** — Linux/Vulkan
+verified end to end, Windows/DX12 written but never compiled.

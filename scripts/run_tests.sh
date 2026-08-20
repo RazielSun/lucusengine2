@@ -10,6 +10,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 TEST_LIST_FILE="${TEST_LIST_FILE:-$SCRIPT_DIR/tests.list}"
 APP="${APP:-$ROOT/bin/app}"
 TICKS="${TICKS:-10}"
+VALIDATION="${VALIDATION:-on}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$LOG_DIR/run_tests_linux_${TIMESTAMP}.log"
 LATEST_LOG="$LOG_DIR/run_tests_linux_latest.log"
@@ -43,14 +44,32 @@ echo "APP:       $APP" | tee -a "$LOG_FILE"
 echo "TEST_LIST: $TEST_LIST_FILE" | tee -a "$LOG_FILE"
 echo "TEST_DIR:  $TEST_DIR" | tee -a "$LOG_FILE"
 echo "TICKS:     $TICKS" | tee -a "$LOG_FILE"
+echo "VALIDATION: $VALIDATION" | tee -a "$LOG_FILE"
 echo "LOG_FILE:  $LOG_FILE" | tee -a "$LOG_FILE"
+echo | tee -a "$LOG_FILE"
+
+validation_args=()
+if [[ "$VALIDATION" == "off" ]]; then
+    validation_args+=(--no-validation)
+else
+    validation_args+=("--validation=$VALIDATION" --validation-required)
+fi
+
+echo "[RUN ] validation selftest" | tee -a "$LOG_FILE"
+if ! "$APP" --directory "$RUN_DIR" --validation-selftest 2>&1 | tee -a "$LOG_FILE"; then
+    echo "[FAIL] validation selftest" | tee -a "$LOG_FILE"
+    echo "[FAIL] Full log: $LOG_FILE" | tee -a "$LOG_FILE"
+    cp "$LOG_FILE" "$LATEST_LOG"
+    exit 1
+fi
+echo "[ OK ] validation selftest" | tee -a "$LOG_FILE"
 echo | tee -a "$LOG_FILE"
 
 run_test() {
     local script_path="$1"
 
     echo "[RUN ] $script_path" | tee -a "$LOG_FILE"
-    if "$APP" --directory "$RUN_DIR" --script "$script_path" --ticks "$TICKS" 2>&1 | tee -a "$LOG_FILE"; then
+    if "$APP" --directory "$RUN_DIR" --script "$script_path" --ticks "$TICKS" "${validation_args[@]}" 2>&1 | tee -a "$LOG_FILE"; then
         echo "[ OK ] $script_path" | tee -a "$LOG_FILE"
         echo | tee -a "$LOG_FILE"
         return 0

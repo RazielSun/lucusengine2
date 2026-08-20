@@ -18,6 +18,13 @@ if defined TICKS (
     set "TEST_TICKS=10"
 )
 
+if not defined VALIDATION set "VALIDATION=on"
+if /I "%VALIDATION%"=="off" (
+    set "VALIDATION_ARGS=--no-validation"
+) else (
+    set "VALIDATION_ARGS=--validation=%VALIDATION% --validation-required"
+)
+
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
 if not exist "%APP%" (
@@ -56,12 +63,27 @@ type nul > "%LOG_FILE%"
 >> "%LOG_FILE%" echo TEST_LIST: %TEST_LIST_FILE%
 >> "%LOG_FILE%" echo TEST_DIR:  %TEST_DIR%
 >> "%LOG_FILE%" echo TICKS:     %TEST_TICKS%
+>> "%LOG_FILE%" echo VALIDATION: %VALIDATION%
 >> "%LOG_FILE%" echo LOG_FILE:  %LOG_FILE%
 >> "%LOG_FILE%" echo.
 copy /Y "%LOG_FILE%" "%LATEST_LOG%" >nul
 
 echo == Lucus Tests ==
 echo Log file: %LOG_FILE%
+echo.
+
+echo [RUN ] validation selftest
+>> "%LOG_FILE%" echo [RUN ] validation selftest
+"%APP%" --directory "%RUN_DIR%" --validation-selftest >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [FAIL] validation selftest
+    echo [FAIL] Full log: %LOG_FILE%
+    >> "%LOG_FILE%" echo [FAIL] validation selftest
+    copy /Y "%LOG_FILE%" "%LATEST_LOG%" >nul
+    exit /b 1
+)
+echo [ OK ] validation selftest
+>> "%LOG_FILE%" echo [ OK ] validation selftest
 echo.
 
 if exist "%TEST_LIST_FILE%" (
@@ -111,7 +133,7 @@ for /f "usebackq delims=" %%T in ("%RUN_TESTS_FILE%") do (
 
     echo [RUN ] !TEST_SCRIPT!
     >> "%LOG_FILE%" echo [RUN ] !TEST_SCRIPT!
-    "%APP%" --directory "%RUN_DIR%" --script "!TEST_SCRIPT!" --ticks "%TEST_TICKS%" >> "%LOG_FILE%" 2>&1
+    "%APP%" --directory "%RUN_DIR%" --script "!TEST_SCRIPT!" --ticks "%TEST_TICKS%" %VALIDATION_ARGS% >> "%LOG_FILE%" 2>&1
     if errorlevel 1 (
         echo [FAIL] !TEST_SCRIPT!
         echo [FAIL] Full log: %LOG_FILE%
