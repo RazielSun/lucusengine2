@@ -17,7 +17,7 @@ namespace lucus
             dx_dynamic_rhi();
             virtual ~dx_dynamic_rhi();
 
-            virtual void init() override;
+            virtual void init(const rhi_init_desc& desc) override;
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;

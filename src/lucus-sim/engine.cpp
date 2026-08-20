@@ -17,6 +17,8 @@ void engine::run(int argc, char** argv)
 {
     commandline_args::instance().init(argc, argv);
 
+    renderer::instance().setRHIInitDesc(rhi_init_desc_from_commandline());
+
     script_manager::instance().init();
 
     bind_core_module();
@@ -40,6 +42,12 @@ void engine::run(int argc, char** argv)
     auto handle = window_manager::instance().getMainWindow();
     if (!handle.is_valid()) {
         throw std::runtime_error("Failed to get main window handle");
+    }
+
+    const validation_status* validation = renderer::instance().getValidationStatus();
+    if (validation && !validation->satisfied) {
+        renderer::instance().cleanup();
+        throw std::runtime_error("Requested validation level is not available");
     }
 
     auto mainWindow = window_manager::instance().getWindow(handle);

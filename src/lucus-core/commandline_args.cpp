@@ -65,3 +65,24 @@ std::string commandline_args::getArgument(const std::string& name) const
 
     return "";
 }
+
+bool commandline_args::hasArgument(const std::string& name) const
+{
+    if (name.empty())
+        return false;
+
+    const std::string prefixed_name = "--" + name;
+    const std::string equals_prefix = prefixed_name + '=';
+
+    for (const std::string& arg : _args)
+    {
+        if (arg == prefixed_name)
+            return true;
+
+        if (arg.size() >= equals_prefix.size() &&
+            arg.compare(0, equals_prefix.size(), equals_prefix) == 0)
+            return true;
+    }
+
+    return false;
+}

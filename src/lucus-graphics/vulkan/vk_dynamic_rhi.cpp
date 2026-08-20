@@ -102,8 +102,10 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
     vkDestroyInstance(_instance, nullptr);
 }
 
-void vk_dynamic_rhi::init() 
+void vk_dynamic_rhi::init(const rhi_init_desc& desc)
 {
+    beginValidationSetup(desc);
+
     createInstance();
     createDevice();
     createCommandBufferPool();
@@ -117,6 +119,8 @@ void vk_dynamic_rhi::init()
     createDescriptorSetLayouts();
     createPassPipelineLayouts();
     createBindlessDescriptorSets();
+
+    finishValidationSetup();
 }
 
 void vk_dynamic_rhi::createInstance()
@@ -147,28 +151,34 @@ void vk_dynamic_rhi::createInstance()
     instanceCreateInfo.enabledExtensionCount = glfwExtensionCount;
     instanceCreateInfo.ppEnabledExtensionNames = glfwExtensions;
 
-    #ifndef NDEBUG
-	const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
-	{
-		uint32_t instanceLayerCount;
-		vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
-		std::vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
-		vkEnumerateInstanceLayerProperties(&instanceLayerCount, instanceLayerProperties.data());
-		bool validationLayerPresent = false;
-		for (VkLayerProperties& layer : instanceLayerProperties) {
-			if (strcmp(layer.layerName, validationLayerName) == 0) {
-				validationLayerPresent = true;
-				break;
-			}
-		}
-		if (validationLayerPresent) {
-			instanceCreateInfo.ppEnabledLayerNames = &validationLayerName;
-			instanceCreateInfo.enabledLayerCount = 1;
-		} else {
-			std::cerr << "Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled";
-		}
-	}
-    #endif
+    const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
+    if (_initDesc.validation != rhi_validation_level::OFF)
+    {
+        uint32_t instanceLayerCount;
+        vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
+        std::vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
+        vkEnumerateInstanceLayerProperties(&instanceLayerCount, instanceLayerProperties.data());
+
+        bool validationLayerPresent = false;
+        for (VkLayerProperties& layer : instanceLayerProperties) {
+            if (strcmp(layer.layerName, validationLayerName) == 0) {
+                validationLayerPresent = true;
+                break;
+            }
+        }
+
+        if (validationLayerPresent) {
+            instanceCreateInfo.ppEnabledLayerNames = &validationLayerName;
+            instanceCreateInfo.enabledLayerCount = 1;
+
+            _validationStatus.effective = rhi_validation_level::ON;
+            if (_initDesc.validation == rhi_validation_level::GPU) {
+                _validationStatus.detail = "GPU-assisted validation is not implemented yet";
+            }
+        } else {
+            _validationStatus.detail = "VK_LAYER_KHRONOS_validation is not present";
+        }
+    }
 
     VkResult result = vkCreateInstance(&instanceCreateInfo, nullptr, &_instance);
     if (result != VK_SUCCESS) {

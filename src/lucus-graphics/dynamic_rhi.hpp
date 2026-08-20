@@ -22,7 +22,9 @@ namespace lucus
         dynamic_rhi() = default;
         virtual ~dynamic_rhi() = default;
 
-        virtual void init() = 0;
+        virtual void init(const rhi_init_desc& desc) = 0;
+
+        const validation_status& getValidationStatus() const { return _validationStatus; }
 
         virtual window_context_handle createWindowContext(const window_handle& handle) = 0;
         virtual const std::vector<window_context_handle>& getWindowContexts() const { return _contextHandles; }
@@ -54,6 +56,12 @@ namespace lucus
         virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) = 0;
 
     protected:
+        void beginValidationSetup(const rhi_init_desc& desc);
+        void finishValidationSetup();
+
         std::vector<window_context_handle> _contextHandles;
+
+        rhi_init_desc _initDesc;
+        validation_status _validationStatus;
     };
 }

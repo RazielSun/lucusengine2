@@ -13,6 +13,7 @@ namespace lucus
         const std::vector<std::string>& args() const { return _args; }
 
         std::string getArgument(const std::string& name) const;
+        bool hasArgument(const std::string& name) const;
 
 
     private:

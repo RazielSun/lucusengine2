@@ -32,6 +32,8 @@ hazard · **P2** cleanup, no user-visible symptom today.
 | B12 | P1 | PSO identity is mutable and does not include the render pass | `material.*`, `renderer.cpp`, RHI backends |
 | B13 | P1 | Truncated hashes are used as unique GPU resource handles | `mesh.cpp`, `material.cpp`, RHI backends |
 | B14 | P1 | Intrusive-reference ownership is inconsistent and leaks objects | `lucus-core/`, `scene.cpp`, `gltf_utils.cpp`, `renderer.cpp` |
+| B15 | P1 | SPIR-V declares `DrawParameters` without the matching device feature | `vulkan/vk_dynamic_rhi.cpp`, `shaders/` |
+| B16 | P1 | Any exception after RHI init crashes the process on the way out | `lucus-sim/engine.cpp` |
 
 ### B1 — Framebuffer view array sized by constant · P0 · **FIXED** (`71b85e5`)
 
@@ -414,6 +416,58 @@ counts to baseline under ASan/LSan, including failed and partial glTF loads.
 
 ---
 
+### B15 — `DrawParameters` capability without the matching feature · P1
+
+[vk_dynamic_rhi.cpp:212](src/lucus-graphics/vulkan/vk_dynamic_rhi.cpp#L212)
+
+Found by the first run with the validation layer actually installed (S10, V1+V2):
+
+```
+VUID-VkShaderModuleCreateInfo-pCode-08740(ERROR / SPEC):
+vkCreateGraphicsPipelines(): pCreateInfos[0].pStages[0] SPIR-V Capability
+DrawParameters was declared, but one of the following requirements is required
+(VkPhysicalDeviceVulkan11Features::shaderDrawParameters OR
+VK_KHR_shader_draw_parameters)
+```
+
+15 occurrences across the suite, one per pipeline creation. `_enabledFeatures`
+is a plain `VkPhysicalDeviceFeatures`, which cannot express
+`shaderDrawParameters`, and `_enabledDeviceExtensions` does not carry
+`VK_KHR_shader_draw_parameters` either. The pipelines are created anyway and the
+tests pass, so behaviour is driver-dependent rather than visibly broken.
+
+**Fix:** either chain `VkPhysicalDeviceShaderDrawParametersFeatures` into device
+creation, or stop emitting the capability from the shaders if nothing uses
+`gl_BaseVertex` / `gl_BaseInstance`.
+
+**Done when:** a full suite run under `--validation=on` reports no
+`VUID-VkShaderModuleCreateInfo-pCode-08740`.
+
+### B16 — Exception after RHI init crashes on the way out · P1
+
+[engine.cpp:16](src/lucus-sim/engine.cpp#L16)
+
+`renderer::cleanup()` runs only on the normal return path from `engine::run`.
+Any exception thrown after the RHI exists leaves Vulkan resources to static
+destruction and segfaults: the process dies with SIGSEGV instead of the message
+that explains what went wrong. Observed while wiring `--validation-required`,
+which throws exactly there; the validation path now calls `cleanup()` itself as
+a stopgap, and every other throw site remains exposed.
+
+Exceptions crossing the AngelScript VM are a related hazard: a throw from inside
+a script-called binding is caught by the VM and reduced to
+`Run script exception: Caught an exception from the application`, losing the
+original message. Anything that must fail the run should record state and fail
+after `run_func` returns, not throw through the VM.
+
+**Fix:** an RAII guard in `engine::run` that runs cleanup and the end-of-run
+reporting on every path. Same guard V4 of `VALIDATION_PLAN.md` needs.
+
+**Done when:** a deliberate throw after RHI init exits non-zero with its message
+and no crash.
+
+---
+
 ## 2. Support
 
 | id | prio | title |
@@ -427,6 +481,8 @@ counts to baseline under ASan/LSan, including failed and partial glTF loads.
 | S7 | P2 | Refactor renderer handle plumbing — *partly done* |
 | S8 | P1 | RHI has no explicit backend capability contract |
 | S9 | P1 | No cross-platform build matrix guards backend interface parity |
+| S10 | P1 | Validation is a compile-time toggle and its output is discarded |
+| S11 | P2 | No unit-test framework — everything runs through the app |
 
 ### S1 — Metal backend does not match the current RHI interface · P1
 
@@ -616,6 +672,44 @@ least compile after an RHI interface change.
 
 **Done when:** all supported platform targets are compiled for every change to
 `dynamic_rhi`, command structures, shared render types or shader bindings.
+
+---
+
+### S10 — Validation is a compile-time toggle and its output is discarded · P1
+
+[vk_dynamic_rhi.cpp:150](src/lucus-graphics/vulkan/vk_dynamic_rhi.cpp#L150) ·
+[dx_dynamic_rhi.cpp:715](src/lucus-graphics/dx12/dx_dynamic_rhi.cpp#L715)
+
+Both backends enable their validation layer under `#ifndef NDEBUG` and neither
+routes the resulting messages back into the engine: Vulkan has no
+`VK_EXT_debug_utils` messenger, DX12 never drains its `ID3D12InfoQueue`. Nothing
+counts errors, so a run that emits hundreds of them still exits `0` and the
+suite reports a pass. Metal has no validation at all.
+
+**Fix:** `--validation=off|on|gpu`, default `on`, a shared `validation_sink`
+that counts and prints, and a non-zero exit code when the error count is
+non-zero. Full design and step breakdown in `VALIDATION_PLAN.md`.
+
+**Done when:** a deliberately broken barrier fails `run_tests.sh` on the error
+count alone.
+
+---
+
+### S11 — No unit-test framework · P2
+
+Every test is an AngelScript scene run through `bin/app` with a tick limit, and
+the only assertion is the process exit code. Nothing in `cmake/` links a test
+library. Logic with no GPU in it — argument parsing, hashing, handle allocation,
+transform math, the validation sink of S10 — can only be tested by booting a
+window and a device, which makes such tests slow, GPU-dependent and rare enough
+that they do not get written.
+
+**Fix:** link a header-only framework (doctest or Catch2) as a `lucus-tests`
+target, run it from `run_tests.sh` before the scene tests. Scene tests stay as
+they are; this is for everything that does not need a device.
+
+**Done when:** a pure-logic regression can be written without starting the
+engine, and it runs in the standard suite.
 
 ---
 

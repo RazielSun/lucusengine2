@@ -72,13 +72,17 @@ dx_dynamic_rhi::~dx_dynamic_rhi()
     _DXGIFactory.Reset();
 }
 
-void dx_dynamic_rhi::init()
+void dx_dynamic_rhi::init(const rhi_init_desc& desc)
 {
+    beginValidationSetup(desc);
+
     createInstance();
     createDevice();
     createSyncObjects();
     createCommandBufferPool();
     createDescriptorHeaps();
+
+    finishValidationSetup();
 }
 
 window_context_handle dx_dynamic_rhi::createWindowContext(const window_handle& handle) 
@@ -703,9 +707,10 @@ void dx_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_hand
 void dx_dynamic_rhi::createInstance()
 {
     UINT createFactoryFlags = 0;
-#ifndef NDEBUG
-	createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
-#endif
+    if (_initDesc.validation != rhi_validation_level::OFF)
+    {
+        createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
+    }
     ThrowIfFailed(CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&_DXGIFactory)), "Failed Create Factory");
 
     std::printf("IDXGIFactory4 created successfully\n");
@@ -713,17 +718,36 @@ void dx_dynamic_rhi::createInstance()
 
 void dx_dynamic_rhi::createDevice()
 {
-    #ifndef NDEBUG
-	{
-		Com<ID3D12Debug> debugController;
-		ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)), "Failed Get Debug Interface");
-		debugController->EnableDebugLayer();
+    const bool wantValidation = _initDesc.validation != rhi_validation_level::OFF;
+    const bool wantGpuValidation = _initDesc.validation == rhi_validation_level::GPU;
 
-        Com<ID3D12Debug1> debugController1;
-        ThrowIfFailed(debugController.As(&debugController1), "Failed As Debug Interface");
-        debugController1->SetEnableGPUBasedValidation(TRUE);
-	}
-#endif
+    if (wantValidation)
+    {
+        Com<ID3D12Debug> debugController;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
+        {
+            debugController->EnableDebugLayer();
+            _validationStatus.effective = rhi_validation_level::ON;
+
+            Com<ID3D12Debug1> debugController1;
+            if (wantGpuValidation)
+            {
+                if (SUCCEEDED(debugController.As(&debugController1)))
+                {
+                    debugController1->SetEnableGPUBasedValidation(TRUE);
+                    _validationStatus.effective = rhi_validation_level::GPU;
+                }
+                else
+                {
+                    _validationStatus.detail = "ID3D12Debug1 is not available, GPU-based validation is off";
+                }
+            }
+        }
+        else
+        {
+            _validationStatus.detail = "D3D12 debug layer is not available";
+        }
+    }
 
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
     Com<IDXGIAdapter1> adapter;
@@ -749,34 +773,32 @@ void dx_dynamic_rhi::createDevice()
 
     _deviceHandle = _device->getDevice();
 
-#ifndef NDEBUG
     Com<ID3D12InfoQueue> pInfoQueue;
-    if (SUCCEEDED(_deviceHandle.As(&pInfoQueue)))
+    if (_validationStatus.effective != rhi_validation_level::OFF && SUCCEEDED(_deviceHandle.As(&pInfoQueue)))
     {
-        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
-        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
- 
+        const BOOL breakOnError = IsDebuggerPresent();
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, breakOnError);
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, breakOnError);
+
         D3D12_MESSAGE_SEVERITY Severities[] =
         {
             D3D12_MESSAGE_SEVERITY_INFO
         };
- 
+
         D3D12_MESSAGE_ID DenyIds[] = {
             D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
             D3D12_MESSAGE_ID_MAP_INVALID_NULLRANGE,
             D3D12_MESSAGE_ID_UNMAP_INVALID_NULLRANGE,
         };
- 
+
         D3D12_INFO_QUEUE_FILTER NewFilter = {};
         NewFilter.DenyList.NumSeverities = _countof(Severities);
         NewFilter.DenyList.pSeverityList = Severities;
         NewFilter.DenyList.NumIDs = _countof(DenyIds);
         NewFilter.DenyList.pIDList = DenyIds;
- 
+
         ThrowIfFailed(pInfoQueue->PushStorageFilter(&NewFilter), "Failed Push Debug Info");
     }
-#endif
 
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;

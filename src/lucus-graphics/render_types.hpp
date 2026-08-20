@@ -16,6 +16,32 @@ namespace lucus
     constexpr u32 g_maxSamplersCount{ 32 };
     constexpr u32 g_maxMrtColorTargets{ 3 };
 
+    enum class rhi_validation_level : u8
+    {
+        OFF = 0,
+        ON  = 1,
+        GPU = 2,
+    };
+
+    const char* to_string(rhi_validation_level level);
+
+    struct rhi_init_desc
+    {
+        rhi_validation_level validation { rhi_validation_level::ON };
+        bool validation_required { false };
+        bool validation_fatal { false };
+    };
+
+    struct validation_status
+    {
+        rhi_validation_level requested { rhi_validation_level::ON };
+        rhi_validation_level effective { rhi_validation_level::OFF };
+        std::string detail;
+        bool satisfied { true };
+    };
+
+    rhi_init_desc rhi_init_desc_from_commandline();
+
     enum class sampler_filter : u8
     {
         NEAREST = 0,

@@ -15,6 +15,11 @@ using namespace lucus;
 
 u32 renderer::g_frameIndex{0};
 
+const validation_status* renderer::getValidationStatus() const
+{
+    return _dynamicRHI ? &_dynamicRHI->getValidationStatus() : nullptr;
+}
+
 void renderer::add_window(window_handle handle)
 {
     bool bFirstInit = false;
@@ -22,7 +27,7 @@ void renderer::add_window(window_handle handle)
     {
         bFirstInit = true;
         _dynamicRHI = create_dynamic_rhi();
-        _dynamicRHI->init();
+        _dynamicRHI->init(_rhiInitDesc);
     }
     
     if (_dynamicRHI)

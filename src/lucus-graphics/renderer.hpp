@@ -32,6 +32,9 @@ namespace lucus
 
         void add_window(window_handle handle);
 
+        void setRHIInitDesc(const rhi_init_desc& desc) { _rhiInitDesc = desc; }
+        const validation_status* getValidationStatus() const;
+
         void tick(float dt);
         void cleanup();
 
@@ -70,6 +73,7 @@ namespace lucus
 
     private:
         render_mode r_mode = render_mode::FORWARD;
+        rhi_init_desc _rhiInitDesc{};
         std::shared_ptr<dynamic_rhi> _dynamicRHI;
 
         std::vector<uniform_buffer_handle> _viewBuffers;

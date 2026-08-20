@@ -59,9 +59,14 @@ m_dynamic_rhi::~m_dynamic_rhi()
     _device.reset();
 }
 
-void m_dynamic_rhi::init()
+void m_dynamic_rhi::init(const rhi_init_desc& desc)
 {
+    beginValidationSetup(desc);
+
     createDevice();
+
+    _validationStatus.detail = "Metal validation is not implemented yet";
+    finishValidationSetup();
 }
 
 window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& handle)
