@@ -35,22 +35,24 @@ const char* lucus::to_string(rhi_validation_level level)
 
 rhi_init_desc lucus::rhi_init_desc_from_commandline()
 {
-    const commandline_args& args = commandline_args::instance();
+    return parse_rhi_init_desc(commandline_args::instance().args());
+}
 
+rhi_init_desc lucus::parse_rhi_init_desc(const std::vector<std::string>& args)
+{
     rhi_init_desc desc{};
 
-    const bool has_level = args.hasArgument("validation");
-    const bool has_disable = args.hasArgument("no-validation");
+    const bool has_level = has_argument(args, "validation");
+    const bool has_disable = has_argument(args, "no-validation");
 
     if (has_level && has_disable)
         throw std::runtime_error("--validation and --no-validation cannot be used together");
 
     if (has_level)
     {
-        const std::vector<std::string>& raw = args.args();
-        const bool bare_flag = std::find(raw.begin(), raw.end(), "--validation") != raw.end();
+        const bool bare_flag = std::find(args.begin(), args.end(), "--validation") != args.end();
 
-        const std::string value = bare_flag ? std::string{} : args.getArgument("validation");
+        const std::string value = bare_flag ? std::string{} : get_argument(args, "validation");
         if (value.empty())
             throw std::runtime_error("--validation requires a value: --validation=<" +
                                      std::string(kValidationValues) + ">");
@@ -62,8 +64,8 @@ rhi_init_desc lucus::rhi_init_desc_from_commandline()
         desc.validation = rhi_validation_level::OFF;
     }
 
-    desc.validation_required = args.hasArgument("validation-required");
-    desc.validation_fatal = args.hasArgument("validation-fatal");
+    desc.validation_required = has_argument(args, "validation-required");
+    desc.validation_fatal = has_argument(args, "validation-fatal");
 
     if (desc.validation == rhi_validation_level::OFF)
     {

@@ -804,3 +804,36 @@ rather than printed and ignored.
 
 Not verified: DX12 and Metal, no machine to build them on. The DX12 changes are
 edits to a file that cannot be compiled here.
+
+### V3 + V3b — done, Linux/Vulkan
+
+`validation_sink.{hpp,cpp}`: singleton, `std::mutex` around every counter and the
+printing, `{backend, id, reason}` suppressions, dedupe keyed on `backend/id` with
+per-record occurrence counts, printing capped at `g_maxPrintsPerMessage` (3) with
+a one-line notice that the rest are counted, separate suppressed-error and
+suppressed-warning counters, and `printSummary()` reporting requested and
+effective levels. `configure()` resets everything, so a run cannot inherit the
+previous one's state. With the level `OFF` the sink drops reports outright.
+
+`validation_selftest.{hpp,cpp}` behind `--validation-selftest`: 59 checks
+covering the parser matrix (13 accepted forms, 8 rejected), severity counting,
+duplicate accounting, backend-qualified suppression, reset on reconfigure, `OFF`
+dropping reports, and 1000 reports from 4 threads arriving intact. It runs before
+anything else in `engine::run` and returns without touching a window or a device.
+
+Verified the self-test can fail: a deliberately wrong expectation produced
+`[selftest] FAIL parse [app] level=on expected=gpu`, `1 failures`, exit 1.
+
+To make the sink testable without a device, the argument scanning moved out of
+`commandline_args` into free functions `get_argument(args, name)` /
+`has_argument(args, name)`; the member functions now forward to them, and
+`parse_rhi_init_desc(args)` takes a plain vector so the self-test can feed it a
+synthetic argv. `rhi_init_desc_from_commandline()` is a one-line wrapper.
+
+`beginValidationSetup` configures the sink and `finishValidationSetup` hands it
+the status, so the plumbing is in place before V5 and V6 start emitting. Nothing
+calls `printSummary()` at end of run yet and no backend reports into the sink
+yet — V4 wires the first, V5 and V6 the second.
+
+Behaviour pinned by the self-test that was previously undefined: repeated
+`--validation=` options take the first occurrence.

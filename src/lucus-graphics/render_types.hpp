@@ -40,6 +40,7 @@ namespace lucus
         bool satisfied { true };
     };
 
+    rhi_init_desc parse_rhi_init_desc(const std::vector<std::string>& args);
     rhi_init_desc rhi_init_desc_from_commandline();
 
     enum class sampler_filter : u8

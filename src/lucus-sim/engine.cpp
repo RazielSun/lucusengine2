@@ -10,12 +10,21 @@
 #include "window_manager.hpp"
 
 #include "renderer.hpp"
+#include "validation_selftest.hpp"
 
 using namespace lucus;
 
 void engine::run(int argc, char** argv)
 {
     commandline_args::instance().init(argc, argv);
+
+    if (commandline_args::instance().hasArgument("validation-selftest"))
+    {
+        if (!run_validation_selftest()) {
+            throw std::runtime_error("Validation selftest failed");
+        }
+        return;
+    }
 
     renderer::instance().setRHIInitDesc(rhi_init_desc_from_commandline());
 

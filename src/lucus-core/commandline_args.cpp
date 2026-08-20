@@ -31,7 +31,7 @@ void commandline_args::init(int argc, char** argv)
     filesystem::instance().set_working_directory(root_path);
 }
 
-std::string commandline_args::getArgument(const std::string& name) const
+std::string lucus::get_argument(const std::vector<std::string>& args, const std::string& name)
 {
     if (name.empty())
         return "";
@@ -39,14 +39,14 @@ std::string commandline_args::getArgument(const std::string& name) const
     const std::string prefixed_name = "--" + name;
     const std::string equals_prefix = prefixed_name + '=';
 
-    for (std::size_t i = 0; i < _args.size(); ++i)
+    for (std::size_t i = 0; i < args.size(); ++i)
     {
-        const std::string& arg = _args[i];
+        const std::string& arg = args[i];
         if (arg == prefixed_name)
         {
-            if ((i + 1) < _args.size())
+            if ((i + 1) < args.size())
             {
-                const std::string& next_arg = _args[i + 1];
+                const std::string& next_arg = args[i + 1];
                 if (!next_arg.empty() && next_arg[0] == '-')
                     throw std::runtime_error("Missing value for argument: " + prefixed_name);
 
@@ -66,7 +66,7 @@ std::string commandline_args::getArgument(const std::string& name) const
     return "";
 }
 
-bool commandline_args::hasArgument(const std::string& name) const
+bool lucus::has_argument(const std::vector<std::string>& args, const std::string& name)
 {
     if (name.empty())
         return false;
@@ -74,7 +74,7 @@ bool commandline_args::hasArgument(const std::string& name) const
     const std::string prefixed_name = "--" + name;
     const std::string equals_prefix = prefixed_name + '=';
 
-    for (const std::string& arg : _args)
+    for (const std::string& arg : args)
     {
         if (arg == prefixed_name)
             return true;
