@@ -143,7 +143,7 @@ void validation_sink::printSummary() const
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    std::fprintf(stderr, "[validation] requested=%s effective=%s%s%s\n",
+    std::fprintf(stderr, "[validation] summary: requested=%s effective=%s%s%s\n",
                  to_string(_status.requested),
                  to_string(_status.effective),
                  _status.detail.empty() ? "" : " - ",

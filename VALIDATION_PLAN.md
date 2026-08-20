@@ -837,3 +837,114 @@ yet — V4 wires the first, V5 and V6 the second.
 
 Behaviour pinned by the self-test that was previously undefined: repeated
 `--validation=` options take the first occurrence.
+
+### V4 — done, Linux/Vulkan
+
+`run_finalizer` in `engine::run`: its destructor runs `renderer::cleanup()` and
+`validation_sink::printSummary()`, so both happen on the normal path and during
+stack unwinding. `cleanup()` is wrapped in try/catch inside the destructor —
+throwing out of a destructor during unwinding would call `std::terminate` and
+lose the original exception. The `cleanup()` stopgap added in V2 is gone; this
+closes `PLAN.md` **B16**.
+
+The error-count check lives in `main`, after `run` returns, rather than at the
+end of `run`. Putting it inside `run` needed an extra scope around the whole
+function body so the guard would fire before the check; `main` already owns
+`EXIT_FAILURE` and gets the ordering for free.
+
+Verified end to end with a temporarily injected report:
+
+```
+[validation][vulkan][error] TEMP-INJECTED: temporary check of the exit-code path
+[validation] summary: requested=on effective=on
+[validation] 1 errors, 0 warnings (0 suppressed)
+[validation]   error vulkan/TEMP-INJECTED x1
+Validation reported 1 error(s)          exit=1
+```
+
+The injection was reverted. Also verified that the exception path
+(`--validation=gpu --validation-required`) exits 1 with cleanup and summary done
+and no crash, where before V4 it segfaulted.
+
+The startup line is now `[validation] enabled: ...` and the end-of-run one
+`[validation] summary: ...`, so the two are distinguishable in a test log.
+
+Still nothing reports into the sink from a backend — V5 and V6. Until then every
+run ends with `0 errors` honestly: the layer is active, but its messages still go
+to the loader's default output rather than through the sink.
+
+### V5 — done, Linux/Vulkan
+
+`VK_EXT_debug_utils` is enumerated and enabled whenever the level is not `OFF`,
+a `VkDebugUtilsMessengerCreateInfoEXT` is chained into
+`VkInstanceCreateInfo::pNext` so instance creation and destruction are covered,
+and the real messenger is created right after the instance and destroyed after
+`_device.reset()` but before `vkDestroyInstance`. The callback maps severity to
+`validation_severity`, passes `pMessageIdName` as the id and always returns
+`VK_FALSE`. For `gpu`, `VkValidationFeaturesEXT` with `GPU_ASSISTED` and
+`SYNCHRONIZATION_VALIDATION` chains onto the messenger struct.
+
+Every piece is checked before use and any missing one lands in
+`validation_status::detail` rather than being ignored, so `--validation-required`
+sees it. The layer-presence check, the extension checks and the messenger
+creation each have their own detail message.
+
+**One correction against R2 while implementing.** R2 was right that
+`VK_EXT_validation_features` must be enabled, but enumerating with
+`vkEnumerateInstanceExtensionProperties(nullptr, ...)` does not find it: the
+extension is provided by the validation layer, so it only appears when
+enumerating with the layer name. The first attempt reported
+`VK_EXT_validation_features is not present` on a machine where it was available.
+Instance extensions are now enumerated twice — globally, and again for
+`VK_LAYER_KHRONOS_validation` when the layer is present — and the lists merged.
+
+Verified: `--validation=on` reports `effective=on`, `--validation=gpu`
+`effective=gpu`, `--no-validation` emits nothing at all, and the exit code
+follows the error count.
+
+**Fallout, as predicted.** The suite is now red: 5 of 14 tests fail, each on one
+`VUID-VkShaderModuleCreateInfo-pCode-08740` (`PLAN.md` **B15**). Two more
+findings came out of the same run:
+
+- `SYNC-HAZARD-WRITE-AFTER-READ`, three per run under `--validation=gpu`: the
+  swapchain layout transition is not covered by the acquire-semaphore wait.
+  Filed as **B17**.
+- `WARNING-Shader-OutputNotConsumed`, three to five per run: vertex input state
+  describes attributes the vertex shader does not read. Warnings do not affect
+  the exit code. Filed as **B18**.
+
+None of the three is a regression from this work; all three predate it and were
+invisible because no messenger existed. The suite stays red until B15 is fixed —
+that is the decision to make before V8, not a reason to suppress the message.
+
+### B15 fixed — the suite is green again
+
+`SV_VertexID` was the source: Slang lowers it to `gl_VertexIndex - gl_BaseVertex`
+for HLSL semantics, and `gl_BaseVertex` pulls in the `DrawParameters` capability.
+The three shaders using it (`triangle`, `cube`, `deferred_lighting`) are exactly
+the ones behind the five failing tests.
+
+Fixed by querying `VkPhysicalDeviceShaderDrawParametersFeatures` and chaining it
+into device creation, next to the existing descriptor-indexing chain. All 14
+tests now report `0 errors` under the default `--validation=on`, and
+`run_tests.sh` passes.
+
+`--validation=gpu` is still red on **B17** (`SYNC-HAZARD-WRITE-AFTER-READ` x4),
+which is a separate defect and not in the default suite path.
+
+### B17 fixed — clean under `--validation=gpu` too
+
+The acquire-side layout transition took its source stage from the tracked
+resource state (`BOTTOM_OF_PIPE` for `PRESENT`, `TOP_OF_PIPE` for `UNDEFINED`),
+neither of which is ordered against the acquire-semaphore wait at
+`COLOR_ATTACHMENT_OUTPUT`. For swapchain-backed targets in those two states the
+barrier now uses `COLOR_ATTACHMENT_OUTPUT` as its source stage, matching the
+wait. Every other barrier is untouched.
+
+All 14 tests now report `0 errors` under `--validation=gpu --validation-required`
+as well as under the default level. The only remaining message is B18's
+`WARNING-Shader-OutputNotConsumed`, three to five per run, which does not affect
+the exit code.
+
+This makes V8 straightforward: both levels are clean, so `--validation-required`
+can go into the suite without a pre-existing failure to explain away.

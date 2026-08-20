@@ -32,8 +32,10 @@ hazard · **P2** cleanup, no user-visible symptom today.
 | B12 | P1 | PSO identity is mutable and does not include the render pass | `material.*`, `renderer.cpp`, RHI backends |
 | B13 | P1 | Truncated hashes are used as unique GPU resource handles | `mesh.cpp`, `material.cpp`, RHI backends |
 | B14 | P1 | Intrusive-reference ownership is inconsistent and leaks objects | `lucus-core/`, `scene.cpp`, `gltf_utils.cpp`, `renderer.cpp` |
-| B15 | P1 | SPIR-V declares `DrawParameters` without the matching device feature | `vulkan/vk_dynamic_rhi.cpp`, `shaders/` |
-| B16 | P1 | Any exception after RHI init crashes the process on the way out | `lucus-sim/engine.cpp` |
+| B15 | P1 | ~~SPIR-V declares `DrawParameters` without the matching device feature~~ **fixed** | `vulkan/vk_device.cpp` |
+| B16 | P1 | ~~Any exception after RHI init crashes the process on the way out~~ **fixed** | `lucus-sim/engine.cpp` |
+| B17 | P1 | ~~Swapchain layout transition races the present engine~~ **fixed** | `vulkan/vk_dynamic_rhi.cpp` |
+| B18 | P2 | Vertex attributes are declared but not consumed by the vertex shader | `mesh.cpp`, `shaders/` |
 
 ### B1 — Framebuffer view array sized by constant · P0 · **FIXED** (`71b85e5`)
 
@@ -416,7 +418,7 @@ counts to baseline under ASan/LSan, including failed and partial glTF loads.
 
 ---
 
-### B15 — `DrawParameters` capability without the matching feature · P1
+### B15 — `DrawParameters` capability without the matching feature · P1 · **FIXED**
 
 [vk_dynamic_rhi.cpp:212](src/lucus-graphics/vulkan/vk_dynamic_rhi.cpp#L212)
 
@@ -436,14 +438,28 @@ is a plain `VkPhysicalDeviceFeatures`, which cannot express
 `VK_KHR_shader_draw_parameters` either. The pipelines are created anyway and the
 tests pass, so behaviour is driver-dependent rather than visibly broken.
 
-**Fix:** either chain `VkPhysicalDeviceShaderDrawParametersFeatures` into device
-creation, or stop emitting the capability from the shaders if nothing uses
-`gl_BaseVertex` / `gl_BaseInstance`.
+The capability comes from `SV_VertexID`: Slang lowers it to
+`gl_VertexIndex - gl_BaseVertex` to keep HLSL semantics, and `gl_BaseVertex`
+needs `DrawParameters`. Exactly the three shaders using it —
+`triangle.slang`, `cube.slang`, `deferred_lighting.slang` — feed the five
+failing tests.
 
-**Done when:** a full suite run under `--validation=on` reports no
-`VUID-VkShaderModuleCreateInfo-pCode-08740`.
+**Fixed** in [vk_device.cpp:101](src/lucus-graphics/vulkan/vk_device.cpp#L101):
+`VkPhysicalDeviceShaderDrawParametersFeatures` is queried through
+`vkGetPhysicalDeviceFeatures2` and chained into `VkDeviceCreateInfo::pNext` with
+`shaderDrawParameters` set to whatever the device reports. A device without it
+gets a warning rather than silence. The shaders keep `SV_VertexID`, since
+procedural geometry is what it is for.
 
-### B16 — Exception after RHI init crashes on the way out · P1
+Observed per test once V5 routed the messages through the sink: 5 of the 14
+tests report exactly one such error each — `cube_gpu_test`, `triangle_gpu_test`,
+`scene_bindless_texture_deferred_test`, `scene_light_deferred_test` and
+`scene_light_texture_deferred_test`. The other nine are clean. **The suite is red
+until this is fixed**, since V4 makes a validation error fail the run.
+
+Verified: all 14 tests report `0 errors` and `run_tests.sh` passes.
+
+### B16 — Exception after RHI init crashes on the way out · P1 · **FIXED**
 
 [engine.cpp:16](src/lucus-sim/engine.cpp#L16)
 
@@ -460,11 +476,75 @@ a script-called binding is caught by the VM and reduced to
 original message. Anything that must fail the run should record state and fail
 after `run_func` returns, not throw through the VM.
 
-**Fix:** an RAII guard in `engine::run` that runs cleanup and the end-of-run
-reporting on every path. Same guard V4 of `VALIDATION_PLAN.md` needs.
+**Fixed** by V4 of `VALIDATION_PLAN.md`: a `run_finalizer` guard in `engine::run`
+runs `renderer::cleanup()` and the validation summary from its destructor, so
+both happen on the exception path too, and the original exception still
+propagates to `main`. Cleanup failures inside the destructor are caught and
+printed rather than terminating during unwinding.
 
-**Done when:** a deliberate throw after RHI init exits non-zero with its message
-and no crash.
+Verified: `--validation=gpu --validation-required`, which throws after RHI init,
+now exits 1 with its message and no crash. The VM half of the hazard stands as
+guidance — anything that must fail the run records state and fails after
+`run_func` returns rather than throwing through AngelScript.
+
+---
+
+### B17 — Swapchain layout transition races the present engine · P1 · **FIXED**
+
+[vk_dynamic_rhi.cpp:354](src/lucus-graphics/vulkan/vk_dynamic_rhi.cpp#L354)
+
+Found by synchronization validation (`--validation=gpu`, V5):
+
+```
+SYNC-HAZARD-WRITE-AFTER-READ: vkQueueSubmit(): Hazard WRITE_AFTER_READ
+submitted_usage: SYNC_IMAGE_LAYOUT_TRANSITION, command: vkCmdPipelineBarrier
+prior_usage: SYNC_PRESENT_ENGINE_SYNCVAL_PRESENT_ACQUIRE_READ_SYNCVAL
+read_barriers: VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT|BOTTOM_OF_PIPE
+```
+
+Three occurrences per run, one per swapchain image, on the first submit that
+touches each newly acquired image. The layout transition for the acquired image
+executes at a stage that is not covered by the wait on the acquire semaphore, so
+it can run while the present engine still reads the image.
+
+The submit waits on the acquire semaphore at `COLOR_ATTACHMENT_OUTPUT`
+([vk_dynamic_rhi.cpp:805](src/lucus-graphics/vulkan/vk_dynamic_rhi.cpp#L805)),
+but the acquire-side transition was issued with the source stage that
+`toVkBarrierState` derives from the tracked state — `BOTTOM_OF_PIPE` for
+`PRESENT`, `TOP_OF_PIPE` for `UNDEFINED`. Neither is ordered against that wait,
+so the transition could execute while the present engine still read the image.
+
+**Fixed** in the `IMAGE_BARRIER` handler: when the target comes from the
+swapchain and its tracked state is `PRESENT` or `UNDEFINED`, the barrier's
+source stage is `COLOR_ATTACHMENT_OUTPUT` — the same stage the semaphore wait
+blocks — instead of the state-derived one. Every other barrier keeps the mapped
+stage.
+
+Verified: all 14 tests report `0 errors` under `--validation=gpu
+--validation-required`, where before the fix each run produced four
+`SYNC-HAZARD-WRITE-AFTER-READ`.
+
+### B18 — Vertex attributes declared but not consumed · P2
+
+Reported on every pipeline creation once the messenger was wired (V5):
+
+```
+WARNING-Shader-OutputNotConsumed: vkCreateGraphicsPipelines():
+pCreateInfos[0].pVertexInputState Vertex attribute at location 1 not consumed
+by vertex shader
+```
+
+Three to five per run depending on the test. The vertex input state describes
+the full vertex layout regardless of what the bound shader actually reads. Not
+an error and it does not affect the exit code, but it is noise in every
+validated run and hides new warnings.
+
+**Fix:** derive the vertex input state from the shader's inputs, or accept it
+deliberately and add it to the `validation_sink` suppression list with that
+reason recorded.
+
+**Done when:** a validated run reports no `WARNING-Shader-OutputNotConsumed`, or
+the suppression carries a written reason.
 
 ---
 

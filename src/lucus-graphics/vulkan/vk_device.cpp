@@ -98,8 +98,12 @@ void vk_device::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, st
         .pQueueCreateInfos = queueCreateInfos.data(),
     };
 
+    VkPhysicalDeviceShaderDrawParametersFeatures supportedDrawParameters{};
+    supportedDrawParameters.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+
     VkPhysicalDeviceDescriptorIndexingFeatures supportedIndexing{};
     supportedIndexing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+    supportedIndexing.pNext = &supportedDrawParameters;
 
     VkPhysicalDeviceFeatures2 supportedFeatures2{};
     supportedFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -168,6 +172,18 @@ void vk_device::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, st
         deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
         deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
     }
+
+    VkPhysicalDeviceShaderDrawParametersFeatures enabledDrawParameters{};
+    enabledDrawParameters.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+    enabledDrawParameters.shaderDrawParameters = supportedDrawParameters.shaderDrawParameters;
+
+    if (!supportedDrawParameters.shaderDrawParameters)
+    {
+        std::cerr << "shaderDrawParameters is not supported; shaders compiled from SV_VertexID "
+                     "declare the DrawParameters capability and will fail validation\n";
+    }
+
+    enabledIndexing.pNext = &enabledDrawParameters;
 
     VkPhysicalDeviceFeatures2 deviceFeatures2{};
     deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;

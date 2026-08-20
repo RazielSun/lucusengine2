@@ -42,6 +42,8 @@ namespace lucus
 
         protected:
             void createInstance();
+            void createDebugMessenger();
+            void destroyDebugMessenger();
             void createDevice();
             void createPasses();
             void createCommandBufferPool();
@@ -66,6 +68,7 @@ namespace lucus
 
         private:
             VkInstance _instance;
+            VkDebugUtilsMessengerEXT _debugMessenger{ VK_NULL_HANDLE };
 
             std::unique_ptr<vk_device> _device;
             VkDevice _deviceHandle;

@@ -11,8 +11,29 @@
 
 #include "renderer.hpp"
 #include "validation_selftest.hpp"
+#include "validation_sink.hpp"
 
 using namespace lucus;
+
+namespace
+{
+    struct run_finalizer
+    {
+        ~run_finalizer()
+        {
+            try
+            {
+                renderer::instance().cleanup();
+            }
+            catch (const std::exception& err)
+            {
+                std::fprintf(stderr, "Renderer cleanup failed: %s\n", err.what());
+            }
+
+            validation_sink::instance().printSummary();
+        }
+    };
+}
 
 void engine::run(int argc, char** argv)
 {
@@ -27,6 +48,8 @@ void engine::run(int argc, char** argv)
     }
 
     renderer::instance().setRHIInitDesc(rhi_init_desc_from_commandline());
+
+    run_finalizer finalizer;
 
     script_manager::instance().init();
 
@@ -55,7 +78,6 @@ void engine::run(int argc, char** argv)
 
     const validation_status* validation = renderer::instance().getValidationStatus();
     if (validation && !validation->satisfied) {
-        renderer::instance().cleanup();
         throw std::runtime_error("Requested validation level is not available");
     }
 
@@ -90,6 +112,4 @@ void engine::run(int argc, char** argv)
             }
         }
     }
-    
-    renderer::instance().cleanup();
 }

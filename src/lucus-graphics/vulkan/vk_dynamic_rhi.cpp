@@ -9,6 +9,7 @@
 #include "texture.hpp"
 #include "vk_pipeline_state.hpp"
 #include "vk_utils.hpp"
+#include "validation_sink.hpp"
 
 #include "glfw_include.hpp"
 
@@ -21,6 +22,81 @@ namespace lucus
 }
 
 using namespace lucus;
+
+namespace
+{
+    validation_severity toValidationSeverity(VkDebugUtilsMessageSeverityFlagBitsEXT severity)
+    {
+        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+            return validation_severity::ERROR;
+        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+            return validation_severity::WARNING;
+        return validation_severity::INFO;
+    }
+
+    VKAPI_ATTR VkBool32 VKAPI_CALL debugMessengerCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+        VkDebugUtilsMessageTypeFlagsEXT /*types*/,
+        const VkDebugUtilsMessengerCallbackDataEXT* data,
+        void* /*userData*/)
+    {
+        const char* id = (data && data->pMessageIdName) ? data->pMessageIdName : "";
+        const char* message = (data && data->pMessage) ? data->pMessage : "";
+
+        validation_sink::instance().report(validation_backend::VULKAN,
+                                           toValidationSeverity(severity),
+                                           id,
+                                           message);
+        return VK_FALSE;
+    }
+
+    VkDebugUtilsMessengerCreateInfoEXT makeDebugMessengerCreateInfo()
+    {
+        return VkDebugUtilsMessengerCreateInfoEXT{
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = debugMessengerCallback
+        };
+    }
+
+    std::vector<VkExtensionProperties> enumerateInstanceExtensions(const char* layerName)
+    {
+        uint32_t count = 0;
+        vkEnumerateInstanceExtensionProperties(layerName, &count, nullptr);
+        std::vector<VkExtensionProperties> extensions(count);
+        vkEnumerateInstanceExtensionProperties(layerName, &count, extensions.data());
+        return extensions;
+    }
+
+    bool instanceLayerAvailable(const char* name)
+    {
+        uint32_t count = 0;
+        vkEnumerateInstanceLayerProperties(&count, nullptr);
+        std::vector<VkLayerProperties> layers(count);
+        vkEnumerateInstanceLayerProperties(&count, layers.data());
+
+        for (const VkLayerProperties& layer : layers)
+        {
+            if (strcmp(layer.layerName, name) == 0)
+                return true;
+        }
+        return false;
+    }
+
+    bool instanceExtensionAvailable(const std::vector<VkExtensionProperties>& available, const char* name)
+    {
+        for (const VkExtensionProperties& extension : available)
+        {
+            if (strcmp(extension.extensionName, name) == 0)
+                return true;
+        }
+        return false;
+    }
+}
 
 vk_dynamic_rhi::vk_dynamic_rhi()
 {
@@ -99,6 +175,8 @@ vk_dynamic_rhi::~vk_dynamic_rhi()
 
     _device.reset();
 
+    destroyDebugMessenger();
+
     vkDestroyInstance(_instance, nullptr);
 }
 
@@ -140,43 +218,76 @@ void vk_dynamic_rhi::createInstance()
 	};
 
     uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
-
-    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     std::printf("RequiredInstanceExtensions = %d\n", glfwExtensionCount);
     for (uint32_t i = 0; i < glfwExtensionCount; i++) {
         std::printf("  %s\n", glfwExtensions[i]);
     }
 
-    instanceCreateInfo.enabledExtensionCount = glfwExtensionCount;
-    instanceCreateInfo.ppEnabledExtensionNames = glfwExtensions;
+    _enabledInstanceExtensions.assign(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
     const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
-    if (_initDesc.validation != rhi_validation_level::OFF)
+
+    const bool wantValidation = _initDesc.validation != rhi_validation_level::OFF;
+    const bool wantGpuValidation = _initDesc.validation == rhi_validation_level::GPU;
+    const bool validationLayerPresent = wantValidation && instanceLayerAvailable(validationLayerName);
+
+    std::vector<VkExtensionProperties> availableExtensions = enumerateInstanceExtensions(nullptr);
+    if (validationLayerPresent)
     {
-        uint32_t instanceLayerCount;
-        vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
-        std::vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
-        vkEnumerateInstanceLayerProperties(&instanceLayerCount, instanceLayerProperties.data());
+        const std::vector<VkExtensionProperties> layerExtensions = enumerateInstanceExtensions(validationLayerName);
+        availableExtensions.insert(availableExtensions.end(), layerExtensions.begin(), layerExtensions.end());
+    }
 
-        bool validationLayerPresent = false;
-        for (VkLayerProperties& layer : instanceLayerProperties) {
-            if (strcmp(layer.layerName, validationLayerName) == 0) {
-                validationLayerPresent = true;
-                break;
-            }
-        }
+    const bool debugUtilsAvailable = wantValidation &&
+        instanceExtensionAvailable(availableExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    const bool validationFeaturesAvailable = wantGpuValidation &&
+        instanceExtensionAvailable(availableExtensions, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 
-        if (validationLayerPresent) {
+    if (debugUtilsAvailable) {
+        _enabledInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+    if (validationFeaturesAvailable) {
+        _enabledInstanceExtensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+    }
+
+    instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(_enabledInstanceExtensions.size());
+    instanceCreateInfo.ppEnabledExtensionNames = _enabledInstanceExtensions.data();
+
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = makeDebugMessengerCreateInfo();
+
+    const VkValidationFeatureEnableEXT enabledValidationFeatures[] = {
+        VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
+        VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT
+    };
+    VkValidationFeaturesEXT validationFeatures{
+        .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+        .enabledValidationFeatureCount = static_cast<uint32_t>(std::size(enabledValidationFeatures)),
+        .pEnabledValidationFeatures = enabledValidationFeatures
+    };
+
+    if (wantValidation)
+    {
+        if (!validationLayerPresent) {
+            _validationStatus.detail = "VK_LAYER_KHRONOS_validation is not present";
+        } else if (!debugUtilsAvailable) {
+            _validationStatus.detail = "VK_EXT_debug_utils is not present, messages cannot be collected";
+        } else {
             instanceCreateInfo.ppEnabledLayerNames = &validationLayerName;
             instanceCreateInfo.enabledLayerCount = 1;
+            instanceCreateInfo.pNext = &debugCreateInfo;
 
             _validationStatus.effective = rhi_validation_level::ON;
-            if (_initDesc.validation == rhi_validation_level::GPU) {
-                _validationStatus.detail = "GPU-assisted validation is not implemented yet";
+
+            if (wantGpuValidation)
+            {
+                if (validationFeaturesAvailable) {
+                    debugCreateInfo.pNext = &validationFeatures;
+                    _validationStatus.effective = rhi_validation_level::GPU;
+                } else {
+                    _validationStatus.detail = "VK_EXT_validation_features is not present, GPU-assisted validation is off";
+                }
             }
-        } else {
-            _validationStatus.detail = "VK_LAYER_KHRONOS_validation is not present";
         }
     }
 
@@ -186,6 +297,42 @@ void vk_dynamic_rhi::createInstance()
     }
 
     std::printf("VkInstance created successfully\n");
+
+    createDebugMessenger();
+}
+
+void vk_dynamic_rhi::createDebugMessenger()
+{
+    if (_validationStatus.effective == rhi_validation_level::OFF)
+        return;
+
+    auto create = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(_instance, "vkCreateDebugUtilsMessengerEXT"));
+    if (!create) {
+        _validationStatus.effective = rhi_validation_level::OFF;
+        _validationStatus.detail = "vkCreateDebugUtilsMessengerEXT could not be resolved";
+        return;
+    }
+
+    const VkDebugUtilsMessengerCreateInfoEXT createInfo = makeDebugMessengerCreateInfo();
+    if (create(_instance, &createInfo, nullptr, &_debugMessenger) != VK_SUCCESS) {
+        _debugMessenger = VK_NULL_HANDLE;
+        _validationStatus.effective = rhi_validation_level::OFF;
+        _validationStatus.detail = "vkCreateDebugUtilsMessengerEXT failed";
+    }
+}
+
+void vk_dynamic_rhi::destroyDebugMessenger()
+{
+    if (_debugMessenger == VK_NULL_HANDLE)
+        return;
+
+    auto destroy = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(_instance, "vkDestroyDebugUtilsMessengerEXT"));
+    if (destroy) {
+        destroy(_instance, _debugMessenger, nullptr);
+    }
+    _debugMessenger = VK_NULL_HANDLE;
 }
 
 void vk_dynamic_rhi::createDevice()
@@ -608,6 +755,13 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                     const auto src = utils::toVkBarrierState(trackedState);
                     const auto dst = utils::toVkBarrierState(ti_cmd->dst);
 
+                    // acquire semaphore is waited at COLOR_ATTACHMENT_OUTPUT; the transition must be ordered after it
+                    const bool waitsOnAcquire = rt.bFromSwapChain &&
+                        (trackedState == resource_state::PRESENT || trackedState == resource_state::UNDEFINED);
+                    const VkPipelineStageFlags srcStage = waitsOnAcquire
+                        ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                        : src.stage;
+
                     VkImageMemoryBarrier barrier{};
                     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
                     barrier.oldLayout = src.layout;
@@ -625,7 +779,7 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
 
                     vkCmdPipelineBarrier(
                         cmdBuffer,
-                        src.stage,
+                        srcStage,
                         dst.stage,
                         0,
                         0, nullptr,

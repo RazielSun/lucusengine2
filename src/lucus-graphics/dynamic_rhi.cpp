@@ -17,7 +17,7 @@ void dynamic_rhi::finishValidationSetup()
     const validation_status& status = _validationStatus;
     const bool downgraded = static_cast<u8>(status.effective) < static_cast<u8>(status.requested);
 
-    std::printf("[validation] requested=%s effective=%s%s%s\n",
+    std::fprintf(stderr, "[validation] enabled: requested=%s effective=%s%s%s\n",
                 to_string(status.requested),
                 to_string(status.effective),
                 status.detail.empty() ? "" : " - ",
