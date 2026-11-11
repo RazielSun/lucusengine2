@@ -2,16 +2,19 @@
 
 using namespace lucus;
 
-void m_buffer::init(id<MTLDevice> device, size_t size, u32 count, shader_binding_stage in_stage, MTLResourceOptions options)
+void m_buffer::init(id<MTLDevice> device, size_t size, u32 count, shader_binding_stage in_stage, size_t itemAlignment)
 {
     assert(device);
 
     stage = in_stage;
 
+    assert(itemAlignment > 0);
+
     itemSize = size;
-    bufferSize = size * count;
+    itemStride = (size + itemAlignment - 1) / itemAlignment * itemAlignment;
+    bufferSize = itemStride * count;
     alignedSize = (bufferSize + 255) & ~255;
-    _buffer = [device newBufferWithLength:alignedSize options:options];
+    _buffer = [device newBufferWithLength:alignedSize options:MTLResourceStorageModeShared];
 
     if (!_buffer)
     {
@@ -41,7 +44,7 @@ void* m_buffer::getMappedData(u32 index) const
     {
         throw std::runtime_error("Failed to get buffer contents pointer");
     }
-    const size_t offset = itemSize * index;
+    const size_t offset = itemStride * index;
     assert(itemSize + offset <= _buffer.length);
     u8* ptr = (u8*)bufferPointer + offset;
     return (void*)ptr;

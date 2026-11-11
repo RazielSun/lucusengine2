@@ -1006,7 +1006,7 @@ no longer reports a green suite.
 |------|--------|
 | V1 V2 V3 V3b V4 V5 V8 | done, verified on Linux/Vulkan |
 | V6 | written, never compiled |
-| V7 | **dropped** — Metal archived, `PLAN.md` S1 |
+| V7 | open again — Metal backend restored, `PLAN.md` S1 |
 
 Fixed along the way: **B15**, **B16**, **B17**. Open: **B18**
 (`WARNING-Shader-OutputNotConsumed`, warnings only), **S11** (no unit-test

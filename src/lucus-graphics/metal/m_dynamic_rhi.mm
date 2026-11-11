@@ -53,7 +53,13 @@ m_dynamic_rhi::~m_dynamic_rhi()
     }
     _textures.clear();
 
-    // TODO: Window context cleanup
+    for (auto& rt : _renderTargets)
+    {
+        rt.cleanup();
+    }
+    _renderTargets.clear();
+
+    _shaderLibraries.cleanup();
 
     _deviceHandle = nil;
     _device.reset();
@@ -64,6 +70,7 @@ void m_dynamic_rhi::init(const rhi_init_desc& desc)
     beginValidationSetup(desc);
 
     createDevice();
+    _shaderLibraries.init(_deviceHandle);
 
     _validationStatus.detail = "Metal validation is not implemented yet";
     finishValidationSetup();
@@ -78,6 +85,12 @@ window_context_handle m_dynamic_rhi::createWindowContext(const window_handle& ha
 
     auto& context = _contexts.emplace_back();
     context.init(_deviceHandle, window);
+
+    const CGSize size = context.getDrawableSize();
+    const u32 width = static_cast<u32>(size.width);
+    const u32 height = static_cast<u32>(size.height);
+    context.color_handle = createRenderTarget(width, height, render_target_type::COLOR, 1, true);
+    context.depth_handle = createRenderTarget(width, height, render_target_type::DEPTH, g_framesInFlight);
 
     window_context_handle out_handle(static_cast<u32>(_contexts.size()));
     _contextHandles.push_back(out_handle);
@@ -98,6 +111,63 @@ void m_dynamic_rhi::getWindowContextSize(const window_context_handle& ctx_handle
     CGSize drawableSize = ctx.getDrawableSize();
     width = drawableSize.width;
     height = drawableSize.height;
+}
+
+render_target_handle m_dynamic_rhi::getWindowContextRenderTarget(const window_context_handle& ctx_handle, render_target_type rt_type) const
+{
+    if (!ctx_handle.is_valid())
+    {
+        throw std::runtime_error("getWindowContextRenderTarget:: we have invalid window context!");
+    }
+    const auto& ctx = _contexts[ctx_handle.as_index()];
+
+    if (rt_type == render_target_type::DEPTH)
+    {
+        return ctx.depth_handle;
+    }
+    return ctx.color_handle;
+}
+
+id<MTLTexture> m_dynamic_rhi::renderTargetTexture(const render_target_handle& rt_handle, const m_window_context& ctx, u32 frameIndex) const
+{
+    if (!rt_handle.is_valid() || rt_handle.as_index() >= _renderTargets.size())
+    {
+        throw std::runtime_error("renderTargetTexture:: invalid render target handle " + std::to_string(rt_handle.get()));
+    }
+
+    const m_render_target& rt = _renderTargets[rt_handle.as_index()];
+    if (rt.swapchain)
+    {
+        return ctx.currentDrawable.texture;
+    }
+    return rt.texture(frameIndex);
+}
+
+MTLRenderPassDescriptor* m_dynamic_rhi::makeRenderPassDescriptor(const gpu_render_pass_begin_command& cmd, const m_window_context& ctx, u32 frameIndex) const
+{
+    assert(cmd.colorTargetCount <= g_maxMrtColorTargets);
+    assert(cmd.depthTargetCount <= 1);
+
+    MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+
+    for (u8 c = 0; c < cmd.colorTargetCount; ++c)
+    {
+        MTLRenderPassColorAttachmentDescriptor* color = descriptor.colorAttachments[c];
+        color.texture = renderTargetTexture(cmd.colorTargets[c], ctx, frameIndex);
+        color.loadAction = MTLLoadActionClear;
+        color.storeAction = MTLStoreActionStore;
+        color.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+    }
+
+    if (cmd.depthTargetCount > 0)
+    {
+        descriptor.depthAttachment.texture = renderTargetTexture(cmd.depthTarget, ctx, frameIndex);
+        descriptor.depthAttachment.loadAction = MTLLoadActionClear;
+        descriptor.depthAttachment.storeAction = MTLStoreActionStore;
+        descriptor.depthAttachment.clearDepth = 1.0;
+    }
+
+    return descriptor;
 }
 
 void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
@@ -121,7 +191,7 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
     id<MTLCommandBuffer> currentBuffer = [_device->getCommandPool() commandBuffer];
 
     dispatch_semaphore_t semaphore = ctx.frameSemaphore;
-    [currentBuffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
+    [currentBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
         dispatch_semaphore_signal(semaphore);
     }];
 
@@ -136,24 +206,17 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
             case gpu_command_type::RENDER_PASS_BEGIN:
                 {
                     const auto* rb_cmd = reinterpret_cast<const gpu_render_pass_begin_command*>(data);
-
-                    MTLRenderPassDescriptor* descriptor = [MTLRenderPassDescriptor renderPassDescriptor];
-                    descriptor.colorAttachments[0].texture = ctx.currentDrawable.texture;
-                    descriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-                    descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
-                    descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-                    descriptor.depthAttachment.texture = ctx.depthTextures[currentFrame];
-                    descriptor.depthAttachment.loadAction = MTLLoadActionClear;
-                    descriptor.depthAttachment.storeAction = MTLStoreActionDontCare;
-                    descriptor.depthAttachment.clearDepth = 1.0;
-
+                    MTLRenderPassDescriptor* descriptor = makeRenderPassDescriptor(*rb_cmd, ctx, currentFrame);
                     pass = [currentBuffer renderCommandEncoderWithDescriptor:descriptor];
                 }
                 break;
             case gpu_command_type::RENDER_PASS_END:
                 {
                     [pass endEncoding];
+                    pass = nil;
                 }
+                break;
+            case gpu_command_type::IMAGE_BARRIER:
                 break;
             case gpu_command_type::SET_VIEWPORT:
                 {
@@ -184,7 +247,7 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                 {
                     const auto* bu_cmd = reinterpret_cast<const gpu_bind_uniform_buffer_command*>(data);
                     auto& buffer = _uniformBuffers[bu_cmd->ub_handle.as_index()];
-                    const u32 offset = buffer.getItemSize() * currentFrame;
+                    const u32 offset = buffer.getItemStride() * currentFrame;
                     const auto& stage = buffer.getStage();
                     if (stage == shader_binding_stage::VERTEX || stage == shader_binding_stage::BOTH)
                     {
@@ -205,6 +268,13 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     }
                     auto& tex = found->second;
                     [pass setFragmentTexture:tex.mtexture atIndex:(u32)bt_cmd->position - (u32)shader_binding::TEXTURE];
+                }
+                break;
+            case gpu_command_type::BIND_RENDER_TARGET:
+                {
+                    const auto* brt_cmd = reinterpret_cast<const gpu_bind_render_target_command*>(data);
+                    id<MTLTexture> tex = renderTargetTexture(brt_cmd->rt_handle, ctx, currentFrame);
+                    [pass setFragmentTexture:tex atIndex:(u32)brt_cmd->position - (u32)shader_binding::TEXTURE];
                 }
                 break;
             case gpu_command_type::BIND_SAMPLER:
@@ -229,7 +299,7 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                     auto found = _meshes.find(bv_cmd->msh_handle.get());
                     assert(found != _meshes.end());
                     auto& gpuMesh = found->second;
-                    [pass setVertexBuffer:gpuMesh.vertexBuffer.get() offset:0 atIndex:(u32)bv_cmd->position];
+                    [pass setVertexBuffer:gpuMesh.vertexBuffer.get() offset:0 atIndex:g_metalVertexBufferIndex];
                 }
                 break;
             case gpu_command_type::DRAW_INDEXED:
@@ -259,10 +329,15 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
     [currentBuffer commit];
 }
 
-pipeline_state_handle m_dynamic_rhi::createPSO(material* mat)
+pipeline_state_handle m_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
 {
     assert(mat && "Material pointer cannot be null");
-    
+
+    if (passName == render_pass_name::GBUFFER_PASS || passName == render_pass_name::DEFERRED_LIGHTING_PASS)
+    {
+        throw std::runtime_error("Metal backend does not support deferred rendering yet");
+    }
+
     pipeline_state_handle pso_handle = pipeline_state_handle(mat->getHash());
 
     auto it = _pipelineStates.find(pso_handle.get());
@@ -280,7 +355,7 @@ pipeline_state_handle m_dynamic_rhi::createPSO(material* mat)
 
         if (mat->useVertexIndexBuffers())
         {
-            NSUInteger bufferIndex = (NSUInteger)shader_binding::VERTEX;
+            NSUInteger bufferIndex = g_metalVertexBufferIndex;
             MTLVertexDescriptor *vertexDescriptor = [[MTLVertexDescriptor alloc] init];
 
             vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
@@ -303,17 +378,34 @@ pipeline_state_handle m_dynamic_rhi::createPSO(material* mat)
             init_desc.vertexDescriptor = vertexDescriptor;
         }
 
-        init_desc.colorFormat = _contexts[0].getPixelFormat();
-        init_desc.depthFormat = _contexts[0].getDepthPixelFormat();
+        init_desc.colorFormat = passName == render_pass_name::SHADOW_PASS ? MTLPixelFormatInvalid : _contexts[0].getPixelFormat();
+        init_desc.depthFormat = g_metalDepthTargetFormat;
 
-        // TODO: remove hardcoded pixel format
-        const std::string& shaderName = mat->getShaderName();
-        pso.init(shaderName, init_desc);
+        pso.init(_shaderLibraries.get(mat->getShaderName()), init_desc);
 
         std::printf("PSO %u created successfully\n", pso_handle.get());
     }
 
     return pso_handle;
+}
+
+render_target_handle m_dynamic_rhi::createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count, bool skip_resources)
+{
+    auto& rt = _renderTargets.emplace_back();
+    render_target_handle rt_handle(static_cast<u32>(_renderTargets.size()));
+
+    if (skip_resources)
+    {
+        rt.initSwapchain();
+        std::printf("Render Target %u created (skip_resources)\n", rt_handle.get());
+        return rt_handle;
+    }
+
+    rt.init(_deviceHandle, width, height, rt_type, count);
+
+    std::printf("Render Target %u created successfully\n", rt_handle.get());
+
+    return rt_handle;
 }
 
 mesh_handle m_dynamic_rhi::createMesh(mesh* msh)
@@ -372,7 +464,7 @@ texture_handle m_dynamic_rhi::createTexture(texture* tex)
     return texture_handle(texHash);
 }
 
-void m_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 frameIndex)
+void m_dynamic_rhi::loadTextureToGPU(const texture_handle& tex_handle, u32 /*frameIndex*/)
 {
     auto it = _textures.find(tex_handle.get());
     if (it == _textures.end()) {
@@ -390,7 +482,7 @@ uniform_buffer_handle m_dynamic_rhi::createUniformBuffer(size_t bufferSize, shad
 {
     auto& buffer = _uniformBuffers.emplace_back();
     
-    buffer.init(_deviceHandle, bufferSize, g_framesInFlight, stage);
+    buffer.init(_deviceHandle, bufferSize, g_framesInFlight, stage, g_metalConstantBufferOffsetAlignment);
 
     uniform_buffer_handle ub_handle(static_cast<u32>(_uniformBuffers.size()));
 

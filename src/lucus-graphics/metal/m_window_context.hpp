@@ -13,8 +13,8 @@ namespace lucus
     {
         CAMetalLayer* metalLayer = nil;
 
-        std::array<id<MTLTexture>, g_framesInFlight> depthTextures;
-        MTLPixelFormat depthFormat = MTLPixelFormatDepth32Float;
+        render_target_handle color_handle;
+        render_target_handle depth_handle;
 
         CGSize cachedDrawableSize{};
 
@@ -30,6 +30,5 @@ namespace lucus
         CGSize getDrawableSize() const;
 
         MTLPixelFormat getPixelFormat() const { return metalLayer.pixelFormat; }
-        MTLPixelFormat getDepthPixelFormat() const { return depthFormat; }
     };
 }

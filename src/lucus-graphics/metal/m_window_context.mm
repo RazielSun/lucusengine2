@@ -36,17 +36,6 @@ void m_window_context::init(id<MTLDevice> device, window* window)
     [content_view setWantsLayer:YES];
     [content_view setLayer:metalLayer];
 
-    MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:depthFormat
-                                                      width:(NSUInteger)cachedDrawableSize.width
-                                                     height:(NSUInteger)cachedDrawableSize.height
-                                                  mipmapped:NO];
-    desc.storageMode = MTLStorageModePrivate;
-    desc.usage = MTLTextureUsageRenderTarget;
-    for (auto& depthTexture : depthTextures)
-    {
-        depthTexture = [device newTextureWithDescriptor:desc];
-    }
-
     frameSemaphore = dispatch_semaphore_create(g_framesInFlight);
 }
 

@@ -552,7 +552,7 @@ the suppression carries a written reason.
 
 | id | prio | title |
 |----|------|-------|
-| S1 | P1 | ~~Metal backend does not match the current RHI interface~~ **archived** |
+| S1 | P1 | Metal backend does not match the current RHI interface — **reopened, compiles** |
 | S2 | P1 | `assert()` used as production error handling |
 | S3 | P1 | No swapchain recreation / window resize |
 | S4 | P2 | ~~GCC cannot compile the project~~ **fixed** |
@@ -564,7 +564,7 @@ the suppression carries a written reason.
 | S10 | P1 | Validation is a compile-time toggle and its output is discarded |
 | S11 | P2 | No unit-test framework — everything runs through the app |
 
-### S1 — Metal backend does not match the current RHI interface · P1 · **RESOLVED: archived**
+### S1 — Metal backend does not match the current RHI interface · P1 · **REOPENED**
 
 `src/lucus-graphics/metal/`
 
@@ -596,6 +596,49 @@ what it would take to bring it back.
 
 Consequences elsewhere: **S9**'s build matrix is two platforms, not three, and
 `VALIDATION_PLAN.md` **V7** (Metal validation) is dropped rather than deferred.
+
+**Reopened (2026-11-10).** Sources are back in `src/lucus-graphics/metal/`,
+scripts in `scripts/`, the `APPLE` branch in CMake comes before `UNIX` and links
+Metal, QuartzCore, Cocoa and CoreGraphics with ARC on. `MTLCreateSystemDefaultDevice`
+returns nil in a command-line binary that does not link CoreGraphics.
+
+Shaders: `compile_metal.sh` only emits `.metal` from `slangc`; `m_shader_library_cache`
+compiles it at runtime with `newLibraryWithSource:` and caches it by shader name. No
+Xcode needed, Command Line Tools are enough.
+
+`m_dynamic_rhi` now implements the full interface: `createPSO` per pass (shadow pass
+is depth-only), `createRenderTarget` and `getWindowContextRenderTarget` backed by
+`m_render_target`. `RENDER_PASS_BEGIN` builds attachments from the command,
+`BIND_RENDER_TARGET` binds the shadow map, `IMAGE_BARRIER` is a no-op (Metal tracks
+hazards). The vertex buffer sits at Metal buffer index 30, away from uniform slots.
+G-buffer and deferred-lighting PSOs throw.
+
+Uniform buffers keep one copy per frame in flight; on macOS a constant-buffer
+offset must be a multiple of 256, so `m_buffer` strides uniform copies by 256.
+Found by `MTL_DEBUG_LAYER`, silent without it.
+
+`app` had no C++ standard: `cmake/common` is added with `add_subdirectory`, so its
+`CMAKE_CXX_STANDARD`, warning flags and `CMAKE_EXPORT_COMPILE_COMMANDS` reach no
+target. Linux worked on the compiler default (gnu++17); Apple clang defaults to
+C++98. `liblucus` now carries `cxx_std_20` as an interface feature. The warning
+flags are still not applied anywhere.
+
+Verified on macOS 12.7.6 / Intel Iris 6100 (Mac1, argument buffers tier 1), CMake
+4.4.4 + Ninja, slangc 2026.21, each test 5 ticks under `MTL_DEBUG_LAYER=1
+MTL_DEBUG_LAYER_ERROR_MODE=assert`: 8/14 pass — `cube_gpu`, `cube_load`, `cube`,
+`scene_light`, `scene_load`, `triangle_gpu`, `triangle`, `two_windows`. Exit code
+only, images not inspected.
+
+Failing, expected: three `*_deferred` tests (deferred rejected); `one_texture`,
+`scene_bindless_texture`, `scene_light_texture` — Slang emits the unbounded
+`gBindlessTextures[]` / `gBindlessSamplers[]` as MSL that does not compile
+(flexible array member not at the end of a struct). Not verified on Linux/Windows:
+the CMake reorder and the `cxx_std_20` interface feature.
+
+Still open: bindless for Metal (tier 1 needs a fixed-size array, or exclude the
+bindless include under `TARGET_METAL`), explicit Slang→Metal binding layout — the
+current indices match `shader_binding` only because of declaration order — deferred,
+V7 validation. Until V7 the suite runs only with `VALIDATION=off`.
 
 ### S2 — `assert()` as error handling · P1
 

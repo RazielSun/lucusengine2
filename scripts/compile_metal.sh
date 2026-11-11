@@ -49,16 +49,12 @@ find "$SRC_DIR" -type f -name "*.slang" ! -path "*/common/*" | while read -r fil
     base="${rel%.slang}"
 
     out_mtl="$OUT_DIR/$base.metal"
-    out_air="$OUT_DIR/$base.air"
-    out_lib="$OUT_DIR/$base.metallib"
 
     mkdir -p "$(dirname "$out_mtl")"
 
     if needs_rebuild "$file" "$out_mtl"; then
-        echo "Compiling $file to $out_lib"
+        echo "Compiling $file to $out_mtl"
         "$SLANGC" "$file" -target metal -entry vsMain -entry psMain -D TARGET_METAL=1 -o "$out_mtl" -I "$SRC_DIR"
-        xcrun -sdk macosx metal -c "$out_mtl" -o "$out_air"
-        xcrun -sdk macosx metallib "$out_air" -o "$out_lib"
     fi
 
 done

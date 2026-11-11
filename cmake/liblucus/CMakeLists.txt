@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project ( liblucus )
 
-if(WIN32)
+if(APPLE OR WIN32)
     set ( CMAKE_CXX_STANDARD 20 )
 endif()
 
@@ -13,6 +13,8 @@ add_subdirectory ( lucus-graphics )
 add_subdirectory ( lucus-sim )
 
 add_library ( liblucus INTERFACE)
+
+target_compile_features ( liblucus INTERFACE cxx_std_20 )
 
 target_link_libraries ( liblucus INTERFACE
     lucus-sim

@@ -1,5 +1,5 @@
 # LUCUS ENGINE 2
-An educational project, cross-platform (Linux-Vulkan, Win-DX12). Not for production.
+An educational project, cross-platform (Linux-Vulkan, Win-DX12, macOS-Metal in progress). Not for production.
 
 ## Project structure
 - src/ — main code of engine
@@ -8,21 +8,19 @@ An educational project, cross-platform (Linux-Vulkan, Win-DX12). Not for product
 - scripts/ - bash/bat utilities for building, compiling, running
 - content/scripts/ - AngelScript code for engine (main and tests)
 - third-party/ - third-party dependencies for different platforms
-- archive/ - code kept for reference, not built (see `archive/README.md`)
 
 ## Backend status
 
-| Feature | Vulkan (Linux) | DX12 (Win) |
-|---|---|---|
-| Forward pass | yes | yes |
-| Shadow map pass | yes | yes |
-| Deferred / GBuffer | yes | yes |
-| Bindless textures | yes | yes |
+| Feature | Vulkan (Linux) | DX12 (Win) | Metal (macOS) |
+|---|---|---|---|
+| Forward pass | yes | yes | in progress |
+| Shadow map pass | yes | yes | no |
+| Deferred / GBuffer | yes | yes | no (rejected explicitly) |
+| Bindless textures | yes | yes | no |
 
-Metal (macOS) is **archived**. It was parked at the `shadow_map` stage and then drifted
-out of the RHI interface, so the macOS target had not compiled for a while. The sources
-are kept in `archive/metal/` and configuring on macOS fails with a message pointing there.
-See `archive/README.md` for what reviving it would take.
+Metal shaders are emitted as MSL by `slangc` and compiled at runtime with
+`newLibraryWithSource:`, so macOS needs no Xcode — Command Line Tools are enough.
+See `PLAN.md` S1.
 
 ## TODO LIST
 ### Done
@@ -60,6 +58,14 @@ See `archive/README.md` for what reviving it would take.
 - Vulkan (loader + headers, e.g. `libvulkan-dev` / Vulkan SDK)
 - Clang (default) or GCC 13+ — both build the project as-is.
 
+### macOS
+- Xcode Command Line Tools (`xcode-select --install`) — Apple clang, Metal/Cocoa/QuartzCore frameworks. Full Xcode is not needed.
+- Cmake >= 3.28 (e.g. `brew install cmake` or `pip3 install cmake`)
+- Ninja (e.g. `brew install ninja` or `pip3 install ninja`)
+- SLANGC (see below) — the macOS release goes to `scripts/tools/slang`
+
+Verified on macOS 12.7.6, Intel Iris 6100, CMake 4.4.4, slangc 2026.21.
+
 ## Instalation
 
 - git clone
@@ -70,6 +76,17 @@ See `archive/README.md` for what reviving it would take.
 ## Shaders Compilations
 Get SLANGC from https://github.com/shader-slang/slang/releases
 e.x. Ubuntu Linux, put slang-2026.5-linux-x86_64-glibc-2.27.tar.gz to scripts/tools/slang
+
+On macOS take the `macos-x86_64` or `macos-aarch64` archive and unpack it into
+`scripts/tools/slang`, so that `scripts/tools/slang/bin/slangc` exists. If macOS
+blocks the binary as downloaded from the internet:
+
+```bash
+xattr -dr com.apple.quarantine scripts/tools/slang
+```
+
+macOS shaders are not compiled ahead of time: `compile_metal.sh` emits `.metal`
+source into `bin/shaders/`, the app compiles it at runtime.
 
 Get DXC for WIN SLANG compilation
 https://github.com/microsoft/DirectXShaderCompiler/releases
@@ -88,9 +105,31 @@ SLANGC=/path/to/slangc ./scripts/compile_vulkan.sh
 |----------|---------|
 | Linux | `./scripts/build_linux.sh` |
 | Windows | `scripts\build_win.bat` |
+| macOS | `./scripts/build_mac.sh` |
 
 Output: `bin/app` (or `bin/app.exe`), `bin/shaders/`.
-Note: `build_linux.sh` also compiles shaders, links `bin/content`, and then launches `./bin/app`.
+Note: `build_linux.sh` and `build_mac.sh` also compile shaders, link `bin/content`, and then launch `./bin/app`.
+
+Build options are environment variables, e.g. `BUILD_TYPE=Release ./scripts/build_mac.sh`
+(`BUILD_TYPE`, `GENERATOR`, `BUILD_DIR`, `CC`, `CXX`).
+
+### Run on macOS
+
+The default `content/scripts/main.as` uses deferred rendering, which Metal does
+not support yet, so plain `./bin/app` — and the launch at the end of
+`build_mac.sh` — exits with `Metal backend does not support deferred rendering yet`.
+The build itself is fine. Run a forward-pass script instead, from the repo root:
+
+```bash
+./bin/app --script tests/cube_gpu_test.as --ticks 5 --no-validation
+```
+
+Metal has no validation through the engine yet (`VALIDATION_PLAN.md` V7), so pass
+`--no-validation`. The Metal debug layer is enabled from the environment instead:
+
+```bash
+MTL_DEBUG_LAYER=1 MTL_DEBUG_LAYER_ERROR_MODE=assert ./bin/app --script tests/cube_gpu_test.as --ticks 5 --no-validation
+```
 
 ## Tests
 
@@ -124,6 +163,24 @@ TEST_DIR=./bin/content/scripts/tests ./scripts/run_tests.sh
 
 ```bat
 scripts\run_tests.bat
+```
+
+On macOS the runner works too, but only with `VALIDATION=off`, and it stops at
+the first failure. Deferred and bindless tests are expected to fail on Metal
+(`PLAN.md` S1), so run the supported subset through a list:
+
+```bash
+cat > scripts/tests.list <<'EOF'
+tests/cube_gpu_test.as
+tests/cube_load_test.as
+tests/cube_test.as
+tests/scene_light_test.as
+tests/scene_load_test.as
+tests/triangle_gpu_test.as
+tests/triangle_test.as
+tests/two_windows_test.as
+EOF
+VALIDATION=off MTL_DEBUG_LAYER=1 ./scripts/run_tests.sh
 ```
 
 Tests are smoke tests only: a test passes if the app exits 0 after N ticks.

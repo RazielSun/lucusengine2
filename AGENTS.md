@@ -9,8 +9,8 @@ Current backlog, known bugs and their analysis live in `PLAN.md`.
 
 Educational cross-platform 3D engine. Linux/Vulkan and Windows/DX12. Not production.
 
-macOS/Metal is **archived** — sources in `archive/metal/`, see `PLAN.md` S1.
-Configuring on macOS fails on purpose.
+macOS/Metal is being brought back — forward pass only, see `PLAN.md` S1.
+Metal shaders are MSL compiled at runtime; Xcode is not required.
 
 ## Build
 
@@ -27,6 +27,7 @@ Compilers: clang (default) or GCC 13+.
 |----------|---------|
 | Linux | `./scripts/build_linux.sh` |
 | Windows | `scripts\build_win.bat` |
+| macOS | `./scripts/build_mac.sh` |
 
 Output: `bin/app` (or `bin/app.exe`), `bin/shaders/`
 

@@ -11,6 +11,8 @@
 
 namespace lucus
 {
+    struct gpu_render_pass_begin_command;
+
     class m_dynamic_rhi : public dynamic_rhi
     {
         public:
@@ -21,8 +23,11 @@ namespace lucus
 
             virtual window_context_handle createWindowContext(const window_handle& handle) override;
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
+            virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle, render_target_type rt_type) const override;
 
-            virtual pipeline_state_handle createPSO(material* mat) override;
+            virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
+            virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) override;
+
             virtual mesh_handle createMesh(mesh* msh) override;
 
             virtual sampler_handle createSampler(const sampler_desc& desc = {}, resource_binding_mode binding_mode = resource_binding_mode::BINDFULL) override;
@@ -39,11 +44,18 @@ namespace lucus
 
             void uploadTextureToGpu(m_texture& tex);
 
+            id<MTLTexture> renderTargetTexture(const render_target_handle& rt_handle, const m_window_context& ctx, u32 frameIndex) const;
+            MTLRenderPassDescriptor* makeRenderPassDescriptor(const gpu_render_pass_begin_command& cmd, const m_window_context& ctx, u32 frameIndex) const;
+
         private:
             std::unique_ptr<m_device> _device;
             id<MTLDevice> _deviceHandle;
 
             std::vector<m_window_context> _contexts;
+
+            std::vector<m_render_target> _renderTargets;
+
+            m_shader_library_cache _shaderLibraries;
 
             std::unordered_map<u32, m_pipeline_state> _pipelineStates;
 

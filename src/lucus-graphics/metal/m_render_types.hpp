@@ -10,7 +10,12 @@ namespace lucus
     class mesh;
     class material;
     class texture;
-    
+
+    constexpr NSUInteger g_metalVertexBufferIndex{ 30 };
+    constexpr size_t g_metalConstantBufferOffsetAlignment{ 256 };
+    constexpr MTLPixelFormat g_metalColorTargetFormat{ MTLPixelFormatRGBA8Unorm };
+    constexpr MTLPixelFormat g_metalDepthTargetFormat{ MTLPixelFormatDepth32Float };
+
     struct m_mesh : public gpu_mesh
     {
         m_buffer vertexBuffer;
@@ -41,6 +46,18 @@ namespace lucus
         id<MTLSamplerState> sampler;
 
         void init(id<MTLDevice> device, const sampler_desc& desc);
+        void cleanup();
+    };
+
+    struct m_render_target
+    {
+        render_target_type type{ render_target_type::NONE };
+        bool swapchain{ false };
+        std::vector<id<MTLTexture>> textures;
+
+        void init(id<MTLDevice> device, u32 width, u32 height, render_target_type rt_type, u32 count);
+        void initSwapchain();
+        id<MTLTexture> texture(u32 frameIndex) const;
         void cleanup();
     };
 }
