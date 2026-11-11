@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
 project ( app LANGUAGES C CXX)
 
+set ( CMAKE_CXX_SCAN_FOR_MODULES OFF )
+
 get_filename_component ( LUCUS_ENGINE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE )
 get_filename_component ( LUCUS_ENGINE_SRC "${LUCUS_ENGINE_ROOT}/src/" ABSOLUTE )
 get_filename_component ( LUCUS_ENGINE_APP_SRC "${LUCUS_ENGINE_ROOT}/app/" ABSOLUTE )
