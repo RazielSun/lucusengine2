@@ -7,11 +7,19 @@
 
 namespace lucus
 {
-    static constexpr u32 COMMAND_FIXED_SIZE = 32;
-    static constexpr u32 COMMAND_ALIGNMENT  = alignof(std::max_align_t);
+    static constexpr u32 COMMAND_MAX_SIZE  = 256;
+    static constexpr u32 COMMAND_ALIGNMENT = 16;
+
+    static_assert(__STDCPP_DEFAULT_NEW_ALIGNMENT__ >= COMMAND_ALIGNMENT);
+
+    constexpr u16 commandStride(size_t size)
+    {
+        return static_cast<u16>((size + COMMAND_ALIGNMENT - 1) & ~size_t(COMMAND_ALIGNMENT - 1));
+    }
 
     enum class gpu_command_type : u16
     {
+        UNDEFINED = 0,
         RENDER_PASS_BEGIN,
         RENDER_PASS_END,
         SET_VIEWPORT,
@@ -32,42 +40,63 @@ namespace lucus
     struct gpu_command_base
     {
         gpu_command_type type;
+        u16 size { 0 };
 
         explicit gpu_command_base(gpu_command_type in_type) : type(in_type) {}
+    };
+
+    class gpu_command_iterator
+    {
+    public:
+        explicit gpu_command_iterator(const u8* ptr) : _ptr(ptr) {}
+
+        const gpu_command_base& operator*() const
+        {
+            const auto& command = *reinterpret_cast<const gpu_command_base*>(_ptr);
+            assert(command.type != gpu_command_type::UNDEFINED);
+            assert(command.size != 0);
+            return command;
+        }
+
+        gpu_command_iterator& operator++()
+        {
+            _ptr += (**this).size;
+            return *this;
+        }
+
+        bool operator!=(const gpu_command_iterator& other) const { return _ptr != other._ptr; }
+
+    private:
+        const u8* _ptr;
     };
 
     struct gpu_command_buffer
     {
         std::vector<u8> data;
-        u32 commandCount = 0;
-
-        template<class T>
-        T* addCommand()
-        {
-            static_assert(std::is_base_of_v<gpu_command_base, T>);
-            static_assert(std::is_trivially_copyable_v<T>);
-            static_assert(sizeof(T) <= COMMAND_FIXED_SIZE);
-            static_assert(alignof(T) <= COMMAND_ALIGNMENT);
-
-            const size_t oldSize = data.size();
-            const size_t newSize = oldSize + COMMAND_FIXED_SIZE;
-            data.resize(newSize);
-
-            void* dst = data.data() + oldSize;
-
-            std::memset(dst, 0, COMMAND_FIXED_SIZE);
-
-            ++commandCount;
-            return reinterpret_cast<T*>(dst);
-        }
 
         template<class T, class... Args>
         T& emplaceCommand(Args&&... args)
         {
-            T* ptr = addCommand<T>();
-            new (ptr) T(std::forward<Args>(args)...);
-            return *ptr;
+            static_assert(std::is_base_of_v<gpu_command_base, T>);
+            static_assert(std::is_trivially_copyable_v<T>);
+            static_assert(sizeof(T) <= COMMAND_MAX_SIZE);
+            static_assert(alignof(T) <= COMMAND_ALIGNMENT);
+
+            constexpr u16 stride = commandStride(sizeof(T));
+
+            const size_t offset = data.size();
+            data.resize(offset + stride);
+
+            u8* dst = data.data() + offset;
+            std::memset(dst, 0, stride);
+
+            T* command = new (dst) T(std::forward<Args>(args)...);
+            command->size = stride;
+            return *command;
         }
+
+        gpu_command_iterator begin() const { return gpu_command_iterator(data.data()); }
+        gpu_command_iterator end() const { return gpu_command_iterator(data.data() + data.size()); }
     };
 
     struct gpu_render_pass_begin_command : public gpu_command_base
@@ -230,10 +259,7 @@ namespace lucus
 
         u32 srvDescriptorIndex{0};
         u32 samplerDescriptorIndex{0};
-        u32 _reserved[5]{};
     };
-
-    static_assert(sizeof(gpu_set_bindless_command) <= COMMAND_FIXED_SIZE);
 
     struct gpu_bind_vertex_command : public gpu_command_base
     {

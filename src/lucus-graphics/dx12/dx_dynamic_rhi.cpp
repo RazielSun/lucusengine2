@@ -187,10 +187,10 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     if (!commandBuffer)
         throw std::runtime_error("Command buffer is null");
 
-    for (u32 i = 0; i < cmd.commandCount; ++i)
+    for (const gpu_command_base& command : cmd)
     {
-        const u8 *data = cmd.data.data() + i * COMMAND_FIXED_SIZE;
-        const gpu_command_base* gpu_cmd = reinterpret_cast<const gpu_command_base*>(data);
+        const u8* data = reinterpret_cast<const u8*>(&command);
+        const gpu_command_base* gpu_cmd = &command;
         switch (gpu_cmd->type)
         {
             case gpu_command_type::RENDER_PASS_BEGIN:
