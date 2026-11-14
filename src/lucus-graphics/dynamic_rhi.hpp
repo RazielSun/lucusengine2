@@ -13,6 +13,7 @@ namespace lucus
     class texture;
     class render_object;
     struct gpu_command_buffer;
+    struct image_capture;
 
     std::shared_ptr<class dynamic_rhi> create_dynamic_rhi();
 
@@ -53,7 +54,7 @@ namespace lucus
         virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize, shader_binding_stage stage = shader_binding_stage::VERTEX) = 0;
         virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) = 0;
 
-        virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) = 0;
+        virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture = nullptr) = 0;
 
     protected:
         void beginValidationSetup(const rhi_init_desc& desc);

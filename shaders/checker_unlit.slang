@@ -1,0 +1,37 @@
+#include "common/defines.slang"
+#include "common/structs.slang"
+
+[[vk::binding(0, 0)]]
+ConstantBuffer<FrameUniforms> gFrame : register(b0);
+[[vk::binding(0, 1)]]
+ConstantBuffer<ObjectUniforms> gObject : register(b1);
+[[vk::binding(0, 2)]]
+ConstantBuffer<MaterialUniforms> gMaterial : register(b2);
+
+[shader("vertex")]
+VSOutput vsMain(VSInput input)
+{
+    float4 worldPos = mul(gObject.model, float4(input.position, 1.0));
+    float4 viewPos = mul(gFrame.view, worldPos);
+    float4 clipPos = mul(gFrame.proj, viewPos);
+
+    VSOutput o;
+    o.position = clipPos;
+    o.texCoords0 = input.texCoords0;
+    o.color = input.color;
+    return o;
+}
+
+[shader("fragment")]
+float4 psMain(VSOutput input) : SV_Target0
+{
+    const float tiles = max(gMaterial.materialParams.x, 1.0f);
+    const float2 cell = floor(input.texCoords0 * tiles);
+    const float odd = fmod(cell.x + cell.y, 2.0f);
+
+    const float dark = 0.25f;
+    const float light = 0.75f;
+    const float shade = lerp(dark, light, odd);
+
+    return float4(gMaterial.baseColor.rgb * shade, 1.0f);
+}

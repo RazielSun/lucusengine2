@@ -328,6 +328,20 @@ identifies its owner unambiguously.
 
 ### B11 — One material uniform buffer for every draw · P1
 
+**Static reproducer available:** `tests/materials_forward_test.as` and its
+deferred, bindless and mixed variants share `scenes/materials.as`. Twelve fixed
+cubes exercise base colors, checker frequencies, distinct textures, lit/unlit
+shaders and the white texture fallback. Material parameters are script-bound;
+uniform storage is deliberately still shared so the scene exposes B11 before
+the allocator change. See README for the intended layout and expected current
+failure. Smoke-test success alone does not close this item.
+
+Verified on Linux/Vulkan: all six presets render and capture with GPU-assisted
+and synchronization validation reporting zero errors; the full suite passes
+20 scene tests plus both CPU selftests. Forward and deferred bindfull captures
+have identical pixels on ticks 1 and 5. The four requested colors in the forward
+top row render white, confirming the shared-material-buffer defect at runtime.
+
 [renderer.hpp:56](src/lucus-graphics/renderer.hpp#L56) ·
 [renderer.cpp:372](src/lucus-graphics/renderer.cpp#L372) ·
 [renderer.cpp:536](src/lucus-graphics/renderer.cpp#L536) ·
@@ -709,6 +723,21 @@ override with the other two absent): 26/26 shaders each time, and the
 not-found case exits 1 with instructions.
 
 ### S6 — Tests only check the exit code · P2
+
+**Capture infrastructure implemented:** `--screenshot=<path> --ticks N` reads
+the main window on tick N through a synchronous pre-present copy in Vulkan,
+DX12 and Metal, then writes a shared RGBA8 PNG. Invalid requests, unsupported
+capture paths and readback/write failures fail the run. `--capture-selftest`
+checks pixel packing and PNG round trips without a GPU and runs in the normal
+suite. See README for the contract and limits. Automated scene-image comparison
+and golden-image policy remain open; capture alone does not close S6.
+
+Verified on Linux/Vulkan: build, 20 scene smoke tests, capture selftest
+checks, forward/deferred/main-window PNG capture and a capture run with
+GPU-assisted plus synchronization validation (zero errors). Triangle RGB
+positions, orientation, alpha and static-frame reproducibility were checked
+separately. DX12 and Metal capture implementations have not been compiled or
+run on their native platforms here.
 
 [run_tests.sh:52](scripts/run_tests.sh#L52)
 

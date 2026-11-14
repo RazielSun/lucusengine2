@@ -38,7 +38,7 @@ namespace lucus
             virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize, shader_binding_stage stage = shader_binding_stage::VERTEX) override;
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
-            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;
+            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture = nullptr) override;
 
         protected:
             void createInstance();
@@ -67,6 +67,17 @@ namespace lucus
             const vk_framebuffer& findOrCreateFramebuffer(const vk_framebuffer_key& key);
 
         private:
+            struct frame_readback;
+
+            VkCommandBuffer beginFrame(vk_window_context& ctx, u32 frameIndex);
+            void recordCommands(const vk_window_context& ctx, u32 currentFrame, VkCommandBuffer cmdBuffer, const gpu_command_buffer& cmd);
+            void submitFrame(const vk_window_context& ctx, u32 frameIndex, VkCommandBuffer cmdBuffer);
+            void presentFrame(const vk_window_context& ctx, u32 frameIndex);
+
+            void prepareFrameCapture(const vk_window_context& ctx, image_capture& capture, frame_readback& readback);
+            void recordFrameCapture(const vk_window_context& ctx, VkCommandBuffer cmdBuffer, const image_capture& capture, const frame_readback& readback);
+            void completeFrameCapture(u32 frameIndex, const frame_readback& readback, image_capture& capture);
+
             VkInstance _instance;
             VkDebugUtilsMessengerEXT _debugMessenger{ VK_NULL_HANDLE };
 

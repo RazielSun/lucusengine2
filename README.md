@@ -185,3 +185,91 @@ VALIDATION=off MTL_DEBUG_LAYER=1 ./scripts/run_tests.sh
 
 Tests are smoke tests only: a test passes if the app exits 0 after N ticks.
 Nothing checks the rendered image. Logs are written to `scripts/logs`.
+
+## Screenshots
+
+```bash
+./bin/app --script tests/triangle_gpu_test.as --ticks 5 --screenshot=/tmp/frame.png --validation=on --validation-required
+```
+
+`--screenshot=<path>` captures the main window on tick N of `--ticks N`.
+A positive tick count and a non-empty path are required. Relative output paths
+are resolved against the process working directory; the parent directory must
+already exist. Closing the window before tick N, an unsupported capture format
+or surface, a GPU readback failure, or a PNG write failure makes the run fail.
+
+Vulkan, DX12 and Metal implement the same synchronous capture contract:
+the backend records a copy of the current backbuffer before presentation and
+waits for that copy before returning CPU pixels from `dynamic_rhi::execute`.
+`renderer::tick` routes an optional `image_capture*` to the main window; the
+engine writes the returned image through the shared PNG writer. Without a
+capture request, no readback buffer or extra capture wait is created.
+
+Pixels are tightly packed RGBA8, with the top row first and alpha set to 255.
+Backend row padding is removed and BGRA channels are reordered. Color bytes
+are preserved without tone mapping or gamma conversion. Capture currently
+supports RGBA8/BGRA8 UNORM and sRGB backbuffers, not HDR formats. Vulkan requires
+surface support for `TRANSFER_SRC`; Metal enables drawable readback when
+requested. Metal remains limited to its existing forward rendering support;
+use a forward script and `--no-validation` there.
+
+Capture waits and PNG encoding are diagnostic work and should be excluded
+from performance measurements. PNG output alone does not establish image
+correctness; compare its content against the scene's expected result.
+
+`./bin/app --capture-selftest` checks pixel packing, channel order, invalid
+inputs and PNG round trips without a window or GPU. Both test runners execute
+it before the scene smoke tests.
+
+## Static material scenes
+
+The shared scene in `content/scripts/scenes/materials.as` builds a fixed
+1280x720 view of twelve cubes. Camera, light, transforms and draw order are
+constant; the scene does not read elapsed time. The fixture uses the existing
+cube geometry and UVs without its blue vertex colors, so material colors can
+be checked directly.
+
+Choose a render mode and texture binding setup through these entry scripts:
+
+| Texture setup | Forward script | Deferred script |
+|---|---|---|
+| Bindfull | `tests/materials_forward_test.as` | `tests/materials_deferred_test.as` |
+| Bindless | `tests/materials_bindless_forward_test.as` | `tests/materials_bindless_deferred_test.as` |
+| Mixed | `tests/materials_mixed_forward_test.as` | `tests/materials_mixed_deferred_test.as` |
+
+In mixed mode UV checker B is bindless; UV checker A and the photograph are
+bindfull. Each texture is loaded once and reused by its materials.
+
+```bash
+./bin/app --script tests/materials_forward_test.as --ticks 5 --screenshot=/tmp/materials-forward.png --validation=gpu --validation-required
+```
+
+Expected layout, left to right and top to bottom:
+
+- Top row: red, green, blue and yellow materials using `simple_unlit`.
+- Middle row: procedural checker frequencies 4 and 16, UV checker A and UV
+  checker B. The texture samples use `simple_texture_unlit`.
+- Bottom row: a cool-tinted `simple_lit` material, a photograph with
+  `simple_texture_lit`, an untextured `simple_texture_unlit` material using the
+  white fallback, and UV checker A with `simple_texture_lit`.
+
+The current deferred lighting pass applies Lambert lighting to all GBuffer
+materials, including the shaders named `unlit`. Forward and deferred images
+therefore need separate baselines; the presets do not imply pixel parity.
+
+Material constants are set through `SetBaseColor(r, g, b, a = 1)` and
+`SetMaterialParams(x, y, z, w)`. The procedural checker uses parameter x as its
+frequency. Other preview materials initialize x to 8 and do not use it.
+
+**Known B11 reproducer:** the renderer still writes every material into one
+shared uniform buffer. The last draw supplies white base color, checker
+frequency 8 and UV checker A's texture flags/index. Consequently the top row
+loses its distinct colors, both procedural checkers use frequency 8, and
+bindless materials can sample checker A instead of their own texture. These
+images are diagnostic baselines, not correct golden images. Per-material
+buffers or a frame-local uniform allocator remain the next separate change.
+
+The six entry scripts are discovered by the existing smoke-test runner. A
+clean validation run confirms legal GPU commands, not the expected material
+appearance. Vulkan is the runtime verification platform here; DX12 and Metal
+need native checks. Metal does not support the deferred or bindless presets.

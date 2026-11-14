@@ -74,8 +74,13 @@ void renderer::uploadPendingTextures()
     textures.resetPendingTextures();
 }
 
-void renderer::tick(float dt)
+void renderer::tick(float dt, image_capture* capture)
 {
+    if (capture && (!_dynamicRHI || !_currentScene || _dynamicRHI->getWindowContexts().empty()))
+    {
+        throw std::runtime_error("Cannot capture a frame without a scene and a window context");
+    }
+
     uploadPendingTextures();
 
     for (const auto& context : _dynamicRHI->getWindowContexts())
@@ -104,7 +109,9 @@ void renderer::tick(float dt)
                 lightingPass(_currentScene.get(), pc, cmd);
             }
 
-            _dynamicRHI->execute(context, g_frameIndex, cmd);
+            image_capture* context_capture = capture && context.get() == _dynamicRHI->getWindowContexts().front().get()
+                ? capture : nullptr;
+            _dynamicRHI->execute(context, g_frameIndex, cmd, context_capture);
         }
     }
 
@@ -764,8 +771,11 @@ void renderer::updateObjectUniformBuffer(const render_object* obj)
 void renderer::updateMaterialUniformBuffer(const material* mat)
 {
     material_uniform_buffer ub{};
-    ub.base_color = glm::vec4(1.0f);
-    ub.material_params = glm::vec4(0.0f);
+    if (mat)
+    {
+        ub.base_color = mat->getBaseColor();
+        ub.material_params = mat->getMaterialParams();
+    }
 
     u32 flags = 0;
     u32 albedoSlot = 0;

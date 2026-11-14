@@ -28,7 +28,10 @@ void lucus::utils::createBuffer(VkDevice device, VkPhysicalDevice gpu, VkDeviceS
         throw std::runtime_error("failed to allocate buffer memory!");
     }
 
-    vkBindBufferMemory(device, buffer, bufferMemory, 0);
+    if (vkBindBufferMemory(device, buffer, bufferMemory, 0) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to bind buffer memory!");
+    }
 }
 
 void lucus::utils::createImage(VkDevice device, VkPhysicalDevice gpu, VkExtent2D extent, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& memory)

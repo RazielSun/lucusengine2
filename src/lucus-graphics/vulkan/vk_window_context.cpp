@@ -137,7 +137,12 @@ void vk_window_context::initSurface(VkPhysicalDevice gpu, window* window)
 void vk_window_context::acquire_image(u32 frameIndex)
 {
 	u32 nextImageIndex = frameIndex % static_cast<u32>(imageSync.size());
-    vkAcquireNextImageKHR(_device, swapChain.swapChain, UINT64_MAX, imageSync[nextImageIndex].imageAvailable, (VkFence)nullptr, &currentImageIndex);
+    const VkResult result = vkAcquireNextImageKHR(_device, swapChain.swapChain, UINT64_MAX,
+        imageSync[nextImageIndex].imageAvailable, VK_NULL_HANDLE, &currentImageIndex);
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+        throw std::runtime_error("Vulkan acquire failed with result " + std::to_string(result));
+    }
 }
 
 void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surface, window* window)
@@ -197,7 +202,11 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
 		preTransform = capabilities.currentTransform;
 	}
 
-    // TODO
+    imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+    {
+        imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
 
     VkSwapchainCreateInfoKHR createSwapchainInfo{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -207,7 +216,7 @@ void vk_swapchain::init(VkPhysicalDevice gpu, VkDevice device, VkSurfaceKHR surf
         .imageColorSpace = colorSpace,
         .imageExtent = extent,
         .imageArrayLayers = 1,
-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageUsage = imageUsage,
         .preTransform = (VkSurfaceTransformFlagBitsKHR)preTransform,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = swapchainPresentMode,

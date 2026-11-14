@@ -14,6 +14,7 @@ namespace lucus
     class dynamic_rhi;
     class camera;
     struct gpu_command_buffer;
+    struct image_capture;
 
     struct pass_context
     {
@@ -35,7 +36,7 @@ namespace lucus
         void setRHIInitDesc(const rhi_init_desc& desc) { _rhiInitDesc = desc; }
         const validation_status* getValidationStatus() const;
 
-        void tick(float dt);
+        void tick(float dt, image_capture* capture = nullptr);
         void cleanup();
 
         void setRenderMode(render_mode mode) { r_mode = mode; }

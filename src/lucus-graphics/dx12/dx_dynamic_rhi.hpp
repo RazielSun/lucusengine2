@@ -37,7 +37,7 @@ namespace lucus
             virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize, shader_binding_stage stage = shader_binding_stage::VERTEX) override;
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
-            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;
+            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture = nullptr) override;
 
         protected:
             void createInstance();
@@ -49,8 +49,19 @@ namespace lucus
             void uploadTextureToGpu(dx_texture& tex, u32 frameIndex);
 
             void drainValidationMessages();
+            void waitForGpu();
 
         private:
+            struct frame_readback;
+
+            void beginFrame(u32 frameIndex);
+            void recordCommands(const dx_window_context& ctx, u32 frameIndex, const gpu_command_buffer& cmd);
+            void submitFrame();
+
+            void prepareFrameCapture(const dx_window_context& ctx, image_capture& capture, frame_readback& readback);
+            void recordFrameCapture(const dx_window_context& ctx, const frame_readback& readback);
+            void completeFrameCapture(const frame_readback& readback, image_capture& capture);
+
             Com<IDXGIFactory4> _DXGIFactory;
 
             std::unique_ptr<dx_device> _device;
@@ -83,7 +94,7 @@ namespace lucus
             Com<ID3D12GraphicsCommandList> commandBuffer;
 
             Com<ID3D12Fence> fence;
-            std::array<uint64_t, g_framesInFlight> fenceValues{};
+            uint64_t _nextFenceValue{1};
             void* fenceEvent = nullptr;
 
             u32 _nextBindlessTextureSlot{0};

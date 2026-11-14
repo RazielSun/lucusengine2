@@ -65,6 +65,15 @@ fi
 echo "[ OK ] validation selftest" | tee -a "$LOG_FILE"
 echo | tee -a "$LOG_FILE"
 
+echo "[RUN ] screenshot selftest" | tee -a "$LOG_FILE"
+if ! "$APP" --directory "$RUN_DIR" --capture-selftest 2>&1 | tee -a "$LOG_FILE"; then
+    echo "[FAIL] screenshot selftest" | tee -a "$LOG_FILE"
+    cp "$LOG_FILE" "$LATEST_LOG"
+    exit 1
+fi
+echo "[ OK ] screenshot selftest" | tee -a "$LOG_FILE"
+echo | tee -a "$LOG_FILE"
+
 run_test() {
     local script_path="$1"
 

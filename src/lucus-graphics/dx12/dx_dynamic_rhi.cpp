@@ -10,6 +10,7 @@
 #include "render_types.hpp"
 
 #include "dx_utils.hpp"
+#include "image_capture.hpp"
 
 namespace lucus
 {
@@ -20,6 +21,14 @@ namespace lucus
 }
 
 using namespace lucus;
+
+struct dx_dynamic_rhi::frame_readback
+{
+    Com<ID3D12Resource> buffer;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    UINT64 size{0};
+    bool bgra{false};
+};
 
 namespace
 {
@@ -167,15 +176,43 @@ void dx_dynamic_rhi::ensureDeferredGBufferTargets(const window_context_handle& c
     ctx.gbuffer.depth = createRenderTarget(gw, gh, render_target_type::DEPTH, g_framesInFlight);
 }
 
-void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
+void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture)
 {
-    if (!ctx_handle.is_valid())
+    if (!ctx_handle.is_valid() || ctx_handle.as_index() >= _contexts.size())
     {
+        if (capture)
+        {
+            throw std::runtime_error("DX12 screenshot: invalid window context");
+        }
         return;
     }
 
     auto& ctx = _contexts[ctx_handle.as_index()];
 
+    beginFrame(frameIndex);
+    recordCommands(ctx, frameIndex, cmd);
+
+    frame_readback readback;
+    if (capture)
+    {
+        prepareFrameCapture(ctx, *capture, readback);
+        recordFrameCapture(ctx, readback);
+    }
+
+    submitFrame();
+    if (capture)
+    {
+        completeFrameCapture(readback, *capture);
+    }
+
+    ThrowIfFailed(ctx.swapChain->Present(1, 0), "Failed SwapChain Present");
+    ctx.backBufferIndex = ctx.swapChain->GetCurrentBackBufferIndex();
+
+    drainValidationMessages();
+}
+
+void dx_dynamic_rhi::beginFrame(u32 frameIndex)
+{
     u32 currentFrame = frameIndex % g_framesInFlight;
 
     ThrowIfFailed(commandPool.commandAllocators[currentFrame]->Reset(), "Failed Reset Command Allocator");
@@ -186,6 +223,11 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
     
     if (!commandBuffer)
         throw std::runtime_error("Command buffer is null");
+}
+
+void dx_dynamic_rhi::recordCommands(const dx_window_context& ctx, u32 frameIndex, const gpu_command_buffer& cmd)
+{
+    const u32 currentFrame = frameIndex % g_framesInFlight;
 
     for (const gpu_command_base& command : cmd)
     {
@@ -429,29 +471,107 @@ void dx_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 break;
         }
     }
+}
 
+void dx_dynamic_rhi::submitFrame()
+{
     ThrowIfFailed(commandBuffer->Close(), "Failed Close Command Buffer");
 
     ID3D12CommandList* command_lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
-    ThrowIfFailed(ctx.swapChain->Present(1, 0), "Failed SwapChain Preset");
+    waitForGpu();
+}
 
-    const uint64_t current_fence = fenceValues[currentFrame];
-
-    ThrowIfFailed(_commandQueue->Signal(fence.Get(), current_fence), "Failed Queue Signal");
-
-    ctx.backBufferIndex = ctx.swapChain->GetCurrentBackBufferIndex();
-
-    if (fence->GetCompletedValue() < fenceValues[currentFrame])
+void dx_dynamic_rhi::prepareFrameCapture(const dx_window_context& ctx, image_capture& capture, frame_readback& readback)
+{
+    auto& target = _renderTargets[ctx.color_handle.as_index()].color;
+    ID3D12Resource* source = target.images[ctx.backBufferIndex].Get();
+    const D3D12_RESOURCE_DESC source_desc = source->GetDesc();
+    switch (source_desc.Format)
     {
-        ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[currentFrame], (HANDLE)fenceEvent), "Failed Set Event OnCompletion");
-        WaitForSingleObject((HANDLE)fenceEvent, INFINITE);
+        case DXGI_FORMAT_R8G8B8A8_UNORM:
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+            break;
+        case DXGI_FORMAT_B8G8R8A8_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+            readback.bgra = true;
+            break;
+        default:
+            throw std::runtime_error("DX12 screenshot: unsupported swapchain format " +
+                std::to_string(source_desc.Format));
+    }
+    capture = image_capture(ctx.width, ctx.height);
+    _deviceHandle->GetCopyableFootprints(&source_desc, 0, 1, 0, &readback.footprint,
+        nullptr, nullptr, &readback.size);
+    if (readback.size > std::numeric_limits<size_t>::max())
+    {
+        throw std::runtime_error("DX12 screenshot: readback buffer is too large");
     }
 
-    fenceValues[currentFrame] = current_fence + 1;
+    const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+    const auto buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(readback.size);
+    ThrowIfFailed(_deviceHandle->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+        &buffer_desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback.buffer)),
+        "DX12 screenshot: failed to allocate readback buffer");
+}
 
-    drainValidationMessages();
+void dx_dynamic_rhi::recordFrameCapture(const dx_window_context& ctx, const frame_readback& readback)
+{
+    auto& target = _renderTargets[ctx.color_handle.as_index()].color;
+    ID3D12Resource* source = target.images[ctx.backBufferIndex].Get();
+
+    D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(source,
+        target.states[ctx.backBufferIndex], D3D12_RESOURCE_STATE_COPY_SOURCE);
+    commandBuffer->ResourceBarrier(1, &barrier);
+
+    D3D12_TEXTURE_COPY_LOCATION source_location{};
+    source_location.pResource = source;
+    source_location.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_TEXTURE_COPY_LOCATION destination{};
+    destination.pResource = readback.buffer.Get();
+    destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    destination.PlacedFootprint = readback.footprint;
+    commandBuffer->CopyTextureRegion(&destination, 0, 0, 0, &source_location, nullptr);
+
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(source,
+        D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT);
+    commandBuffer->ResourceBarrier(1, &barrier);
+    target.states[ctx.backBufferIndex] = D3D12_RESOURCE_STATE_PRESENT;
+}
+
+void dx_dynamic_rhi::completeFrameCapture(const frame_readback& readback, image_capture& capture)
+{
+    const D3D12_RANGE range{0, static_cast<SIZE_T>(readback.size)};
+    void* mapped = nullptr;
+    ThrowIfFailed(readback.buffer->Map(0, &range, &mapped), "DX12 screenshot: failed to map readback buffer");
+    capture.copy_pixels(static_cast<const u8*>(mapped) + readback.footprint.Offset,
+        static_cast<size_t>(readback.size - readback.footprint.Offset), readback.footprint.Footprint.RowPitch, readback.bgra);
+    const D3D12_RANGE written{0, 0};
+    readback.buffer->Unmap(0, &written);
+}
+
+void dx_dynamic_rhi::waitForGpu()
+{
+    const uint64_t value = _nextFenceValue++;
+    ThrowIfFailed(_commandQueue->Signal(fence.Get(), value), "Failed Queue Signal");
+    const uint64_t completed = fence->GetCompletedValue();
+    if (completed == std::numeric_limits<uint64_t>::max())
+    {
+        throw std::runtime_error("DX12 device removed while waiting for GPU");
+    }
+    if (completed < value)
+    {
+        ThrowIfFailed(fence->SetEventOnCompletion(value, (HANDLE)fenceEvent), "Failed Set Event OnCompletion");
+        if (WaitForSingleObject((HANDLE)fenceEvent, INFINITE) != WAIT_OBJECT_0)
+        {
+            throw std::runtime_error("Failed to wait for DX12 GPU completion");
+        }
+        if (fence->GetCompletedValue() == std::numeric_limits<uint64_t>::max())
+        {
+            throw std::runtime_error("DX12 device removed while waiting for GPU");
+        }
+    }
 }
 
 void dx_dynamic_rhi::drainValidationMessages()
@@ -878,8 +998,7 @@ void dx_dynamic_rhi::createDevice()
 
 void dx_dynamic_rhi::createSyncObjects()
 {
-	ThrowIfFailed(_deviceHandle->CreateFence(fenceValues[0], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)), "Failed Create Fence");
-	fenceValues[0]++;
+	ThrowIfFailed(_deviceHandle->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)), "Failed Create Fence");
 
 	fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 	if (fenceEvent == nullptr)
@@ -956,14 +1075,7 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
     ID3D12CommandList* lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, lists);
 
-    fenceValues[currentFrame]++;
-    _commandQueue->Signal(fence.Get(), fenceValues[currentFrame]);
-
-    if (fence->GetCompletedValue() < fenceValues[currentFrame])
-    {
-        fence->SetEventOnCompletion(fenceValues[currentFrame], fenceEvent);
-        WaitForSingleObject(fenceEvent, INFINITE);
-    }
+    waitForGpu();
 
     tex.free_staging();
 }

@@ -10,6 +10,8 @@
 #include "window_manager.hpp"
 
 #include "renderer.hpp"
+#include "image_write.hpp"
+#include "image_capture_selftest.hpp"
 #include "validation_selftest.hpp"
 #include "validation_sink.hpp"
 
@@ -46,6 +48,34 @@ void engine::run(int argc, char** argv)
         }
         return;
     }
+
+    if (commandline_args::instance().hasArgument("capture-selftest"))
+    {
+        if (!run_image_capture_selftest())
+        {
+            throw std::runtime_error("Screenshot selftest failed");
+        }
+        return;
+    }
+
+    const auto& args = commandline_args::instance();
+    const std::string screenshot_path = args.getArgument("screenshot");
+    const std::string ticks_arg = args.getArgument("ticks");
+    size_t parsed_ticks = 0;
+    const int max_ticks = ticks_arg.empty() ? 0 : std::stoi(ticks_arg, &parsed_ticks);
+    if (!ticks_arg.empty() && (parsed_ticks != ticks_arg.size() || max_ticks < 0))
+    {
+        throw std::runtime_error("--ticks requires a non-negative integer");
+    }
+    if (args.hasArgument("screenshot") && screenshot_path.empty())
+    {
+        throw std::runtime_error("--screenshot requires a PNG file path");
+    }
+    if (!screenshot_path.empty() && max_ticks <= 0)
+    {
+        throw std::runtime_error("--screenshot requires --ticks with a positive frame count");
+    }
+    bool screenshot_written = screenshot_path.empty();
 
     renderer::instance().setRHIInitDesc(rhi_init_desc_from_commandline());
 
@@ -84,8 +114,6 @@ void engine::run(int argc, char** argv)
     auto mainWindow = window_manager::instance().getWindow(handle);
     using clock = std::chrono::steady_clock;
     auto prevFrameTime = clock::now();
-    const std::string ticks_arg = commandline_args::instance().getArgument("ticks");
-    const int max_ticks = ticks_arg.empty() ? 0 : std::max(0, std::stoi(ticks_arg));
     int tick_count = 0;
 
     while (mainWindow && !mainWindow->shouldClose())
@@ -101,8 +129,21 @@ void engine::run(int argc, char** argv)
         }
 
         mainWindow->tick();
+        if (mainWindow->shouldClose())
+        {
+            break;
+        }
 
-        renderer::instance().tick(dt);
+        const bool capture_tick = !screenshot_path.empty() && tick_count + 1 == max_ticks;
+        image_capture image;
+        renderer::instance().tick(dt, capture_tick ? &image : nullptr);
+        if (capture_tick)
+        {
+            write_png(screenshot_path, image);
+            screenshot_written = true;
+            std::printf("Screenshot saved: %s (%ux%u, frame %d)\n",
+                screenshot_path.c_str(), image.width, image.height, tick_count + 1);
+        }
 
         if (max_ticks > 0)
         {
@@ -111,5 +152,10 @@ void engine::run(int argc, char** argv)
                 mainWindow->close();
             }
         }
+    }
+
+    if (!screenshot_written)
+    {
+        throw std::runtime_error("Window closed before the requested screenshot frame");
     }
 }

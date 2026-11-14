@@ -10,6 +10,7 @@
 #include "vk_pipeline_state.hpp"
 #include "vk_utils.hpp"
 #include "validation_sink.hpp"
+#include "image_capture.hpp"
 
 #include "glfw_include.hpp"
 
@@ -22,6 +23,22 @@ namespace lucus
 }
 
 using namespace lucus;
+
+struct vk_dynamic_rhi::frame_readback
+{
+    vk_buffer buffer;
+    bool bgra{false};
+
+    frame_readback() = default;
+    frame_readback(const frame_readback&) = delete;
+    frame_readback& operator=(const frame_readback&) = delete;
+
+    ~frame_readback()
+    {
+        buffer.unmap();
+        buffer.cleanup();
+    }
+};
 
 namespace
 {
@@ -508,23 +525,55 @@ void vk_dynamic_rhi::ensureDeferredGBufferTargets(const window_context_handle& c
     ctx.gbuffer.depth = createRenderTarget(gw, gh, render_target_type::DEPTH, g_framesInFlight);
 }
 
-void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
+void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture)
 {
-    if (!ctx_handle.is_valid()) {
+    if (!ctx_handle.is_valid() || ctx_handle.as_index() >= _contexts.size()) {
+        if (capture)
+        {
+            throw std::runtime_error("Vulkan screenshot: invalid window context");
+        }
         return;
     }
 
     vk_window_context& ctx = _contexts[ctx_handle.as_index()];
 
+    frame_readback readback;
+    if (capture)
+    {
+        prepareFrameCapture(ctx, *capture, readback);
+    }
+
+    VkCommandBuffer cmdBuffer = beginFrame(ctx, frameIndex);
+    recordCommands(ctx, frameIndex % g_framesInFlight, cmdBuffer, cmd);
+    if (capture)
+    {
+        recordFrameCapture(ctx, cmdBuffer, *capture, readback);
+    }
+
+    submitFrame(ctx, frameIndex, cmdBuffer);
+    if (capture)
+    {
+        completeFrameCapture(frameIndex, readback, *capture);
+    }
+    presentFrame(ctx, frameIndex);
+}
+
+VkCommandBuffer vk_dynamic_rhi::beginFrame(vk_window_context& ctx, u32 frameIndex)
+{
     u32 currentFrame = frameIndex % g_framesInFlight;
 
-    vkWaitForFences(_deviceHandle, 1, &frameSync[currentFrame].fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(_deviceHandle, 1, &frameSync[currentFrame].fence);
+    if (vkWaitForFences(_deviceHandle, 1, &frameSync[currentFrame].fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Vulkan frame fence wait failed");
+    }
 
     ctx.acquire_image(frameIndex);
 
     VkCommandBuffer& cmdBuffer = _commandbuffer_pool.getCommandBuffer(currentFrame);
-    vkResetCommandBuffer(cmdBuffer, 0);
+    if (vkResetCommandBuffer(cmdBuffer, 0) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Vulkan command buffer reset failed");
+    }
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -535,6 +584,11 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
+    return cmdBuffer;
+}
+
+void vk_dynamic_rhi::recordCommands(const vk_window_context& ctx, u32 currentFrame, VkCommandBuffer cmdBuffer, const gpu_command_buffer& cmd)
+{
     for (const gpu_command_base& command : cmd)
     {
         const u8* data = reinterpret_cast<const u8*>(&command);
@@ -796,12 +850,16 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
                 break;
         }
     }
+}
+
+void vk_dynamic_rhi::submitFrame(const vk_window_context& ctx, u32 frameIndex, VkCommandBuffer cmdBuffer)
+{
+    const u32 currentFrame = frameIndex % g_framesInFlight;
 
     if (vkEndCommandBuffer(cmdBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
     }
 
-    // Must match the slot acquire_image() signalled for this frame.
     u32 imageIndex = frameIndex % static_cast<u32>(ctx.imageSync.size());
 	const VkPipelineStageFlags waitPipelineStage{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	VkSubmitInfo submitInfo{
@@ -815,10 +873,18 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
 		.pSignalSemaphores = &ctx.imageSync[imageIndex].renderFinished
 	};
     
+    if (vkResetFences(_deviceHandle, 1, &frameSync[currentFrame].fence) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Vulkan frame fence reset failed");
+    }
 	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, frameSync[currentFrame].fence) != VK_SUCCESS) {
 		throw std::runtime_error("failed to submit draw command buffer!");
 	}
+}
 
+void vk_dynamic_rhi::presentFrame(const vk_window_context& ctx, u32 frameIndex)
+{
+    const u32 imageIndex = frameIndex % static_cast<u32>(ctx.imageSync.size());
 	VkPresentInfoKHR presentInfo{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
@@ -829,8 +895,94 @@ void vk_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameI
         .pResults = nullptr
     };
 
-    vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+    const VkResult present_result = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
+    if (present_result != VK_SUCCESS && present_result != VK_SUBOPTIMAL_KHR)
+    {
+        throw std::runtime_error("Vulkan present failed with result " + std::to_string(present_result));
+    }
+}
 
+void vk_dynamic_rhi::prepareFrameCapture(const vk_window_context& ctx, image_capture& capture, frame_readback& readback)
+{
+    if (!(ctx.swapChain.imageUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
+    {
+        throw std::runtime_error("Vulkan screenshot: surface does not support TRANSFER_SRC");
+    }
+    switch (ctx.swapChain.colorFormat)
+    {
+        case VK_FORMAT_R8G8B8A8_UNORM:
+        case VK_FORMAT_R8G8B8A8_SRGB:
+            break;
+        case VK_FORMAT_B8G8R8A8_UNORM:
+        case VK_FORMAT_B8G8R8A8_SRGB:
+            readback.bgra = true;
+            break;
+        default:
+            throw std::runtime_error("Vulkan screenshot: unsupported swapchain format " +
+                std::to_string(ctx.swapChain.colorFormat));
+    }
+    capture = image_capture(ctx.swapChain.extent.width, ctx.swapChain.extent.height);
+    readback.buffer.init(_deviceHandle, _device->getGPU(), capture.byte_size(),
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    readback.buffer.map();
+}
+
+void vk_dynamic_rhi::recordFrameCapture(const vk_window_context& ctx, VkCommandBuffer cmdBuffer, const image_capture& capture, const frame_readback& readback)
+{
+    auto& target = _renderTargets[ctx.color_handle.as_index()];
+    const u32 index = ctx.currentImageIndex;
+    const auto source = utils::toVkBarrierState(target.states[index]);
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = source.layout;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = target.images[index];
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    VkBufferImageCopy region{};
+    region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.imageExtent = {capture.width, capture.height, 1};
+    vkCmdCopyImageToBuffer(cmdBuffer, barrier.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        readback.buffer.get(), 1, &region);
+
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.dstAccessMask = 0;
+    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    target.states[index] = resource_state::PRESENT;
+
+    VkBufferMemoryBarrier host_barrier{};
+    host_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    host_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    host_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    host_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    host_barrier.buffer = readback.buffer.get();
+    host_barrier.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(cmdBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &host_barrier, 0, nullptr);
+}
+
+void vk_dynamic_rhi::completeFrameCapture(u32 frameIndex, const frame_readback& readback, image_capture& capture)
+{
+    const u32 currentFrame = frameIndex % g_framesInFlight;
+
+    if (vkWaitForFences(_deviceHandle, 1, &frameSync[currentFrame].fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Vulkan screenshot: failed to wait for readback");
+    }
+    capture.copy_pixels(readback.buffer.getMappedData(), capture.byte_size(),
+        static_cast<size_t>(capture.width) * 4, readback.bgra);
 }
 
 void vk_dynamic_rhi::createCommandBufferPool()

@@ -86,6 +86,20 @@ echo [ OK ] validation selftest
 >> "%LOG_FILE%" echo [ OK ] validation selftest
 echo.
 
+echo [RUN ] screenshot selftest
+>> "%LOG_FILE%" echo [RUN ] screenshot selftest
+"%APP%" --directory "%RUN_DIR%" --capture-selftest >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [FAIL] screenshot selftest
+    echo [FAIL] Full log: %LOG_FILE%
+    >> "%LOG_FILE%" echo [FAIL] screenshot selftest
+    copy /Y "%LOG_FILE%" "%LATEST_LOG%" >nul
+    exit /b 1
+)
+echo [ OK ] screenshot selftest
+>> "%LOG_FILE%" echo [ OK ] screenshot selftest
+echo.
+
 if exist "%TEST_LIST_FILE%" (
     echo [INFO] Loading tests from list
     >> "%LOG_FILE%" echo [INFO] Loading tests from list

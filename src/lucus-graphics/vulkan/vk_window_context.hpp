@@ -16,6 +16,7 @@ namespace lucus
         VkExtent2D extent{};
 
         uint32_t imageCount{ 0 };
+        VkImageUsageFlags imageUsage{0};
 
         VkSwapchainKHR swapChain{ VK_NULL_HANDLE };
 

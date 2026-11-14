@@ -37,7 +37,7 @@ namespace lucus
             virtual uniform_buffer_handle createUniformBuffer(size_t bufferSize, shader_binding_stage stage = shader_binding_stage::VERTEX) override;
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
-            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd) override;
+            virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture = nullptr) override;
         
         protected:
             void createDevice();
@@ -48,6 +48,15 @@ namespace lucus
             MTLRenderPassDescriptor* makeRenderPassDescriptor(const gpu_render_pass_begin_command& cmd, const m_window_context& ctx, u32 frameIndex) const;
 
         private:
+            struct frame_readback;
+
+            id<MTLCommandBuffer> createFrameCommandBuffer(dispatch_semaphore_t frameSemaphore);
+            void recordCommands(const m_window_context& ctx, u32 currentFrame, id<MTLCommandBuffer> currentBuffer, const gpu_command_buffer& cmd);
+
+            void prepareFrameCapture(id<MTLTexture> source, image_capture& capture, frame_readback& readback);
+            void recordFrameCapture(id<MTLCommandBuffer> currentBuffer, id<MTLTexture> source, const image_capture& capture, const frame_readback& readback);
+            void completeFrameCapture(id<MTLCommandBuffer> currentBuffer, const frame_readback& readback, image_capture& capture);
+
             std::unique_ptr<m_device> _device;
             id<MTLDevice> _deviceHandle;
 

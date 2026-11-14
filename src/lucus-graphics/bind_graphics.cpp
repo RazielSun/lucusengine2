@@ -251,6 +251,20 @@ void lucus::bind_material_class()
         asCALL_THISCALL
     ); assert(r >= 0);
 
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        "void SetBaseColor(float r, float g, float b, float a = 1)",
+        asMETHOD(material, setBaseColor),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_class_name,
+        "void SetMaterialParams(float x, float y, float z, float w)",
+        asMETHOD(material, setMaterialParams),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
     std::string method_set_texture = std::string("void SetTexture(") + texture_class_name + "@, int)";
     r = engine->RegisterObjectMethod(
         material_class_name,

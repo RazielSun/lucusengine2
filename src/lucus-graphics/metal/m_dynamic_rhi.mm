@@ -6,6 +6,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "texture.hpp"
+#include "image_capture.hpp"
 
 namespace lucus
 {
@@ -16,6 +17,30 @@ namespace lucus
 }
 
 using namespace lucus;
+
+struct m_dynamic_rhi::frame_readback
+{
+    id<MTLBuffer> buffer = nil;
+    size_t row_pitch{0};
+    bool bgra{false};
+};
+
+namespace
+{
+    struct pending_frame
+    {
+        dispatch_semaphore_t semaphore;
+        bool submitted{false};
+
+        ~pending_frame()
+        {
+            if (!submitted)
+            {
+                dispatch_semaphore_signal(semaphore);
+            }
+        }
+    };
+}
 
 m_dynamic_rhi::m_dynamic_rhi()
 {
@@ -170,31 +195,73 @@ MTLRenderPassDescriptor* m_dynamic_rhi::makeRenderPassDescriptor(const gpu_rende
     return descriptor;
 }
 
-void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd)
+void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture)
 {
-    if (!ctx_handle.is_valid()) {
+    if (!ctx_handle.is_valid() || ctx_handle.as_index() >= _contexts.size()) {
+        if (capture)
+        {
+            throw std::runtime_error("Metal screenshot: invalid window context");
+        }
         return;
     }
 
     m_window_context& ctx = _contexts[ctx_handle.as_index()];
 
-    u32 currentFrame = frameIndex % g_framesInFlight;
-
+    if (capture)
+    {
+        ctx.metalLayer.framebufferOnly = NO;
+    }
     ctx.wait_frame();
+    pending_frame frame{ctx.frameSemaphore};
 
     if (!ctx.currentDrawable)
     {
-        dispatch_semaphore_signal(ctx.frameSemaphore);
+        if (capture)
+        {
+            throw std::runtime_error("Metal screenshot: no drawable is available");
+        }
         return;
     }
 
-    id<MTLCommandBuffer> currentBuffer = [_device->getCommandPool() commandBuffer];
+    id<MTLCommandBuffer> currentBuffer = createFrameCommandBuffer(ctx.frameSemaphore);
+    recordCommands(ctx, frameIndex % g_framesInFlight, currentBuffer, cmd);
 
-    dispatch_semaphore_t semaphore = ctx.frameSemaphore;
+    frame_readback readback;
+    if (capture)
+    {
+        id<MTLTexture> source = ctx.currentDrawable.texture;
+        prepareFrameCapture(source, *capture, readback);
+        recordFrameCapture(currentBuffer, source, *capture, readback);
+    }
+
+    [currentBuffer presentDrawable:ctx.currentDrawable];
+    [currentBuffer commit];
+    frame.submitted = true;
+    ctx.currentDrawable = nil;
+
+    if (capture)
+    {
+        completeFrameCapture(currentBuffer, readback, *capture);
+    }
+}
+
+id<MTLCommandBuffer> m_dynamic_rhi::createFrameCommandBuffer(dispatch_semaphore_t frameSemaphore)
+{
+    id<MTLCommandBuffer> currentBuffer = [_device->getCommandPool() commandBuffer];
+    if (!currentBuffer)
+    {
+        throw std::runtime_error("Failed to create Metal command buffer");
+    }
+
     [currentBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
-        dispatch_semaphore_signal(semaphore);
+        dispatch_semaphore_signal(frameSemaphore);
     }];
 
+    return currentBuffer;
+}
+
+void m_dynamic_rhi::recordCommands(const m_window_context& ctx, u32 currentFrame, id<MTLCommandBuffer> currentBuffer, const gpu_command_buffer& cmd)
+{
     id<MTLRenderCommandEncoder> pass = nil;
 
     for (const gpu_command_base& command : cmd)
@@ -324,9 +391,66 @@ void m_dynamic_rhi::execute(const window_context_handle& ctx_handle, u32 frameIn
                 break;
         }
     }
+}
 
-    [currentBuffer presentDrawable:ctx.currentDrawable];
-    [currentBuffer commit];
+void m_dynamic_rhi::prepareFrameCapture(id<MTLTexture> source, image_capture& capture, frame_readback& readback)
+{
+    switch (source.pixelFormat)
+    {
+        case MTLPixelFormatRGBA8Unorm:
+        case MTLPixelFormatRGBA8Unorm_sRGB:
+            break;
+        case MTLPixelFormatBGRA8Unorm:
+        case MTLPixelFormatBGRA8Unorm_sRGB:
+            readback.bgra = true;
+            break;
+        default:
+            throw std::runtime_error("Metal screenshot: unsupported drawable pixel format " +
+                std::to_string(source.pixelFormat));
+    }
+    if (source.width > std::numeric_limits<u32>::max() || source.height > std::numeric_limits<u32>::max())
+    {
+        throw std::runtime_error("Metal screenshot: drawable dimensions are too large");
+    }
+    capture = image_capture(static_cast<u32>(source.width), static_cast<u32>(source.height));
+    readback.row_pitch = (static_cast<size_t>(capture.width) * 4 + 255) & ~size_t(255);
+    if (capture.height > std::numeric_limits<size_t>::max() / readback.row_pitch)
+    {
+        throw std::runtime_error("Metal screenshot: readback buffer is too large");
+    }
+    readback.buffer = [_deviceHandle newBufferWithLength:readback.row_pitch * capture.height
+        options:MTLResourceStorageModeShared];
+    if (!readback.buffer)
+    {
+        throw std::runtime_error("Metal screenshot: failed to allocate readback buffer");
+    }
+}
+
+void m_dynamic_rhi::recordFrameCapture(id<MTLCommandBuffer> currentBuffer, id<MTLTexture> source, const image_capture& capture, const frame_readback& readback)
+{
+    id<MTLBlitCommandEncoder> blit = [currentBuffer blitCommandEncoder];
+    if (!blit)
+    {
+        throw std::runtime_error("Metal screenshot: failed to create blit encoder");
+    }
+    [blit copyFromTexture:source sourceSlice:0 sourceLevel:0
+        sourceOrigin:MTLOriginMake(0, 0, 0)
+        sourceSize:MTLSizeMake(capture.width, capture.height, 1)
+        toBuffer:readback.buffer destinationOffset:0 destinationBytesPerRow:readback.row_pitch
+        destinationBytesPerImage:readback.row_pitch * capture.height];
+    [blit endEncoding];
+}
+
+void m_dynamic_rhi::completeFrameCapture(id<MTLCommandBuffer> currentBuffer, const frame_readback& readback, image_capture& capture)
+{
+    [currentBuffer waitUntilCompleted];
+    if (currentBuffer.status != MTLCommandBufferStatusCompleted)
+    {
+        NSString* detail = currentBuffer.error.localizedDescription;
+        throw std::runtime_error(std::string("Metal screenshot: GPU execution failed: ") +
+            (detail ? detail.UTF8String : "unknown error"));
+    }
+    capture.copy_pixels(readback.buffer.contents, readback.buffer.length, readback.row_pitch, readback.bgra);
 }
 
 pipeline_state_handle m_dynamic_rhi::createPSO(material* mat, render_pass_name passName)

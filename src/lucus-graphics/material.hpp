@@ -34,6 +34,12 @@ namespace lucus
         bool useVertexIndexBuffers() const { return _useVertexIndexBuffers; }
         void setUseVertexIndexBuffers(bool useVertexIndexBuffers) { _useVertexIndexBuffers = useVertexIndexBuffers; }
 
+        const glm::vec4& getBaseColor() const { return _baseColor; }
+        void setBaseColor(float r, float g, float b, float a = 1.0f) { _baseColor = glm::vec4(r, g, b, a); }
+
+        const glm::vec4& getMaterialParams() const { return _materialParams; }
+        void setMaterialParams(float x, float y, float z, float w) { _materialParams = glm::vec4(x, y, z, w); }
+
         void addTexture(texture* tex, u8 slot_index = 0);
         const std::vector<texture_slot>& getTextures() const { return _textures; }
         u32 getTexturesCount() const { return _textures.size(); }
@@ -54,6 +60,9 @@ namespace lucus
         bool _useFrameUniformBuffer{false};
         bool _useObjectUniformBuffer{false};
         bool _useVertexIndexBuffers{false};
+
+        glm::vec4 _baseColor{1.0f};
+        glm::vec4 _materialParams{0.0f};
 
         std::vector<texture_slot> _textures;
 
