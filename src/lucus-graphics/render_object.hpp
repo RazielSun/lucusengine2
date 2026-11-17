@@ -47,6 +47,7 @@ namespace lucus
         private:
             intrusive_ptr<mesh> _mesh;
             intrusive_ptr<material_instance> _materialInstance;
+            // root instance does not keep its material alive
             intrusive_ptr<material> _material;
 
             transform _transform;

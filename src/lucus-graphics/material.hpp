@@ -43,6 +43,7 @@ namespace lucus
 
     private:
         material* _material;
+        // empty for the root instance: material owns it, a strong ref back would be a cycle
         intrusive_ptr<material> _materialRef;
 
         glm::vec4 _baseColor{1.0f};

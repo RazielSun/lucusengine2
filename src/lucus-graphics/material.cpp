@@ -16,6 +16,7 @@ void material_instance::addTexture(texture* tex, u8 slot_index)
 material::material()
 {
     _rootInstance = intrusive_ptr<material_instance>(new material_instance(this));
+    // new object starts at refcount 1 and intrusive_ptr adds another
     _rootInstance->releaseRef();
 }
 
