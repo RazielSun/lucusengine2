@@ -25,7 +25,7 @@ namespace lucus
             virtual const window_gbuffer_targets& getWindowContextGBufferTargets(const window_context_handle& handle) const override;
             virtual void ensureDeferredGBufferTargets(const window_context_handle& ctx) override;
 
-            virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
+            virtual pipeline_state_handle createPSO(const pipeline_state_desc& desc) override;
             virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) override;
 
             virtual mesh_handle createMesh(mesh* msh) override;

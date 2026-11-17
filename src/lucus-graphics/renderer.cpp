@@ -123,11 +123,11 @@ void renderer::cleanup()
     _dynamicRHI.reset();
 }
 
-texture_handle renderer::baseColorTextureFor(const material* mat) const
+texture_handle renderer::baseColorTextureFor(const material_instance* inst) const
 {
-    if (mat && mat->getTexturesCount() > 0)
+    if (inst && inst->getTexturesCount() > 0)
     {
-        const texture* tex = mat->getTextures()[0].tex.get();
+        const texture* tex = inst->getTextures()[0].tex.get();
         if (tex && tex->getHandle().is_valid())
         {
             return tex->getHandle();
@@ -137,26 +137,45 @@ texture_handle renderer::baseColorTextureFor(const material* mat) const
     return g_defaultWhiteTexture->getHandle();
 }
 
-void renderer::prepareScene(const scene* scn)
+pipeline_state_handle renderer::ensurePSO(material* mat, render_pass_name pass)
 {
+    const pipeline_state_handle cached = mat->getPSOHandle(pass);
+    if (cached.is_valid())
     {
-        pipeline_state_handle pso_handle = g_shadowMat->getPSOHandle();
-        if (!pso_handle.is_valid()) {
-            pso_handle = _dynamicRHI->createPSO(g_shadowMat.get(), render_pass_name::SHADOW_PASS);
-            g_shadowMat->setPSOHandle(pso_handle);
-        }
+        return cached;
     }
 
+    const pipeline_state_desc desc = mat->getPipelineStateDesc(pass);
+    auto it = _pipelineStates.find(desc);
+    if (it == _pipelineStates.end())
     {
-        if (r_mode == render_mode::DEFERRED)
-        {
-            pipeline_state_handle pso_handle = g_deferredLightingMat->getPSOHandle();
-            if (!pso_handle.is_valid()) {
-                pso_handle = _dynamicRHI->createPSO(g_deferredLightingMat.get(), render_pass_name::DEFERRED_LIGHTING_PASS);
-                g_deferredLightingMat->setPSOHandle(pso_handle);
-            }
-        }
+        it = _pipelineStates.emplace(desc, _dynamicRHI->createPSO(desc)).first;
     }
+
+    mat->setPSOHandle(pass, it->second);
+    return it->second;
+}
+
+void renderer::prepareMaterialInstance(material_instance* inst)
+{
+    if (!inst->getHandle().is_valid())
+    {
+        inst->setHandle(_dynamicRHI->createUniformBuffer(sizeof(material_uniform_buffer), shader_binding_stage::BOTH));
+    }
+
+    updateMaterialUniformBuffer(inst);
+}
+
+void renderer::prepareScene(const scene* scn)
+{
+    ensurePSO(g_shadowMat.get(), render_pass_name::SHADOW_PASS);
+
+    if (r_mode == render_mode::DEFERRED)
+    {
+        ensurePSO(g_deferredLightingMat.get(), render_pass_name::DEFERRED_LIGHTING_PASS);
+    }
+
+    const render_pass_name scenePass = (r_mode == render_mode::FORWARD) ? render_pass_name::FORWARD_PASS : render_pass_name::GBUFFER_PASS;
 
     for (const auto& obj_ptr : scn->objects())
     {
@@ -167,8 +186,12 @@ void renderer::prepareScene(const scene* scn)
         }
 
         render_object* obj = obj_ptr.get();
-        material* matInst = obj->getMaterial();
+        material_instance* matInst = obj->getMaterialInstance();
         mesh* meshInst = obj->getMesh();
+        if (!matInst || !meshInst)
+        {
+            continue;
+        }
 
         uniform_buffer_handle obj_handle = obj->getHandle();
         if (!obj_handle.is_valid()) {
@@ -178,11 +201,8 @@ void renderer::prepareScene(const scene* scn)
 
         updateObjectUniformBuffer(obj);
 
-        pipeline_state_handle pso_handle = matInst->getPSOHandle();
-        if (!pso_handle.is_valid()) {
-            pso_handle = _dynamicRHI->createPSO(matInst, (r_mode == render_mode::FORWARD) ? render_pass_name::FORWARD_PASS : render_pass_name::GBUFFER_PASS);
-            matInst->setPSOHandle(pso_handle);
-        }
+        prepareMaterialInstance(matInst);
+        ensurePSO(matInst->getMaterial(), scenePass);
 
         mesh_handle msh_handle = meshInst->getHandle();
         if (!msh_handle.is_valid()) {
@@ -335,7 +355,7 @@ void renderer::shadowPass(const scene* scn, gpu_command_buffer& cmd)
         uniform_buffer_handle obj_handle = obj->getHandle();
         assert(obj_handle.is_valid());
         
-        pipeline_state_handle pso_handle = g_shadowMat->getPSOHandle();
+        pipeline_state_handle pso_handle = g_shadowMat->getPSOHandle(render_pass_name::SHADOW_PASS);
         assert(pso_handle.is_valid());
 
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
@@ -420,7 +440,7 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
         }
 
         render_object* obj = obj_ptr.get();
-        material* matInst = obj->getMaterial();
+        material_instance* matInst = obj->getMaterialInstance();
         mesh* meshInst = obj->getMesh();
         if (!obj || !matInst || !meshInst)
         {
@@ -433,15 +453,15 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
         uniform_buffer_handle obj_handle = obj->getHandle();
         assert(obj_handle.is_valid());
         
-        pipeline_state_handle pso_handle = matInst->getPSOHandle();
+        const material* mat = matInst->getMaterial();
+        pipeline_state_handle pso_handle = mat->getPSOHandle(render_pass_name::FORWARD_PASS);
         assert(pso_handle.is_valid());
         
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
-        updateMaterialUniformBuffer(matInst);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(mat->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->getHandle(), (u8)shader_binding::MATERIAL);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(light_handle, (u8)shader_binding::LIGHT);
 
         cmd.emplaceCommand<gpu_bind_texture_command>(baseColorTextureFor(matInst), (u8)shader_binding::TEXTURE);
@@ -456,10 +476,10 @@ void renderer::forwardPass(const scene* scn, const pass_context& pc, gpu_command
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
 
-        if (matInst->useVertexIndexBuffers() && !meshInst->hasVertices())
+        if (mat->useVertexIndexBuffers() && !meshInst->hasVertices())
         {
             std::printf("Warning: Material '%s' expects vertex/index buffers, but mesh '%s' has no vertices.\n",
-                matInst->getShaderName().c_str(),
+                mat->getShaderName(render_pass_name::FORWARD_PASS).c_str(),
                 meshInst->getName().c_str());
             continue;
         }
@@ -542,7 +562,7 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
         }
 
         render_object* obj = obj_ptr.get();
-        material* matInst = obj->getMaterial();
+        material_instance* matInst = obj->getMaterialInstance();
         mesh* meshInst = obj->getMesh();
         if (!obj || !matInst || !meshInst)
         {
@@ -553,15 +573,15 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
         uniform_buffer_handle obj_handle = obj->getHandle();
         assert(obj_handle.is_valid());
         
-        pipeline_state_handle pso_handle = matInst->getPSOHandle();
+        const material* mat = matInst->getMaterial();
+        pipeline_state_handle pso_handle = mat->getPSOHandle(render_pass_name::GBUFFER_PASS);
         assert(pso_handle.is_valid());
         
         cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
 
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(view_handle, (u8)shader_binding::VIEW);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
-        updateMaterialUniformBuffer(matInst);
-        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultMaterialBufferHandle, (u8)shader_binding::MATERIAL);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(mat->useObjectUniformBuffer() ? obj_handle : g_defaultObjectBufferHandle, (u8)shader_binding::OBJECT);
+        cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(matInst->getHandle(), (u8)shader_binding::MATERIAL);
         cmd.emplaceCommand<gpu_bind_uniform_buffer_command>(g_defaultLightBufferHandle, (u8)shader_binding::LIGHT);
 
         cmd.emplaceCommand<gpu_bind_texture_command>(baseColorTextureFor(matInst), (u8)shader_binding::TEXTURE);
@@ -576,10 +596,10 @@ void renderer::gbufferPass(const scene* scn, const pass_context& pc, gpu_command
         mesh_handle msh_handle = meshInst->getHandle();
         assert(msh_handle.is_valid());
 
-        if (matInst->useVertexIndexBuffers() && !meshInst->hasVertices())
+        if (mat->useVertexIndexBuffers() && !meshInst->hasVertices())
         {
             std::printf("Warning: Material '%s' expects vertex/index buffers, but mesh '%s' has no vertices.\n",
-                matInst->getShaderName().c_str(),
+                mat->getShaderName(render_pass_name::GBUFFER_PASS).c_str(),
                 meshInst->getName().c_str());
             continue;
         }
@@ -659,7 +679,7 @@ void renderer::lightingPass(const scene* scn, const pass_context& pc, gpu_comman
 
     const uniform_buffer_handle light_handle = ensureLightBuffer(scn->getDirectionalLight());
 
-    pipeline_state_handle pso_handle = g_deferredLightingMat->getPSOHandle();
+    pipeline_state_handle pso_handle = g_deferredLightingMat->getPSOHandle(render_pass_name::DEFERRED_LIGHTING_PASS);
     assert(pso_handle.is_valid());
 
     cmd.emplaceCommand<gpu_bind_pipeline_command>(pso_handle);
@@ -768,14 +788,11 @@ void renderer::updateObjectUniformBuffer(const render_object* obj)
     }
 }
 
-void renderer::updateMaterialUniformBuffer(const material* mat)
+void renderer::updateMaterialUniformBuffer(const material_instance* inst)
 {
     material_uniform_buffer ub{};
-    if (mat)
-    {
-        ub.base_color = mat->getBaseColor();
-        ub.material_params = mat->getMaterialParams();
-    }
+    ub.base_color = inst->getBaseColor();
+    ub.material_params = inst->getMaterialParams();
 
     u32 flags = 0;
     u32 albedoSlot = 0;
@@ -788,59 +805,56 @@ void renderer::updateMaterialUniformBuffer(const material* mat)
         bindlessInvalidFallbackSlot = 0;
     }
 
-    if (mat)
+    for (const texture_slot& ts : inst->getTextures())
     {
-        for (const texture_slot& ts : mat->getTextures())
+        const texture* tex = ts.tex.get();
+        if (!tex)
         {
-            const texture* tex = ts.tex.get();
-            if (!tex)
-            {
-                continue;
-            }
+            continue;
+        }
 
-            const bool bindless = (tex->getResourceBindingMode() == resource_binding_mode::BINDLESS);
-            u32 idx = tex->getBindlessTextureSlot();
-            if (idx == std::numeric_limits<u32>::max())
-            {
-                idx = bindlessInvalidFallbackSlot;
-            }
+        const bool bindless = (tex->getResourceBindingMode() == resource_binding_mode::BINDLESS);
+        u32 idx = tex->getBindlessTextureSlot();
+        if (idx == std::numeric_limits<u32>::max())
+        {
+            idx = bindlessInvalidFallbackSlot;
+        }
 
-            switch (ts.slot_index)
+        switch (ts.slot_index)
+        {
+        case 0:
+            flags |= material_tex_flag_has_albedo;
+            if (bindless)
             {
-            case 0:
-                flags |= material_tex_flag_has_albedo;
-                if (bindless)
-                {
-                    flags |= material_tex_flag_bindless_albedo;
-                }
-                albedoSlot = idx;
-                break;
-            case 1:
-                flags |= material_tex_flag_has_normal;
-                if (bindless)
-                {
-                    flags |= material_tex_flag_bindless_normal;
-                }
-                normalSlot = idx;
-                break;
-            case 2:
-                flags |= material_tex_flag_has_rme;
-                if (bindless)
-                {
-                    flags |= material_tex_flag_bindless_rme;
-                }
-                rmeSlot = idx;
-                break;
-            default:
-                break;
+                flags |= material_tex_flag_bindless_albedo;
             }
+            albedoSlot = idx;
+            break;
+        case 1:
+            flags |= material_tex_flag_has_normal;
+            if (bindless)
+            {
+                flags |= material_tex_flag_bindless_normal;
+            }
+            normalSlot = idx;
+            break;
+        case 2:
+            flags |= material_tex_flag_has_rme;
+            if (bindless)
+            {
+                flags |= material_tex_flag_bindless_rme;
+            }
+            rmeSlot = idx;
+            break;
+        default:
+            break;
         }
     }
 
     ub.texture_info = glm::uvec4(flags, albedoSlot, normalSlot, rmeSlot);
 
     void* buffer_memory = nullptr;
-    _dynamicRHI->getUniformBufferMemory(g_defaultMaterialBufferHandle, g_frameIndex, buffer_memory);
+    _dynamicRHI->getUniformBufferMemory(inst->getHandle(), g_frameIndex, buffer_memory);
     std::memcpy(static_cast<u8*>(buffer_memory), &ub, sizeof(ub));
 }
 

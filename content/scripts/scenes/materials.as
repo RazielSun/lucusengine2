@@ -28,14 +28,38 @@ Material@ makePreviewMaterial(const string &in shader, Texture@ albedo = null)
     return material;
 }
 
-void addPreviewCube(Scene@ scene, Mesh@ mesh, Material@ material, float x, float y)
+RenderObject@ addPreviewCube(Scene@ scene, Mesh@ mesh, float x, float y)
 {
     RenderObject@ object = scene.NewObject();
     object.SetMesh(mesh);
-    object.SetMaterial(material);
     object.SetPosition(Vec3(x, y, 0.f));
     object.SetRotationEuler(Vec3(-15.f, 25.f, 0.f));
     object.SetScale(Vec3(1.2f, 1.2f, 1.2f));
+    return object;
+}
+
+void addPreviewCube(Scene@ scene, Mesh@ mesh, Material@ material, float x, float y)
+{
+    addPreviewCube(scene, mesh, x, y).SetMaterial(material);
+}
+
+void addPreviewCube(Scene@ scene, Mesh@ mesh, MaterialInstance@ instance, float x, float y)
+{
+    addPreviewCube(scene, mesh, x, y).SetMaterialInstance(instance);
+}
+
+MaterialInstance@ makeColorInstance(Material@ material, float r, float g, float b)
+{
+    MaterialInstance@ instance = material.CreateInstance();
+    instance.SetBaseColor(r, g, b);
+    return instance;
+}
+
+MaterialInstance@ makeCheckerInstance(Material@ material, float frequency)
+{
+    MaterialInstance@ instance = material.CreateInstance();
+    instance.SetMaterialParams(frequency, 0.f, 0.f, 0.f);
+    return instance;
 }
 
 void setupMaterialsScene(RenderMode renderMode, MaterialTextureSetup textureSetup)
@@ -63,26 +87,15 @@ void setupMaterialsScene(RenderMode renderMode, MaterialTextureSetup textureSetu
     Texture@ photograph = Texture::load("content/assets/textures/texture.jpg");
     photograph.SetResourceBindingMode(materialTextureMode(textureSetup, false));
 
-    Material@ red = makePreviewMaterial("simple_unlit");
-    red.SetBaseColor(1.f, 0.15f, 0.15f);
-    Material@ green = makePreviewMaterial("simple_unlit");
-    green.SetBaseColor(0.15f, 1.f, 0.15f);
-    Material@ blue = makePreviewMaterial("simple_unlit");
-    blue.SetBaseColor(0.15f, 0.15f, 1.f);
-    Material@ yellow = makePreviewMaterial("simple_unlit");
-    yellow.SetBaseColor(1.f, 0.8f, 0.15f);
+    Material@ unlit = makePreviewMaterial("simple_unlit");
+    addPreviewCube(scene, cube, makeColorInstance(unlit, 1.f, 0.15f, 0.15f), -3.15f, 2.1f);
+    addPreviewCube(scene, cube, makeColorInstance(unlit, 0.15f, 1.f, 0.15f), -1.05f, 2.1f);
+    addPreviewCube(scene, cube, makeColorInstance(unlit, 0.15f, 0.15f, 1.f), 1.05f, 2.1f);
+    addPreviewCube(scene, cube, makeColorInstance(unlit, 1.f, 0.8f, 0.15f), 3.15f, 2.1f);
 
-    addPreviewCube(scene, cube, red, -3.15f, 2.1f);
-    addPreviewCube(scene, cube, green, -1.05f, 2.1f);
-    addPreviewCube(scene, cube, blue, 1.05f, 2.1f);
-    addPreviewCube(scene, cube, yellow, 3.15f, 2.1f);
-
-    Material@ coarseChecker = makePreviewMaterial("checker_unlit");
-    coarseChecker.SetMaterialParams(4.f, 0.f, 0.f, 0.f);
-    Material@ fineChecker = makePreviewMaterial("checker_unlit");
-    fineChecker.SetMaterialParams(16.f, 0.f, 0.f, 0.f);
-    addPreviewCube(scene, cube, coarseChecker, -3.15f, 0.f);
-    addPreviewCube(scene, cube, fineChecker, -1.05f, 0.f);
+    Material@ checker = makePreviewMaterial("checker_unlit");
+    addPreviewCube(scene, cube, makeCheckerInstance(checker, 4.f), -3.15f, 0.f);
+    addPreviewCube(scene, cube, makeCheckerInstance(checker, 16.f), -1.05f, 0.f);
     addPreviewCube(scene, cube, makePreviewMaterial("simple_texture_unlit", checkerA), 1.05f, 0.f);
     addPreviewCube(scene, cube, makePreviewMaterial("simple_texture_unlit", checkerB), 3.15f, 0.f);
 

@@ -8,7 +8,6 @@
 namespace lucus
 {
     class window;
-    class material;
     class mesh;
     class texture;
     class render_object;
@@ -42,7 +41,7 @@ namespace lucus
         /// No-op if already allocated or the extent is zero.
         virtual void ensureDeferredGBufferTargets(const window_context_handle& /*ctx*/) {}
 
-        virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) = 0;
+        virtual pipeline_state_handle createPSO(const pipeline_state_desc& desc) = 0;
         virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) = 0;
         
         virtual mesh_handle createMesh(mesh* msh) = 0;

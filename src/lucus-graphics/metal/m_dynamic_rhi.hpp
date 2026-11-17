@@ -25,7 +25,7 @@ namespace lucus
             virtual void getWindowContextSize(const window_context_handle& handle, u32& width, u32& height) const override;
             virtual render_target_handle getWindowContextRenderTarget(const window_context_handle& handle, render_target_type rt_type) const override;
 
-            virtual pipeline_state_handle createPSO(material* mat, render_pass_name passName) override;
+            virtual pipeline_state_handle createPSO(const pipeline_state_desc& desc) override;
             virtual render_target_handle createRenderTarget(u32 width, u32 height, render_target_type rt_type, u32 count = 1, bool skip_resources = false) override;
 
             virtual mesh_handle createMesh(mesh* msh) override;

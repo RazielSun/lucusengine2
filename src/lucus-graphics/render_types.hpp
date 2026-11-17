@@ -90,6 +90,31 @@ namespace lucus
         DEFERRED_LIGHTING_PASS = 3,
     };
 
+    constexpr size_t render_pass_count{ 4 };
+
+    struct pipeline_state_desc
+    {
+        std::string shaderName;
+        render_pass_name pass{ render_pass_name::FORWARD_PASS };
+        bool useVertexIndexBuffers{ false };
+
+        bool operator==(const pipeline_state_desc& other) const
+        {
+            return shaderName == other.shaderName && pass == other.pass && useVertexIndexBuffers == other.useVertexIndexBuffers;
+        }
+    };
+
+    struct pipeline_state_desc_hash
+    {
+        size_t operator()(const pipeline_state_desc& desc) const
+        {
+            size_t hash = std::hash<std::string>{}(desc.shaderName);
+            hash ^= static_cast<size_t>(desc.pass) << 1;
+            hash ^= static_cast<size_t>(desc.useVertexIndexBuffers) << 4;
+            return hash;
+        }
+    };
+
     enum class shader_binding : u8
     {
         VIEW                = 0,

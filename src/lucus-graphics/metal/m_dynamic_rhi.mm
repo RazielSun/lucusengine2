@@ -453,21 +453,15 @@ void m_dynamic_rhi::completeFrameCapture(id<MTLCommandBuffer> currentBuffer, con
     capture.copy_pixels(readback.buffer.contents, readback.buffer.length, readback.row_pitch, readback.bgra);
 }
 
-pipeline_state_handle m_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
+pipeline_state_handle m_dynamic_rhi::createPSO(const pipeline_state_desc& desc)
 {
-    assert(mat && "Material pointer cannot be null");
-
+    const render_pass_name passName = desc.pass;
     if (passName == render_pass_name::GBUFFER_PASS || passName == render_pass_name::DEFERRED_LIGHTING_PASS)
     {
         throw std::runtime_error("Metal backend does not support deferred rendering yet");
     }
 
-    pipeline_state_handle pso_handle = pipeline_state_handle(mat->getHash());
-
-    auto it = _pipelineStates.find(pso_handle.get());
-    if (it != _pipelineStates.end()) {
-        return pso_handle;
-    }
+    pipeline_state_handle pso_handle(static_cast<u32>(_pipelineStates.size() + 1));
 
     {
         auto pair = _pipelineStates.emplace(pso_handle.get(), _deviceHandle);
@@ -477,7 +471,7 @@ pipeline_state_handle m_dynamic_rhi::createPSO(material* mat, render_pass_name p
 
         m_pipeline_state_desc init_desc;
 
-        if (mat->useVertexIndexBuffers())
+        if (desc.useVertexIndexBuffers)
         {
             NSUInteger bufferIndex = g_metalVertexBufferIndex;
             MTLVertexDescriptor *vertexDescriptor = [[MTLVertexDescriptor alloc] init];
@@ -505,7 +499,7 @@ pipeline_state_handle m_dynamic_rhi::createPSO(material* mat, render_pass_name p
         init_desc.colorFormat = passName == render_pass_name::SHADOW_PASS ? MTLPixelFormatInvalid : _contexts[0].getPixelFormat();
         init_desc.depthFormat = g_metalDepthTargetFormat;
 
-        pso.init(_shaderLibraries.get(mat->getShaderName()), init_desc);
+        pso.init(_shaderLibraries.get(desc.shaderName), init_desc);
 
         std::printf("PSO %u created successfully\n", pso_handle.get());
     }

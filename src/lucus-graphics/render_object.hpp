@@ -18,7 +18,10 @@ namespace lucus
             void setMesh(mesh* mesh) { _mesh.reset(mesh); }
             mesh* getMesh() const { return _mesh.get(); }
 
-            void setMaterial(material* material) { _material.reset(material); }
+            void setMaterialInstance(material_instance* instance);
+            material_instance* getMaterialInstance() const { return _materialInstance.get(); }
+
+            void setMaterial(material* mat) { setMaterialInstance(mat ? mat->getRootInstance() : nullptr); }
             material* getMaterial() const { return _material.get(); }
 
             const transform& getTransform() const { return _transform; }
@@ -43,6 +46,7 @@ namespace lucus
 
         private:
             intrusive_ptr<mesh> _mesh;
+            intrusive_ptr<material_instance> _materialInstance;
             intrusive_ptr<material> _material;
 
             transform _transform;

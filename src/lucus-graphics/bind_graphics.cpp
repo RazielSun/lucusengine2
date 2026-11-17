@@ -29,6 +29,7 @@ namespace utils
     constexpr const char* mesh_class_name = "Mesh";
     constexpr const char* texture_class_name = "Texture";
     constexpr const char* material_class_name = "Material";
+    constexpr const char* material_instance_class_name = "MaterialInstance";
     constexpr const char* render_object_class_name = "RenderObject";
     constexpr const char* camera_class_name = "Camera";
     constexpr const char* dir_light_class_name = "DirectionalLight";
@@ -39,6 +40,7 @@ namespace lucus
 {
     void bind_mesh_class();
     void bind_texture_class();
+    void bind_material_instance_class();
     void bind_material_class();
     void bind_render_object_class();
     void bind_camera_class();
@@ -62,6 +64,7 @@ void lucus::bind_graphics_module()
 
     bind_mesh_class();
     bind_texture_class();
+    bind_material_instance_class();
     bind_material_class();
     bind_render_object_class();
     bind_camera_class();
@@ -194,6 +197,69 @@ void lucus::bind_mesh_class()
     r = engine->SetDefaultNamespace(""); assert(r >= 0);
 }
 
+namespace
+{
+    using namespace lucus;
+
+    void material_set_base_color(material* mat, float r, float g, float b, float a)
+    {
+        mat->getRootInstance()->setBaseColor(r, g, b, a);
+    }
+
+    void material_set_material_params(material* mat, float x, float y, float z, float w)
+    {
+        mat->getRootInstance()->setMaterialParams(x, y, z, w);
+    }
+
+    void material_add_texture(material* mat, texture* tex, u8 slot_index)
+    {
+        mat->getRootInstance()->addTexture(tex, slot_index);
+    }
+}
+
+void lucus::bind_material_instance_class()
+{
+    asIScriptEngine* engine = script_manager::instance().get_engine();
+
+    int r = 0;
+
+    using namespace utils;
+
+    r = engine->RegisterObjectType(material_instance_class_name, 0, asOBJ_REF); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        material_instance_class_name, asBEHAVE_ADDREF, "void f()",
+        asMETHOD(material_instance, addRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectBehaviour(
+        material_instance_class_name, asBEHAVE_RELEASE, "void f()",
+        asMETHOD(material_instance, releaseRef), asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_instance_class_name,
+        "void SetBaseColor(float r, float g, float b, float a = 1)",
+        asMETHOD(material_instance, setBaseColor),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_instance_class_name,
+        "void SetMaterialParams(float x, float y, float z, float w)",
+        asMETHOD(material_instance, setMaterialParams),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_texture = std::string("void SetTexture(") + texture_class_name + "@, int)";
+    r = engine->RegisterObjectMethod(
+        material_instance_class_name,
+        method_set_texture.c_str(),
+        asMETHOD(material_instance, addTexture),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+}
+
 void lucus::bind_material_class()
 {
     asIScriptEngine* engine = script_manager::instance().get_engine();
@@ -251,26 +317,34 @@ void lucus::bind_material_class()
         asCALL_THISCALL
     ); assert(r >= 0);
 
+    std::string method_create_instance = std::string(material_instance_class_name) + "@ CreateInstance()";
     r = engine->RegisterObjectMethod(
         material_class_name,
-        "void SetBaseColor(float r, float g, float b, float a = 1)",
-        asMETHOD(material, setBaseColor),
+        method_create_instance.c_str(),
+        asMETHOD(material, createInstance),
         asCALL_THISCALL
     ); assert(r >= 0);
 
     r = engine->RegisterObjectMethod(
         material_class_name,
+        "void SetBaseColor(float r, float g, float b, float a = 1)",
+        asFUNCTION(material_set_base_color),
+        asCALL_CDECL_OBJFIRST
+    ); assert(r >= 0);
+
+    r = engine->RegisterObjectMethod(
+        material_class_name,
         "void SetMaterialParams(float x, float y, float z, float w)",
-        asMETHOD(material, setMaterialParams),
-        asCALL_THISCALL
+        asFUNCTION(material_set_material_params),
+        asCALL_CDECL_OBJFIRST
     ); assert(r >= 0);
 
     std::string method_set_texture = std::string("void SetTexture(") + texture_class_name + "@, int)";
     r = engine->RegisterObjectMethod(
         material_class_name,
         method_set_texture.c_str(),
-        asMETHOD(material, addTexture),
-        asCALL_THISCALL
+        asFUNCTION(material_add_texture),
+        asCALL_CDECL_OBJFIRST
     ); assert(r >= 0);
 }
 
@@ -307,6 +381,14 @@ void lucus::bind_render_object_class()
         render_object_class_name,
         method_set_material.c_str(),
         asMETHOD(render_object, setMaterial),
+        asCALL_THISCALL
+    ); assert(r >= 0);
+
+    std::string method_set_material_instance = std::string("void SetMaterialInstance(") + material_instance_class_name + "@)";
+    r = engine->RegisterObjectMethod(
+        render_object_class_name,
+        method_set_material_instance.c_str(),
+        asMETHOD(render_object, setMaterialInstance),
         asCALL_THISCALL
     ); assert(r >= 0);
 

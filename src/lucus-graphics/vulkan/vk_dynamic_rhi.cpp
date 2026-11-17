@@ -1137,15 +1137,11 @@ void vk_dynamic_rhi::createBindlessDescriptorSets()
     }
 }
 
-pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
+pipeline_state_handle vk_dynamic_rhi::createPSO(const pipeline_state_desc& desc)
 {
-    assert(mat);
+    const render_pass_name passName = desc.pass;
 
-    pipeline_state_handle pso_handle = pipeline_state_handle(mat->getHash());
-    auto it = _pipelineStates.find(pso_handle.get());
-    if (it != _pipelineStates.end()) {
-        return pso_handle;
-    }
+    pipeline_state_handle pso_handle(static_cast<u32>(_pipelineStates.size() + 1));
 
     {
         auto pair = _pipelineStates.emplace(pso_handle.get(), _deviceHandle);
@@ -1167,7 +1163,7 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
 
         init_desc.pipelineLayout = _passPipelineLayouts[static_cast<size_t>(passName)].get();
 
-        if (mat->useVertexIndexBuffers())
+        if (desc.useVertexIndexBuffers)
         {
             init_desc.bindingDesc = VkVertexInputBindingDescription {
                 .binding = 0,
@@ -1204,8 +1200,7 @@ pipeline_state_handle vk_dynamic_rhi::createPSO(material* mat, render_pass_name 
             };
         }
 
-        const std::string& shaderName = mat->getShaderName();
-        pso.init(shaderName, init_desc);
+        pso.init(desc.shaderName, init_desc);
 
         std::printf("PSO %u created successfully\n", pso_handle.get());
     }

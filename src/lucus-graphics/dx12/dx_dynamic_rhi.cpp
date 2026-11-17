@@ -629,15 +629,11 @@ void dx_dynamic_rhi::drainValidationMessages()
     }
 }
 
-pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name passName)
+pipeline_state_handle dx_dynamic_rhi::createPSO(const pipeline_state_desc& desc)
 {
-    assert(mat);
+    const render_pass_name passName = desc.pass;
 
-    pipeline_state_handle pso_handle = pipeline_state_handle(mat->getHash());
-    auto it = _pipelineStates.find(pso_handle.get());
-    if (it != _pipelineStates.end()) {
-        return pso_handle;
-    }
+    pipeline_state_handle pso_handle(static_cast<u32>(_pipelineStates.size() + 1));
 
     {
         auto pair = _pipelineStates.emplace(pso_handle.get(), _deviceHandle);
@@ -709,15 +705,14 @@ pipeline_state_handle dx_dynamic_rhi::createPSO(material* mat, render_pass_name 
             init_desc.layouts.emplace_back().InitAsDescriptorTable(1, &ranges[10], D3D12_SHADER_VISIBILITY_PIXEL);
         }
 
-        if (mat->useVertexIndexBuffers())
+        if (desc.useVertexIndexBuffers)
         {
             init_desc.vertexLayouts.push_back({ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, position), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(vertex, texCoords), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
             init_desc.vertexLayouts.push_back({ "COLOR",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
         }
-        const std::string& shaderName = mat->getShaderName();
-        pso.init(shaderName, init_desc);
+        pso.init(desc.shaderName, init_desc);
 
         std::printf("PSO %u created successfully\n", pso_handle.get());
     }
