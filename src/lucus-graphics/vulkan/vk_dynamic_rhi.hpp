@@ -39,6 +39,7 @@ namespace lucus
             virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) override;
 
             virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture = nullptr) override;
+            virtual void waitIdle() override;
 
         protected:
             void createInstance();
@@ -52,8 +53,6 @@ namespace lucus
             void createDescriptorSetLayouts();
             void createPassPipelineLayouts();
             void createBindlessDescriptorSets();
-
-            void wait_idle();
 
             VkCommandBuffer beginSingleTimeCommands();
             void endSingleTimeCommands(VkCommandBuffer commandBuffer);

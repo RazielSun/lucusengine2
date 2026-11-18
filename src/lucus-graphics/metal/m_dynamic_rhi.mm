@@ -654,3 +654,10 @@ void m_dynamic_rhi::uploadTextureToGpu(m_texture& tex)
 
     std::printf("Texture uploaded successfully\n");
 }
+
+void m_dynamic_rhi::waitIdle()
+{
+    id<MTLCommandBuffer> fenceBuffer = [_device->getCommandPool() commandBuffer];
+    [fenceBuffer commit];
+    [fenceBuffer waitUntilCompleted];
+}

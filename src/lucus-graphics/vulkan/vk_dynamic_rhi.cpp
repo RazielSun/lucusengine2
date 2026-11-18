@@ -1367,7 +1367,7 @@ void vk_dynamic_rhi::getUniformBufferMemory(const uniform_buffer_handle& ub_hand
     memory_ptr = buffer.getMappedData(currentFrame);
 }
 
-void vk_dynamic_rhi::wait_idle()
+void vk_dynamic_rhi::waitIdle()
 {
     vkDeviceWaitIdle(_deviceHandle);
 }

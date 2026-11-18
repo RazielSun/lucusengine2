@@ -120,6 +120,10 @@ void renderer::tick(float dt, image_capture* capture)
 
 void renderer::cleanup()
 {
+    if (_dynamicRHI)
+    {
+        _dynamicRHI->waitIdle();
+    }
     _dynamicRHI.reset();
 }
 

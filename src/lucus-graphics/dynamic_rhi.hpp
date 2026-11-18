@@ -54,6 +54,7 @@ namespace lucus
         virtual void getUniformBufferMemory(const uniform_buffer_handle& ub_handle, u32 frameIndex, void*& memory_ptr) = 0;
 
         virtual void execute(const window_context_handle& handle, u32 frameIndex, const gpu_command_buffer& cmd, image_capture* capture = nullptr) = 0;
+        virtual void waitIdle() = 0;
 
     protected:
         void beginValidationSetup(const rhi_init_desc& desc);

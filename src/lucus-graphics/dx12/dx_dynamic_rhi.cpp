@@ -480,7 +480,7 @@ void dx_dynamic_rhi::submitFrame()
     ID3D12CommandList* command_lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, command_lists);
 
-    waitForGpu();
+    waitIdle();
 }
 
 void dx_dynamic_rhi::prepareFrameCapture(const dx_window_context& ctx, image_capture& capture, frame_readback& readback)
@@ -551,7 +551,7 @@ void dx_dynamic_rhi::completeFrameCapture(const frame_readback& readback, image_
     readback.buffer->Unmap(0, &written);
 }
 
-void dx_dynamic_rhi::waitForGpu()
+void dx_dynamic_rhi::waitIdle()
 {
     const uint64_t value = _nextFenceValue++;
     ThrowIfFailed(_commandQueue->Signal(fence.Get(), value), "Failed Queue Signal");
@@ -1070,7 +1070,7 @@ void dx_dynamic_rhi::uploadTextureToGpu(dx_texture& tex, u32 frameIndex)
     ID3D12CommandList* lists[] = { commandBuffer.Get() };
     _commandQueue->ExecuteCommandLists(1, lists);
 
-    waitForGpu();
+    waitIdle();
 
     tex.free_staging();
 }
