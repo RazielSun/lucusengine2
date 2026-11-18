@@ -7,6 +7,7 @@ for %%I in ("%ROOT_DIR%") do set "ROOT_DIR=%%~fI"
 set BIN_DST="%ROOT_DIR%\bin"
 
 call "%~dp0.build.bat"
+if errorlevel 1 exit /b 1
 
 call "%~dp0compile_dx12.bat"
 if errorlevel 1 exit /b 1

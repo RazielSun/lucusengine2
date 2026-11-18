@@ -45,7 +45,7 @@ namespace
     validation_severity toValidationSeverity(VkDebugUtilsMessageSeverityFlagBitsEXT severity)
     {
         if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
-            return validation_severity::ERROR;
+            return validation_severity::FAILURE;
         if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
             return validation_severity::WARNING;
         return validation_severity::INFO;

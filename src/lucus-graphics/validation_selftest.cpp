@@ -109,7 +109,7 @@ namespace
 
         check(sink.counts().errors == 0, "counters start at zero");
 
-        sink.report(validation_backend::VULKAN, validation_severity::ERROR, "VUID-A", "first");
+        sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "VUID-A", "first");
         sink.report(validation_backend::VULKAN, validation_severity::WARNING, "VUID-B", "second");
         sink.report(validation_backend::VULKAN, validation_severity::INFO, "VUID-C", "third");
 
@@ -126,7 +126,7 @@ namespace
         sink.configure(desc_with(rhi_validation_level::ON));
 
         for (u32 i = 0; i < 10; ++i)
-            sink.report(validation_backend::VULKAN, validation_severity::ERROR, "VUID-DUP", "repeated");
+            sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "VUID-DUP", "repeated");
 
         check(sink.counts().errors == 10, "every occurrence is counted, printing cap does not drop any");
     }
@@ -137,8 +137,8 @@ namespace
         sink.configure(desc_with(rhi_validation_level::ON));
         sink.suppress({ validation_backend::DX12, "1234", "known and accepted for the selftest" });
 
-        sink.report(validation_backend::DX12, validation_severity::ERROR, "1234", "suppressed one");
-        sink.report(validation_backend::VULKAN, validation_severity::ERROR, "1234", "same id, other backend");
+        sink.report(validation_backend::DX12, validation_severity::FAILURE, "1234", "suppressed one");
+        sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "1234", "same id, other backend");
 
         const validation_counts counts = sink.counts();
         check(counts.suppressed_errors == 1, "suppressed error is counted separately");
@@ -150,14 +150,14 @@ namespace
         validation_sink& sink = validation_sink::instance();
         sink.configure(desc_with(rhi_validation_level::ON));
         sink.suppress({ validation_backend::VULKAN, "VUID-R", "cleared by the next configure" });
-        sink.report(validation_backend::VULKAN, validation_severity::ERROR, "VUID-X", "before reset");
+        sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "VUID-X", "before reset");
 
         sink.configure(desc_with(rhi_validation_level::ON));
 
         const validation_counts counts = sink.counts();
         check(counts.errors == 0 && counts.suppressed_errors == 0, "configure resets the counters");
 
-        sink.report(validation_backend::VULKAN, validation_severity::ERROR, "VUID-R", "after reset");
+        sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "VUID-R", "after reset");
         check(sink.counts().errors == 1, "configure clears the suppression list");
     }
 
@@ -166,7 +166,7 @@ namespace
         validation_sink& sink = validation_sink::instance();
         sink.configure(desc_with(rhi_validation_level::OFF));
 
-        sink.report(validation_backend::VULKAN, validation_severity::ERROR, "VUID-OFF", "must be dropped");
+        sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "VUID-OFF", "must be dropped");
 
         check(sink.counts().errors == 0, "validation off drops reports");
     }
@@ -186,7 +186,7 @@ namespace
         {
             threads.emplace_back([&sink] {
                 for (u32 i = 0; i < per_thread; ++i)
-                    sink.report(validation_backend::VULKAN, validation_severity::ERROR, "VUID-CONCURRENT", "from a thread");
+                    sink.report(validation_backend::VULKAN, validation_severity::FAILURE, "VUID-CONCURRENT", "from a thread");
             });
         }
 

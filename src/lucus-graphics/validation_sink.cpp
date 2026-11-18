@@ -19,7 +19,7 @@ const char* lucus::to_string(validation_severity severity)
     {
         case validation_severity::INFO:    return "info";
         case validation_severity::WARNING: return "warning";
-        case validation_severity::ERROR:   return "error";
+        case validation_severity::FAILURE: return "error";
     }
     return "unknown";
 }
@@ -89,7 +89,7 @@ void validation_sink::report(validation_backend backend,
 
         switch (severity)
         {
-            case validation_severity::ERROR:
+            case validation_severity::FAILURE:
                 (suppressed ? _counts.suppressed_errors : _counts.errors)++;
                 break;
             case validation_severity::WARNING:
@@ -115,7 +115,7 @@ void validation_sink::report(validation_backend backend,
             }
         }
 
-        fatal = _desc.validation_fatal && !suppressed && severity == validation_severity::ERROR;
+        fatal = _desc.validation_fatal && !suppressed && severity == validation_severity::FAILURE;
     }
 
     if (fatal)

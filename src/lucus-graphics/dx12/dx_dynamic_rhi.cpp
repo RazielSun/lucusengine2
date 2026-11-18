@@ -600,7 +600,7 @@ void dx_dynamic_rhi::drainValidationMessages()
         {
             case D3D12_MESSAGE_SEVERITY_CORRUPTION:
             case D3D12_MESSAGE_SEVERITY_ERROR:
-                severity = validation_severity::ERROR;
+                severity = validation_severity::FAILURE;
                 break;
             case D3D12_MESSAGE_SEVERITY_WARNING:
                 severity = validation_severity::WARNING;
@@ -624,7 +624,7 @@ void dx_dynamic_rhi::drainValidationMessages()
     if (discarded > _discardedValidationMessages)
     {
         _discardedValidationMessages = discarded;
-        sink.report(validation_backend::DX12, validation_severity::ERROR, "info-queue-overflow",
+        sink.report(validation_backend::DX12, validation_severity::FAILURE, "info-queue-overflow",
                     "the info queue discarded messages, validation results are incomplete");
     }
 }

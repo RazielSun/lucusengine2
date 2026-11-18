@@ -19,7 +19,7 @@ namespace lucus
     {
         INFO    = 0,
         WARNING = 1,
-        ERROR   = 2,
+        FAILURE = 2,
     };
 
     const char* to_string(validation_backend backend);

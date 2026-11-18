@@ -141,7 +141,7 @@ no CMake edit needed — reconfigure only).
 Backend-agnostic. Both backends push into it, `engine` reads it.
 
 ```cpp
-enum class validation_severity : u8 { INFO, WARNING, ERROR };
+enum class validation_severity : u8 { INFO, WARNING, FAILURE };
 
 class validation_sink : public singleton<validation_sink>
 {
